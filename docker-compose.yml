@@ -1,6 +1,14 @@
 version: '3'
 
 services:
+
+  microservices.user:
+    container_name: microservices.user
+    build: users
+    restart: always
+    ports:
+      - "8080:5510"
+
   surrealdb:
     env_file:
       - .env
