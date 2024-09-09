@@ -6,8 +6,6 @@ Okay so a briefing of what this is, we will be creating a  dynamic social media 
 ## Each API will be it's own micro-service.
 
 We're gonna start out with each API being it's own microservice, I really wouldn't do this but all the AI suggested it.
-#### Get all items
-
 
 #### API REFERENCE (Lets start with users).
 ### USERS MICROSERVICE
