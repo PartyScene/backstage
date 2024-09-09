@@ -9,6 +9,27 @@ services:
     ports:
       - "8080:5510"
 
+  microservices.messaging:
+    container_name: microservices.messaging
+    build: users
+    restart: always
+    ports:
+      - "8081:5510"
+
+  microservices.events:
+    container_name: microservices.events
+    build: users
+    restart: always
+    ports:
+      - "8082:5510"
+
+  microservices.posts:
+    container_name: microservices.posts
+    build: users
+    restart: always
+    ports:
+      - "8083:5510"
+
   surrealdb:
     env_file:
       - .env

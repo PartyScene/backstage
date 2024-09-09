@@ -1,0 +1,7 @@
+quart
+flask
+flask-classful
+aioipfs[bohort]
+ujson
+uvloop
+asyncpg
