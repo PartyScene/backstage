@@ -7,11 +7,12 @@ from quart.datastructures import FileStorage
 
 from ..classful import route, QuartClassful
 
+
 class BaseView(QuartClassful):
     app = app
     route_base = "/posts/"
-        
+
     @route("/<id>", methods=["GET", "POST"])
-    async def index(self, id : str ):
+    async def index(self, id: str):
         """Fetch a POST"""
         ...

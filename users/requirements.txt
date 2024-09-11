@@ -5,3 +5,4 @@ aioipfs[bohort]
 ujson
 uvloop
 asyncpg
+surrealdb
