@@ -2,14 +2,42 @@ _format_version: "3.0"
 _transform: true
 
 services:
+
 - host: microservices.auth
   name: auth_service
   port: 5510
   protocol: http
+  path: /register
   routes:
   - name: register_route
     paths:
-    - /
+    - /auth/register
+    strip_path: true
+    methods:
+      - POST
+
+- host: microservices.events
+  name: events_service
+  port: 5510
+  protocol: http
+  path: /all
+  routes:
+  - name: fetch_all
+    paths:
+    - /events/all
+    strip_path: true
+    methods:
+      - GET
+
+- host: microservices.events
+  name: create-event-service
+  port: 5510
+  protocol: http
+  path: /create
+  routes:
+  - name: create
+    paths:
+    - /events/create
     strip_path: true
     methods:
       - POST
