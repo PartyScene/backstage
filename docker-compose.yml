@@ -1,8 +1,18 @@
+networks:
+  backstage_network:
+    external: true
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+
 services:
 
   microservices.auth:
     container_name: microservices.auth
     build: auth
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.14
     restart: always
     ports:
       - "8084:5510"
@@ -11,13 +21,19 @@ services:
     container_name: microservices.messaging
     build: messaging
     restart: always
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.13
     ports:
-      - "8081:5510
+      - "8081:5510"
 
   microservices.events:
     container_name: microservices.events
     build: events
     restart: always
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.12
     ports:
       - "8082:5510"
 
@@ -25,6 +41,9 @@ services:
     container_name: microservices.posts
     build: posts
     restart: always
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.11
     ports:
       - "8083:5510"
 
@@ -32,6 +51,9 @@ services:
     container_name: microservices.users
     build: users
     restart: always
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.10
     ports:
       - "8080:5510"
 
@@ -45,8 +67,11 @@ services:
       - $DB_USER
       - --pass
       - $DB_PASSWORD
-    image: surrealdb/surrealdb:latest
+    image: surrealdb/surrealdb:v2.0-dev
     ports:
       - 8000:8000
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.20
     volumes:
       - ./data/database.db:/database.db

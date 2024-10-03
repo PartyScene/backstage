@@ -3,3 +3,4 @@ ujson
 uvloop
 asyncpg
 surrealdb
+quart-schema

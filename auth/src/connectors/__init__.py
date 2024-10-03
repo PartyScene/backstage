@@ -1,5 +1,7 @@
 from surrealdb import Surreal
 
+from src.schema import FormIn
+
 
 class AuthDB:
     def __init__(self, db) -> None:
@@ -7,23 +9,20 @@ class AuthDB:
 
     async def _login(self, password):
         result = await self.db.query(
-            """
-            SELECT * FROM users WHERE crypto::scrypt::compare(password, $password);
-                                     """,
+            "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password);",
             {"password": password},
         )
 
-    async def _create(self, form):
-        result = await self.db.create(
-            "users",
+    async def _create(self, form: FormIn):
+        result = await self.db.query(
+            "INSERT INTO users (first_name, last_name, email, password) VALUES ($fname, $lname, $email, crypto::bcrypt::generate($pwd))",
             {
-                "email": form["email"],
-                "first_name": form["first_name"],
-                "last_name": form["last_name"],
-                "password": f"crypto::scrypt::generate({form['password']})",
+                "fname": form.first_name,
+                "lname": form.last_name,
+                "email": form.email,
+                "pwd": form.password,
             },
         )
-
         # Assign the variable on the connection
 
 
@@ -45,4 +44,5 @@ async def init_db(app) -> AuthDB:
             "pass": "rootrm",
         }
     )
+    await db.use("partyscene", "partyscene")
     return AuthDB(db)

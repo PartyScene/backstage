@@ -1,1 +1,1 @@
-SURREAL_URI = "ws://172.19.0.4:8000/rpc"
+SURREAL_URI = "ws://10.0.0.20:8000/rpc"
