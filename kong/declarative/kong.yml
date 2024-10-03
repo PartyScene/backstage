@@ -1,0 +1,13 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+- host: microservices.auth
+  name: auth_service
+  port: 5510
+  protocol: http
+  routes:
+  - name: register_route
+    paths:
+    - /
+    strip_path: true
