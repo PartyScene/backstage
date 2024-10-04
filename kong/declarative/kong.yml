@@ -4,12 +4,12 @@ _transform: true
 services:
 
 - host: microservices.auth
-  name: auth_service
+  name: register-user-service
   port: 5510
   protocol: http
   path: /register
   routes:
-  - name: register_route
+  - name: register-new-user
     paths:
     - /auth/register
     strip_path: true
@@ -17,12 +17,12 @@ services:
       - POST
 
 - host: microservices.events
-  name: events_service
+  name: fetch-event-service
   port: 5510
   protocol: http
   path: /all
   routes:
-  - name: fetch_all
+  - name: fetch-all-events
     paths:
     - /events/all
     strip_path: true
@@ -35,7 +35,7 @@ services:
   protocol: http
   path: /create
   routes:
-  - name: create
+  - name: create-new-event
     paths:
     - /events/create
     strip_path: true

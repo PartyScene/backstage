@@ -79,6 +79,14 @@ services:
       KONG_DECLARATIVE_CONFIG: ./kong/declarative/kong.yml
       KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
       
+  redis:
+    image: redis
+    ports:
+      - 6379:6379
+    volumes:
+      - ./data/redis:/data
+    command: ["redis-server", "--save",  "60", "1", "--loglevel", "warning"]
+
 
   surrealdb:
     env_file:
