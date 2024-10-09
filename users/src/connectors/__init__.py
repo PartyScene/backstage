@@ -1,0 +1,35 @@
+from quart import Quart
+from surrealdb import Surreal
+
+class UsersDB:
+    def __init__(self, db) -> None:
+        self.db: Surreal = db
+        self.users = self.Users(db)
+        
+    class Users:
+        def __init__(self, db) -> None:
+            self.db: Surreal = db
+        
+        async def fetch(self, email) -> dict:
+            """
+            Fetch one user
+            """
+            result = await self.db.query("SELECT *, ->attends->events[where true] AS scenes FROM users WHERE email = $email;", {'email': email})
+            return result[0]['result'][0]
+            
+        async def create(self):
+            ...
+
+        
+
+async def init_db(app: Quart) -> UsersDB:
+    db = Surreal(app.config["SURREAL_URI"])
+    await db.connect()
+    await db.signin(
+        {
+            "user": "root",
+            "pass": "rootrm",
+        }
+    )
+    await db.use("partyscene", "partyscene")
+    return UsersDB(db)

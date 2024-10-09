@@ -16,6 +16,19 @@ services:
     methods:
       - POST
 
+- host: microservices.auth
+  name: login-user-service
+  port: 5510
+  protocol: http
+  path: /login
+  routes:
+  - name: login-user
+    paths:
+    - /auth/login
+    strip_path: true
+    methods:
+      - POST
+
 - host: microservices.events
   name: fetch-event-service
   port: 5510
@@ -38,6 +51,32 @@ services:
   - name: create-new-event
     paths:
     - /events/create
+    strip_path: true
+    methods:
+      - POST
+
+- host: microservices.users
+  name: fetch-user-service
+  port: 5510
+  protocol: http
+  path: /users
+  routes:
+  - name: fetch-user-information
+    paths:
+    - /users/
+    strip_path: true
+    methods:
+      - POST
+
+- host: microservices.users
+  name: fetch-logged-user-service
+  port: 5510
+  protocol: http
+  path: /me
+  routes:
+  - name: fetch-logged-user
+    paths:
+    - /users/me
     strip_path: true
     methods:
       - POST

@@ -1,10 +1,15 @@
 from pprint import pprint
 
+from quart_redis import RedisHandler
 from quart_schema import QuartSchema
 import uvloop
 import logging
 
 from quart import Quart
+from quart_jwt_extended import (
+    JWTManager
+)
+
 from .connectors import EventsDB, init_db
 from .views.base import BaseView
 
@@ -22,6 +27,8 @@ class EventsMicroService(Quart):
         self.db : EventsDB = None  # Asyncpg pool
         self.logging = logging
         self.config.from_pyfile("src/settings.py")
+        
+        self.redis_handler = RedisHandler(self)
 
         self.before_serving(self.services)
 
@@ -32,8 +39,21 @@ class EventsMicroService(Quart):
 
         logging.info("Registering Application Routes.")
         BaseView.register(self)
+        
         logging.info("Printing Application Routes...")
         logging.info(self.url_map)
+        
+        logging.info("Retrieving Secret...")
+        await self.get_shared_secret()
+        
+        
+    async def get_shared_secret(self):
+        """"""
+        conn = self.redis_handler.get_connection()
+        self.config['SECRET_KEY'] = await conn.get("SECRET_KEY")
+        
+        # Then Initialize JWT
+        self.jwt = JWTManager(self)
 
     def run(self):
         """Custom Run Method."""

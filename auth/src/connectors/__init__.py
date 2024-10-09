@@ -1,17 +1,18 @@
 from surrealdb import Surreal
 
-from src.schema import FormIn
+from src.schema import FormIn, LoginForm
 
 
 class AuthDB:
     def __init__(self, db) -> None:
         self.db: Surreal = db
 
-    async def _login(self, password):
+    async def _login(self, data: LoginForm):
         result = await self.db.query(
             "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password);",
-            {"password": password},
+            {"password": data.password},
         )
+        return result[0]['result'][0]['email'] == data.email
 
     async def _create(self, form: FormIn):
         result = await self.db.query(

@@ -1,4 +1,5 @@
 from pprint import pprint
+import secrets
 
 from quart_schema import QuartSchema
 import uvloop
@@ -7,6 +8,11 @@ import logging
 from quart import Quart
 from .connectors import init_db
 from .views.base import BaseView
+
+from quart_redis import RedisHandler
+from quart_jwt_extended import (
+    JWTManager
+)
 
 
 class AuthMicroService(Quart):
@@ -22,6 +28,8 @@ class AuthMicroService(Quart):
         self.db = None  # Asyncpg pool
         self.logging = logging
         self.config.from_pyfile("src/settings.py")
+        self.redis_handler = RedisHandler(self)
+        self.jwt = JWTManager(self)
 
         self.before_serving(self.services)
 
@@ -32,8 +40,19 @@ class AuthMicroService(Quart):
 
         logging.info("Registering Application Routes.")
         BaseView.register(self)
+        
         logging.info("Printing Application Routes...")
         logging.info(self.url_map)
+        
+        logging.info("Pushing Secret...")
+        await self.set_shared_secret()
+        
+    
+    async def set_shared_secret(self):
+        """"""
+        conn = self.redis_handler.get_connection()
+        self.config['SECRET_KEY'] = secrets.token_hex(32)
+        await conn.set("SECRET_KEY", self.config['SECRET_KEY'])
 
     def run(self):
         """Custom Run Method."""

@@ -1,5 +1,5 @@
 # Use a Python image with relevant dependencies
-FROM python:latest
+FROM python:3.12-rc-bookworm
 
 WORKDIR /app
 

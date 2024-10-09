@@ -1,8 +1,8 @@
 quart
-flask
-flask-classful
-aioipfs[bohort]
 ujson
 uvloop
 asyncpg
 surrealdb
+quart-schema
+quart-redis
+quart-jwt-extended

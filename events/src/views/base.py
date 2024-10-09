@@ -10,6 +10,10 @@ from ..connectors import EventsDB
 from ..schema import Events
 from ..classful import route, QuartClassful
 
+from quart_jwt_extended import (
+    get_jwt_identity, jwt_required
+)
+
 
 class BaseView(QuartClassful):
     app = app
@@ -20,6 +24,7 @@ class BaseView(QuartClassful):
     route_base = "/events/"
 
     @route("/all", methods=["GET"])
+    @jwt_required
     @document_querystring(Events)
     async def fetch_all(self):
         """This endpoints returns all the events"""

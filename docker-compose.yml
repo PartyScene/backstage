@@ -16,16 +16,20 @@ services:
     restart: always
     ports:
       - "8084:5510"
+    depends_on:
+      - redis
 
-  microservices.messaging:
-    container_name: microservices.messaging
-    build: messaging
-    restart: always
-    networks:
-      backstage_network:
-        ipv4_address: 10.0.0.13
-    ports:
-      - "8081:5510"
+  # microservices.messaging:
+  #   container_name: microservices.messaging
+  #   build: messaging
+  #   restart: always
+  #   networks:
+  #     backstage_network:
+  #       ipv4_address: 10.0.0.13
+  #   ports:
+  #     - "8081:5510"
+  #   depends_on:
+  #     - microservices.auth
 
   microservices.events:
     container_name: microservices.events
@@ -36,16 +40,20 @@ services:
         ipv4_address: 10.0.0.12
     ports:
       - "8082:5510"
+    depends_on:
+      - microservices.auth
 
-  microservices.posts:
-    container_name: microservices.posts
-    build: posts
-    restart: always
-    networks:
-      backstage_network:
-        ipv4_address: 10.0.0.11
-    ports:
-      - "8083:5510"
+  # microservices.posts:
+  #   container_name: microservices.posts
+  #   build: posts
+  #   restart: always
+  #   networks:
+  #     backstage_network:
+  #       ipv4_address: 10.0.0.11
+  #   ports:
+  #     - "8083:5510"
+  #   depends_on:
+  #     - microservices.auth
 
   microservices.users:
     container_name: microservices.users
@@ -56,6 +64,9 @@ services:
         ipv4_address: 10.0.0.10
     ports:
       - "8080:5510"
+    depends_on:
+      - microservices.auth
+
   kong:
     image: kong/kong-gateway:3.8.0.0
     networks:
@@ -85,7 +96,9 @@ services:
       - 6379:6379
     volumes:
       - ./data/redis:/data
-    command: ["redis-server", "--save",  "60", "1", "--loglevel", "warning"]
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.18
 
 
   surrealdb:
