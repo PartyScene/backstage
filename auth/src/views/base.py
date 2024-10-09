@@ -10,15 +10,14 @@ from src.connectors import AuthDB
 from src.schema import FormIn, LoginForm
 from ..classful import route, QuartClassful
 
-from quart_jwt_extended import (
-    create_access_token
-)
+from quart_jwt_extended import create_access_token
+
 
 class BaseView(QuartClassful):
-    
+
     def __init__(self):
-        self.db : AuthDB = app.db
-    
+        self.db: AuthDB = app.db
+
     route_base = "/auth/"
 
     @route("/register", methods=["POST"])

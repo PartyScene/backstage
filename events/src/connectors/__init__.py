@@ -8,19 +8,19 @@ class EventsDB:
     def __init__(self, db) -> None:
         self.db: Surreal = db
         self.events = self.Events(db)
-        
+
     class Events:
         def __init__(self, db) -> None:
             self.db: Surreal = db
-        
+
         async def fetch_all(self) -> list:
-            """Fetch all Events
-            """
-            result = await self.db.query("SELECT *, <-attends<-users AS attendees FROM events;")
-            return result[0]['result']
-            
-        async def create(self):
-            ...
+            """Fetch all Events"""
+            result = await self.db.query(
+                "SELECT *, <-attends<-users AS attendees FROM events;"
+            )
+            return result[0]["result"]
+
+        async def create(self): ...
 
     # async def _login(self, password):
     #     result = await self.db.query(
@@ -38,7 +38,7 @@ class EventsDB:
     #             "pwd": form.password,
     #         },
     #     )
-        
+
 
 async def init_db(app: Quart) -> EventsDB:
     db = Surreal(app.config["SURREAL_URI"])

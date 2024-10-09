@@ -8,22 +8,32 @@ from ..classful import route, QuartClassful
 
 
 class BaseView(QuartClassful):
-    
-    def __init__(self):
-        self.db : UsersDB = app.db
 
-    @route("/users/", methods=["GET", "POST"])
+    def __init__(self):
+        self.db: UsersDB = app.db
+
+    @route("/users/", methods=["GET", "POST", "DELETE"])
     @jwt_required
     async def index(self):
         """Fetch a USER profile"""
         ...
         data = await request.get_json()
-        response = await self.db.users.fetch(data['email'])
+        match request.method:
+            case "POST":
+                response = await self.db.users.fetch(data["email"])
+            case "DELETE":
+                response = await self.db.users.delete(data["email"])
+
         return response, 200
-        
+
     @route("/me", methods=["GET", "POST", "PUT", "PATCH"])
     @jwt_required
     async def me(self):
-        """Fetch the current authenticated user"""
-        response = await self.db.users.fetch(get_jwt_identity())
+        """Endpoint for the currently authenticated user"""
+        match request.method:
+            case "PATCH":
+                data = await request.get_json()
+                response = await self.db.users.update(data)
+            case "POST":
+                response = await self.db.users.fetch(get_jwt_identity())
         return response, 200

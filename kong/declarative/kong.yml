@@ -69,6 +69,19 @@ services:
       - POST
 
 - host: microservices.users
+  name: delete-user-service
+  port: 5510
+  protocol: http
+  path: /users
+  routes:
+  - name: delete-user-information
+    paths:
+    - /users/
+    strip_path: true
+    methods:
+      - DELETE
+
+- host: microservices.users
   name: fetch-logged-user-service
   port: 5510
   protocol: http
@@ -80,3 +93,16 @@ services:
     strip_path: true
     methods:
       - POST
+
+- host: microservices.users
+  name: edit-logged-user-service
+  port: 5510
+  protocol: http
+  path: /me
+  routes:
+  - name: edit-logged-user
+    paths:
+    - /users/me
+    strip_path: true
+    methods:
+      - PATCH

@@ -10,9 +10,7 @@ from .connectors import init_db
 from .views.base import BaseView
 
 from quart_redis import RedisHandler
-from quart_jwt_extended import (
-    JWTManager
-)
+from quart_jwt_extended import JWTManager
 
 
 class UsersMicroService(Quart):
@@ -39,21 +37,20 @@ class UsersMicroService(Quart):
 
         logging.info("Registering Application Routes.")
         BaseView.register(self)
-        
+
         logging.info("Printing Application Routes...")
         logging.info(self.url_map)
-        
+
         logging.info("Retrieving Secret...")
         await self.get_shared_secret()
-        
+
     async def get_shared_secret(self):
         """"""
         conn = self.redis_handler.get_connection()
-        self.config['SECRET_KEY'] = await conn.get("SECRET_KEY")
-        
+        self.config["SECRET_KEY"] = await conn.get("SECRET_KEY")
+
         # Then Initialize JWT
         self.jwt = JWTManager(self)
-
 
     def run(self):
         """Custom Run Method."""
