@@ -13,10 +13,10 @@ from quart_redis import RedisHandler
 from quart_jwt_extended import JWTManager
 
 
-class MediaMicroService(Quart):
+class UsersMicroService(Quart):
 
     def __init__(self, *args):
-        super(MediaMicroService, self).__init__(*args)
+        super(UsersMicroService, self).__init__(*args)
         QuartSchema(self)
 
         logging.basicConfig(
