@@ -13,10 +13,10 @@ from quart_redis import RedisHandler
 from quart_jwt_extended import JWTManager
 
 
-class UsersMicroService(Quart):
+class MediaMicroService(Quart):
 
     def __init__(self, *args):
-        super(UsersMicroService, self).__init__(*args)
+        super(MediaMicroService, self).__init__(*args)
         QuartSchema(self)
 
         logging.basicConfig(
@@ -54,6 +54,6 @@ class UsersMicroService(Quart):
 
     def run(self):
         """Custom Run Method."""
-        super(UsersMicroService, self).run(
+        super(MediaMicroService, self).run(
             host="0.0.0.0", port=5510, loop=uvloop.new_event_loop()
         )

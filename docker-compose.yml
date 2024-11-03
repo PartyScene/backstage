@@ -7,6 +7,18 @@ networks:
 
 services:
 
+  microservices.media:
+    container_name: microservices.media
+    build: media
+    restart: always
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.15
+    ports:
+      - "8085:5510"
+    depends_on:
+      - microservices.auth
+
   microservices.auth:
     container_name: microservices.auth
     build: auth

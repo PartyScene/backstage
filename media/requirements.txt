@@ -6,3 +6,4 @@ surrealdb
 quart-schema
 quart-redis
 quart-jwt-extended
+google-cloud-storage

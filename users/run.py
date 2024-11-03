@@ -1,3 +1,3 @@
-from src import MediaMicroService
+from src import UsersMicroService
 
-MediaMicroService(__name__).run()
+UsersMicroService(__name__).run()
