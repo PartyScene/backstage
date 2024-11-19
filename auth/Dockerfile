@@ -1,5 +1,5 @@
 # Use a Python image with relevant dependencies
-FROM python:3.12-slim-bookworm
+FROM python:alpine3.19
 
 WORKDIR /app
 

@@ -5,7 +5,7 @@ from quart_schema import QuartSchema
 import uvloop
 import logging
 
-from quart import Quart
+from quart import Quart, app, request
 from .connectors import init_db
 from .views.base import BaseView
 
@@ -20,15 +20,30 @@ class MediaMicroService(Quart):
         QuartSchema(self)
 
         logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-        )
+            level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
         self.db = None  # Asyncpg pool
         self.logging = logging
         self.config.from_pyfile("src/settings.py")
         self.redis_handler = RedisHandler(self)
+        
+        # These functions are preprocessing methods.
 
         self.before_serving(self.services)
+    
+        @self.before_request
+        async def log_request():
+            self.logging.info(f"Request received: {request.method} {request.path}")
+            self.logging.debug(f"Request headers: {request.headers}")
+            self.logging.debug(f"Request body: {await request.get_json()}")
+            self.logging.debug(f"Request files: {await request.files}")
+            self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
+
+
+        @self.after_request
+        async def log_response(response):
+            self.logging.info(f"Response sent: {response.status_code}")
+            return response
 
     async def services(self):
         """Initialize db before app is being served."""

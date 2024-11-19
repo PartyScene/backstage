@@ -6,7 +6,6 @@ networks:
         - subnet: 10.0.0.0/24
 
 services:
-
   microservices.media:
     container_name: microservices.media
     build: media
@@ -14,10 +13,17 @@ services:
     networks:
       backstage_network:
         ipv4_address: 10.0.0.15
-    ports:
-      - "8085:5510"
+    # ports:
+    #   - "8085:5510" # exposed for only debugging
     depends_on:
       - microservices.auth
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+      GOOGLE_CLOUD_PROJECT: partyscene-441317
+    volumes:
+      - C:/Users/User/AppData/Roaming/gcloud:/root/.config/gcloud:ro
+        # Change this if not windows 
+
 
   microservices.auth:
     container_name: microservices.auth
@@ -26,8 +32,8 @@ services:
       backstage_network:
         ipv4_address: 10.0.0.14
     restart: always
-    ports:
-      - "8084:5510"
+    # ports:
+    #   - "8084:5510"  # exposed for only debugging
     depends_on:
       - redis
 
@@ -50,8 +56,8 @@ services:
     networks:
       backstage_network:
         ipv4_address: 10.0.0.12
-    ports:
-      - "8082:5510"
+    # ports:
+    #   - "8082:5510"  # exposed for only debugging
     depends_on:
       - microservices.auth
 
@@ -74,8 +80,8 @@ services:
     networks:
       backstage_network:
         ipv4_address: 10.0.0.10
-    ports:
-      - "8080:5510"
+    # ports:
+    #   - "8080:5510"  # exposed for only debugging
     depends_on:
       - microservices.auth
 
@@ -101,23 +107,22 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_DECLARATIVE_CONFIG: ./kong/declarative/kong.yml
       KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
-      
+
   redis:
     image: redis
-    ports:
-      - 6379:6379
+    # ports:
+    #   - 6379:6379  # exposed for only debugging
     volumes:
       - ./data/redis:/data
     networks:
       backstage_network:
         ipv4_address: 10.0.0.18
 
-
   surrealdb:
     env_file:
       - .env
-    entrypoint: 
-      - /surreal 
+    entrypoint:
+      - /surreal
       - start
       - --user
       - $DB_USER

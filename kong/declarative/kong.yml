@@ -14,7 +14,7 @@ services:
     - /auth/register
     strip_path: true
     methods:
-      - POST
+    - POST
 
 - host: microservices.auth
   name: login-user-service
@@ -27,7 +27,7 @@ services:
     - /auth/login
     strip_path: true
     methods:
-      - POST
+    - POST
 
 - host: microservices.events
   name: fetch-event-service
@@ -40,7 +40,7 @@ services:
     - /events/all
     strip_path: true
     methods:
-      - GET
+    - GET
 
 - host: microservices.events
   name: create-event-service
@@ -53,7 +53,7 @@ services:
     - /events/create
     strip_path: true
     methods:
-      - POST
+    - POST
 
 - host: microservices.users
   name: fetch-user-service
@@ -66,7 +66,7 @@ services:
     - /users/
     strip_path: true
     methods:
-      - POST
+    - POST
 
 - host: microservices.users
   name: delete-user-service
@@ -79,7 +79,7 @@ services:
     - /users/
     strip_path: true
     methods:
-      - DELETE
+    - DELETE
 
 - host: microservices.users
   name: fetch-logged-user-service
@@ -92,7 +92,7 @@ services:
     - /users/me
     strip_path: true
     methods:
-      - POST
+    - POST
 
 - host: microservices.users
   name: edit-logged-user-service
@@ -105,4 +105,17 @@ services:
     - /users/me
     strip_path: true
     methods:
-      - PATCH
+    - PATCH
+
+- host: microservices.users
+  name: profile-upload-service
+  port: 5510
+  protocol: http
+  path: /users/upload
+  routes:
+  - name: upload-media
+    paths:
+    - /users/upload
+    strip_path: true
+    methods:
+    - POST

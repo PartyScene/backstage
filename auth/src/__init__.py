@@ -5,7 +5,7 @@ from quart_schema import QuartSchema
 import uvloop
 import logging
 
-from quart import Quart
+from quart import Quart, request
 from .connectors import init_db
 from .views.base import BaseView
 
@@ -20,7 +20,7 @@ class AuthMicroService(Quart):
         QuartSchema(self)
 
         logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+            level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s"
         )
 
         self.db = None  # Asyncpg pool
@@ -30,6 +30,17 @@ class AuthMicroService(Quart):
         self.jwt = JWTManager(self)
 
         self.before_serving(self.services)
+        
+        @self.before_request
+        async def log_request():
+            self.logging.info(f"Request received: {request.method} {request.path}")
+            self.logging.debug(f"Request headers: {request.headers}")
+            self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
+
+        @self.after_request
+        async def log_response(response):
+            self.logging.info(f"Response sent: {response.status_code}")
+            return response
 
     async def services(self):
         """Initialize db before app is being served."""
@@ -41,6 +52,7 @@ class AuthMicroService(Quart):
 
         logging.info("Printing Application Routes...")
         logging.info(self.url_map)
+        
 
         logging.info("Pushing Secret...")
         await self.set_shared_secret()
@@ -49,6 +61,7 @@ class AuthMicroService(Quart):
         """"""
         conn = self.redis_handler.get_connection()
         self.config["SECRET_KEY"] = secrets.token_hex(32)
+        self.config["JWT_SECRET_KEY"] = self.config["SECRET_KEY"]
         await conn.set("SECRET_KEY", self.config["SECRET_KEY"])
 
     def run(self):

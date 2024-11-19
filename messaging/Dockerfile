@@ -1,5 +1,5 @@
 # Use a Python image with relevant dependencies
-FROM python:latest
+FROM python:alpine3.19
 
 WORKDIR /app
 

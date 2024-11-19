@@ -1,3 +1,4 @@
+import httpx
 from quart import current_app as app, request, jsonify
 from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
@@ -10,6 +11,7 @@ from ..classful import route, QuartClassful
 class BaseView(QuartClassful):
 
     def __init__(self):
+        self.MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
         self.db: UsersDB = app.db
 
     @route("/users/", methods=["GET", "POST", "DELETE"])
@@ -24,6 +26,43 @@ class BaseView(QuartClassful):
             case "DELETE":
                 response = await self.db.users.delete(data["email"])
 
+        return response, 200
+    
+    @route("/users/upload", methods=["POST"])
+    @jwt_required
+    async def upload_media(self):
+        """This endpoint is the primary upload endpoint - TODO: handle multiple media types
+
+        Returns:
+            _type_: _description_
+        """
+        data = {
+            'email' : get_jwt_identity()
+        }
+        
+        # check if there is an upload.
+        file = (await request.files).get('file')
+        if file:
+                # Relay file to the Media Microservice
+            async with httpx.AsyncClient() as client:
+                try:
+                    media_response = await client.post(
+                        self.MEDIA_MICROSERVICE_URL,
+                        files={"file": (file.filename, file.stream, file.content_type)},
+                        headers = request.headers
+                    )
+                    media_response.raise_for_status()
+                except httpx.HTTPError as e:
+                    return jsonify({"error": f"Media upload failed: {str(e)}"}), 500
+
+            # Extract media URL from the Media Microservice response
+            media_data = media_response.json()
+            media_link = media_data.get('url')
+            if not media_link:
+                return jsonify({"error": "Invalid response from Media Microservice"}), 500
+            
+            data['avatar_url'] = media_link # Set the media link to the database field we have currently
+        response = await self.db.users.update(data)
         return response, 200
 
     @route("/me", methods=["GET", "POST", "PUT", "PATCH"])
