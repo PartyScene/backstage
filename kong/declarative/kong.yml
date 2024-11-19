@@ -43,6 +43,32 @@ services:
     - GET
 
 - host: microservices.events
+  name: fetch-event-by-location
+  port: 5510
+  protocol: http
+  path: /events/location
+  routes:
+  - name: fetch-events-location
+    paths:
+    - /events/location
+    strip_path: true
+    methods:
+    - GET
+
+- host: microservices.events
+  name: fetch-nearby-event-service
+  port: 5510
+  protocol: http
+  path: /events/nearby
+  routes:
+  - name: fetch-nearby-events
+    paths:
+    - /events/nearby
+    strip_path: true
+    methods:
+    - GET
+
+- host: microservices.events
   name: create-event-service
   port: 5510
   protocol: http

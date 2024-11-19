@@ -12,32 +12,38 @@ class EventsDB:
     class Events:
         def __init__(self, db) -> None:
             self.db: Surreal = db
+            
+        async def fetch_by_distance(self, location, distance: int, *, live : bool = False) -> list:
+            """Fetch all events within a certain distance
 
+            Args:
+                distance (int, required): The distance in meters
+                location (Point)
+                live (bool, optional): If set to True, only live events selected. Defaults to False.
+            """
+            result = await self.db.query(
+                "SELECT *, <-attends<-users AS attendees FROM events "
+                "WHERE is_live = $live " 
+                "AND geo::distance(location, type::point($location)) <= $distance;",
+                {
+                    "live": live,
+                    "distance": distance,
+                    "location": location
+                }
+            )
+            return result[0]["result"]
+
+        
         async def fetch_all(self) -> list:
-            """Fetch all Events"""
+            """Fetches all parties / events / scenes.
+
+            Returns:
+                list: array containing parties.
+            """
             result = await self.db.query(
                 "SELECT *, <-attends<-users AS attendees FROM events;"
             )
             return result[0]["result"]
-
-        async def create(self): ...
-
-    # async def _login(self, password):
-    #     result = await self.db.query(
-    #         "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password);",
-    #         {"password": password},
-    #     )
-
-    # async def _create(self, form: FormIn):
-    #     result = await self.db.query(
-    #         "INSERT INTO users (first_name, last_name, email, password) VALUES ($fname, $lname, $email, crypto::bcrypt::generate($pwd))",
-    #         {
-    #             "fname": form.first_name,
-    #             "lname": form.last_name,
-    #             "email": form.email,
-    #             "pwd": form.password,
-    #         },
-    #     )
 
 
 async def init_db(app: Quart) -> EventsDB:

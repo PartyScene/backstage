@@ -5,7 +5,7 @@ from quart_schema import QuartSchema
 import uvloop
 import logging
 
-from quart import Quart
+from quart import Quart, request
 from quart_jwt_extended import JWTManager
 
 from .connectors import EventsDB, init_db
@@ -19,7 +19,7 @@ class EventsMicroService(Quart):
         QuartSchema(self)
 
         logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+            level=logging.DEBUG , format="%(asctime)s %(levelname)s %(message)s"
         )
 
         self.db: EventsDB = None  # Asyncpg pool
@@ -29,7 +29,14 @@ class EventsMicroService(Quart):
         self.redis_handler = RedisHandler(self)
 
         self.before_serving(self.services)
-
+        
+    
+        @self.before_request
+        async def log_request():
+            self.logging.info(f"Request received: {request.method} {request.path}")
+            self.logging.debug(f"Request headers: {request.headers}")
+            self.logging.debug(f"Request body: {await request.get_json()}")
+            
     async def services(self):
         """Initialize db before app is being served."""
         logging.info("Initializing SurrealDB Database Connection...")
