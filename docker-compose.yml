@@ -122,13 +122,13 @@ services:
     env_file:
       - .env
     entrypoint:
-      - sh
-      - -c
-      - |
-        /surreal start --user $DB_USER --pass $DB_PASSWORD rocksdb:./database.db &
-        sleep 5
-        /surreal import --namespace partyscene --database partyscene /init/schema.surql
-      
+      - /surreal
+      - start
+      - --user
+      - $DB_USER
+      - --pass
+      - $DB_PASSWORD
+      - surrealkv:./database.db
 
     image: surrealdb/surrealdb:v2.0-dev
     ports:
@@ -138,4 +138,3 @@ services:
         ipv4_address: 10.0.0.20
     volumes:
       - ./data/database.db:/database.db
-      - ./init/schema.surql:/init/schema.surql
