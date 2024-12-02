@@ -7,10 +7,10 @@ from quart import Quart
 from .views.base import BaseView
 
 
-class MsgMicroService(Quart):
+class LiveStreamMicroService(Quart):
 
     def __init__(self, *args):
-        super(MsgMicroService, self).__init__(*args)
+        super(LiveStreamMicroService, self).__init__(*args)
         logging.basicConfig(
             level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
         )
@@ -30,6 +30,6 @@ class MsgMicroService(Quart):
 
     def run(self):
         """Custom Run Method."""
-        super(MsgMicroService, self).run(
+        super(LiveStreamMicroService, self).run(
             host="0.0.0.0", port=5510, loop=uvloop.new_event_loop()
         )

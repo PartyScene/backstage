@@ -1,7 +1,11 @@
 from surrealdb import Surreal
 
 from src.schema import FormIn, LoginForm
+import os
 
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+SCHEMA_FILE = os.getenv("SCHEMA_FILE")
 
 class AuthDB:
     def __init__(self, db) -> None:
@@ -41,9 +45,17 @@ async def init_db(app) -> AuthDB:
     await db.connect()
     await db.signin(
         {
-            "user": "root",
-            "pass": "rootrm",
+            "user": DB_USER,
+            "pass": DB_PASSWORD,
         }
     )
     await db.use("partyscene", "partyscene")
+    
+        # Load and execute schema file
+    with open(SCHEMA_FILE, "r") as file:
+        schema = file.read()
+        commands = [cmd.strip() for cmd in schema.split(";") if cmd.strip()]
+        for cmd in commands:
+            await db.query(cmd)
+            
     return AuthDB(db)

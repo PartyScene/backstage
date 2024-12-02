@@ -32,6 +32,7 @@ class EventsDB:
                 }
             )
             return result[0]["result"]
+        
 
         
         async def fetch_all(self) -> list:

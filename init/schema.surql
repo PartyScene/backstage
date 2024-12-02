@@ -1,14 +1,13 @@
-DEFINE table users schemafull;
-DEFINE FIELD first_name on table users type string;
-DEFINE FIELD last_name on table users type string;
-DEFINE FIELD email on table users type string;
-DEFINE FIELD password on table users type string;
+DEFINE TABLE IF NOT EXISTS users schemafull;
+DEFINE FIELD OVERWRITE first_name on TABLE users TYPE string;
+DEFINE FIELD OVERWRITE last_name on TABLE users TYPE string;
+DEFINE FIELD OVERWRITE email on TABLE users TYPE string value string::lowercase($value) ASSERT string::is::email($value);
+DEFINE INDEX emailIndex ON TABLE user COLUMNS email UNIQUE;
+DEFINE FIELD OVERWRITE password on TABLE users TYPE string;
 
-Define table events schemafull;
-define field name on table events type string;
-define field price on table events type decimal;
-define field is_live on table events type option<bool> default false;
-define field organizer on table events type record;
-define field location on table events type geometry;
-
-Rekate users->attends->events;
+DEFINE TABLE IF NOT EXISTS events schemafull;
+DEFINE FIELD OVERWRITE name on TABLE events TYPE string;
+DEFINE FIELD OVERWRITE price on TABLE events TYPE decimal;
+DEFINE FIELD OVERWRITE is_live on TABLE events TYPE option<bool> default false;
+DEFINE FIELD OVERWRITE organizer on TABLE events TYPE record;
+DEFINE FIELD OVERWRITE location on TABLE events TYPE geometry;

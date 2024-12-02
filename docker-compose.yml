@@ -13,13 +13,12 @@ services:
     networks:
       backstage_network:
         ipv4_address: 10.0.0.15
-    # ports:
-    #   - "8085:5510" # exposed for only debugging
     depends_on:
       - microservices.auth
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
       GOOGLE_CLOUD_PROJECT: partyscene-441317
+      LOCATION: us-central1
     volumes:
       - C:/Users/User/AppData/Roaming/gcloud:/root/.config/gcloud:ro
         # Change this if not windows 
@@ -32,20 +31,25 @@ services:
       backstage_network:
         ipv4_address: 10.0.0.14
     restart: always
-    # ports:
-    #   - "8084:5510"  # exposed for only debugging
     depends_on:
       - redis
+    env_file:
+      - .env
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    environment:
+      - SCHEMA_FILE=/home/schema.surql
 
-  # microservices.messaging:
-  #   container_name: microservices.messaging
-  #   build: messaging
+  # microservices.livestream:
+  #   container_name: microservices.livestream
+  #   build: livestream
   #   restart: always
   #   networks:
   #     backstage_network:
   #       ipv4_address: 10.0.0.13
-  #   ports:
-  #     - "8081:5510"
+  #   environment:
+  #     GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+  #     GOOGLE_CLOUD_PROJECT: partyscene-441317
   #   depends_on:
   #     - microservices.auth
 
@@ -80,8 +84,6 @@ services:
     networks:
       backstage_network:
         ipv4_address: 10.0.0.10
-    # ports:
-    #   - "8080:5510"  # exposed for only debugging
     depends_on:
       - microservices.auth
 
