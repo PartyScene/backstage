@@ -11,3 +11,10 @@ DEFINE FIELD OVERWRITE price on TABLE events TYPE decimal;
 DEFINE FIELD OVERWRITE is_live on TABLE events TYPE option<bool> default false;
 DEFINE FIELD OVERWRITE organizer on TABLE events TYPE record;
 DEFINE FIELD OVERWRITE location on TABLE events TYPE geometry;
+
+DEFINE TABLE IF NOT EXISTS livestreams schemafull;
+DEFINE FIELD OVERWRITE channel_id on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE input_id on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE ingest_url on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE playback_url on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE event on TABLE livestreams TYPE record;

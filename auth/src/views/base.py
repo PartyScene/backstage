@@ -17,9 +17,7 @@ class BaseView(QuartClassful):
 
     def __init__(self):
         self.db: AuthDB = app.db
-
-    route_base = "/auth/"
-
+        
     @route("/register", methods=["POST"])
     @validate_request(FormIn)
     async def _register(self, data: FormIn):

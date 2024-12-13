@@ -1,6 +1,6 @@
 from quart import current_app as app, request, jsonify
 from quart.datastructures import FileStorage
-from quart_jwt_extended import get_jwt_identity, jwt_required
+from quart_jwt_extended import jwt_required
 from google.cloud import storage
 import werkzeug.datastructures
 

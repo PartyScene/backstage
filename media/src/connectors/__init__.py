@@ -2,12 +2,12 @@ from quart import Quart
 from surrealdb import Surreal
 
 
-class UsersDB:
+class MediaDB:
     def __init__(self, db) -> None:
         self.db: Surreal = db
-        self.users = self.Users(db)
+        # self.media = self.Media(db)
 
-    class Users:
+    class Media:
         def __init__(self, db) -> None:
             self.db: Surreal = db
 
@@ -51,7 +51,7 @@ class UsersDB:
             return result
 
 
-async def init_db(app: Quart) -> UsersDB:
+async def init_db(app: Quart) -> MediaDB:
     db = Surreal(app.config["SURREAL_URI"])
     await db.connect()
     await db.signin(
@@ -61,4 +61,4 @@ async def init_db(app: Quart) -> UsersDB:
         }
     )
     await db.use("partyscene", "partyscene")
-    return UsersDB(db)
+    return MediaDB(db)

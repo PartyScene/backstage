@@ -10,7 +10,7 @@ from ..connectors import EventsDB
 from ..schema import Events
 from ..classful import route, QuartClassful
 
-from quart_jwt_extended import get_jwt_identity, jwt_required
+from quart_jwt_extended import jwt_required
 
 
 class BaseView(QuartClassful):
