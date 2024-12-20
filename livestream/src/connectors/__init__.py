@@ -17,7 +17,7 @@ class LiveStreamDB:
         )
         return result[0]["result"][0]
     
-    async def store_livestream(self, ingest_url, playback_url, event_id: str):
+    async def store_livestream(self, channel_id, ingest_url, playback_url, event_id: str):
         """
         Store the ingest url / playback url / from GCP and attach it to the event.
 

@@ -145,3 +145,29 @@ services:
     strip_path: true
     methods:
     - POST
+
+- host: microservices.posts
+  name: create-post-service
+  port: 5510
+  protocol: http
+  path: /
+  routes:
+  - name: create-new-post
+    paths:
+    - /posts/
+    strip_path: true
+    methods:
+    - POST
+
+- host: microservices.posts
+  name: fetch-post-service
+  port: 5510
+  protocol: http
+  path: /
+  routes:
+  - name: fetch-post
+    paths:
+    - /posts/
+    strip_path: true
+    methods:
+    - GET

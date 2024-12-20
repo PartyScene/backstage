@@ -1,3 +1,3 @@
-from src import PostsMicroService
+from src import PostsMicroservice
 
-PostsMicroService(__name__).run()
+PostsMicroservice(__name__).run()

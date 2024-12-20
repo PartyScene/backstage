@@ -39,9 +39,9 @@ class LiveStream:
         input_response = await self._create_input()
         
         self.logger.debug("CREATING CHANNEL FOR LIVESTREAM FOR EVENT %s" % event)
-        channel_response = self._create_channel(input_response.name)
+        channel_response = await self._create_channel(input_response.name)
         
-        await self.db.store_livestream(input_response.uri, channel_response.output.uri, event)
+        await self.db.store_livestream(channel_response.name, input_response.uri, channel_response.output.uri, event)
         await self._start_channel(channel_response.name)
         self.logger.debug("DONE LIVESTREAM FOR EVENT %s" % event)
         return True
@@ -52,7 +52,7 @@ class LiveStream:
         Args:
             event (str): the event ID to fetch stream
         """
-        self.logger.debug("FETCHING STREAM FOR LIVESTREAM FOR EVENT %s" % event)
+        self.logger.debug("FETCHING STREAM DETAILS (CHANNEL, PLAYBACK_URL, INGEST_URL) FOR LIVESTREAM FOR EVENT %s" % event)
         result = await self.db.fetch_livestream(event)
         return result
     
@@ -154,7 +154,7 @@ class LiveStream:
                     mux_streams = ["%s_mux_video" % channel_id, "%s_mux_audio" % channel_id],
                     
                 )
-            ]
+            ],
             output=Channel.Output(uri=self.OUTPUT_URI),
             streaming_state=Channel.StreamingState.AWAITING_INPUT
         )
