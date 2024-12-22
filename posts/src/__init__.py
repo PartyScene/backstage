@@ -1,7 +1,6 @@
 from pprint import pprint
 import secrets
 
-from quart_schema import QuartSchema
 import uvloop
 import logging
 
@@ -17,14 +16,13 @@ class PostsMicroservice(Quart):
 
     def __init__(self, *args):
         super(PostsMicroservice, self).__init__(*args)
-        QuartSchema(self)
-
+        
         logging.basicConfig(
             level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
         self.db = None  # Asyncpg pool
         self.logging = logging
-        self.config.from_pyfile("src/settings.py")
+        self.config.from_pyfile("/app/shared/settings.py")
         self.redis_handler = RedisHandler(self)
         
         # These functions are preprocessing methods.

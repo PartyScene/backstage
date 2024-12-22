@@ -1,7 +1,5 @@
-import datetime, aioipfs
 
 import httpx
-import random
 
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
@@ -9,12 +7,11 @@ from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from ..connectors import PostsDB
-from ..classful import route, QuartClassful
-from src import PostsMicroservice
+from classful import route, QuartClassful
 
 
 class BaseView(QuartClassful):
-    app : PostsMicroservice = app
+    app = app
     route_base = "/posts/"
     MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
 

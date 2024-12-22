@@ -1,11 +1,10 @@
-from logging import Logger
 from quart import Quart
-from surrealdb import Surreal
-
+from surrealdb import AsyncSurrealDB
+import os
 
 class LiveStreamDB:
     def __init__(self, db) -> None:
-        self.db: Surreal = db
+        self.db: AsyncSurrealDB = db
     
     async def fetch_livestream(self, event_id: str):
         """
@@ -29,7 +28,7 @@ class LiveStreamDB:
             INSERT INTO livestreams 
                 (channel_id, input_id, ingest_url, playback_url, event) VALUES ($channel_id, $input_id, $ingest_url, $playback_url, $event)
             """,
-            {"channel_id": , "ingest_url": ingest_url, "playback_url": playback_url, "event": event_id},
+            {"channel_id": channel_id, "ingest_url": ingest_url, "playback_url": playback_url, "event": event_id},
         )
         return result[0]["result"][0]
 
@@ -64,13 +63,10 @@ class LiveStreamDB:
 
 
 async def init_db(app: Quart) -> LiveStreamDB:
-    db = Surreal(app.config["SURREAL_URI"])
+    db = AsyncSurrealDB(app.config["SURREAL_URI"])
     await db.connect()
-    await db.signin(
-        {
-            "user": "root",
-            "pass": "rootrm",
-        }
-    )
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
     await db.use("partyscene", "partyscene")
     return LiveStreamDB(db)

@@ -24,7 +24,7 @@ class EventsMicroService(Quart):
 
         self.db: EventsDB = None  # Asyncpg pool
         self.logging = logging
-        self.config.from_pyfile("src/settings.py")
+        self.config.from_pyfile("/app/shared/settings.py")
 
         self.redis_handler = RedisHandler(self)
 

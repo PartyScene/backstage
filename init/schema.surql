@@ -20,7 +20,7 @@ DEFINE FIELD OVERWRITE playback_url on TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE event on TABLE livestreams TYPE record<events>;
 
 DEFINE TABLE IF NOT EXISTS posts schemafull;
-DEFINE TABLE OVERWRITE author on TABLE posts TYPE record<users>;
+DEFINE FIELD OVERWRITE author on TABLE posts TYPE record<users>;
 DEFINE FIELD OVERWRITE content on TABLE posts TYPE string;
 DEFINE FIELD OVERWRITE created_at on TABLE posts TYPE datetime DEFAULT time::now();
 DEFINE FIELD metadata ON TABLE user FLEXIBLE TYPE object;

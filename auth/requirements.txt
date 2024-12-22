@@ -1,8 +1,0 @@
-quart
-ujson
-uvloop
-asyncpg
-surrealdb
-quart-schema
-quart-redis
-quart-jwt-extended

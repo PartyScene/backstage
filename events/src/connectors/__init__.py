@@ -1,17 +1,16 @@
 from quart import Quart
-from surrealdb import Surreal
-
-# from src.schema import FormIn
+from surrealdb import AsyncSurrealDB
+import os
 
 
 class EventsDB:
     def __init__(self, db) -> None:
-        self.db: Surreal = db
+        self.db: AsyncSurrealDB = db
         self.events = self.Events(db)
 
     class Events:
         def __init__(self, db) -> None:
-            self.db: Surreal = db
+            self.db: AsyncSurrealDB = db
             
         async def fetch_by_distance(self, location, distance: int, *, live : bool = False) -> list:
             """Fetch all events within a certain distance
@@ -48,13 +47,11 @@ class EventsDB:
 
 
 async def init_db(app: Quart) -> EventsDB:
-    db = Surreal(app.config["SURREAL_URI"])
+    db = AsyncSurrealDB(app.config["SURREAL_URI"])
     await db.connect()
-    await db.signin(
-        {
-            "user": "root",
-            "pass": "rootrm",
-        }
-    )
+    
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
     await db.use("partyscene", "partyscene")
     return EventsDB(db)

@@ -1,31 +1,25 @@
-from surrealdb import Surreal
-
-from src.schema import FormIn, LoginForm
+from surrealdb import AsyncSurrealDB
 import os
-
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-SCHEMA_FILE = os.getenv("SCHEMA_FILE")
 
 class AuthDB:
     def __init__(self, db) -> None:
-        self.db: Surreal = db
+        self.db: AsyncSurrealDB = db
 
-    async def _login(self, data: LoginForm):
+    async def _login(self, data):
         result = await self.db.query(
             "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password);",
-            {"password": data.password},
+            {"password": data['password']},
         )
         return result[0]["result"][0]["email"] == data.email
 
-    async def _create(self, form: FormIn):
+    async def _create(self, form):
         result = await self.db.query(
             "INSERT INTO users (first_name, last_name, email, password) VALUES ($fname, $lname, $email, crypto::bcrypt::generate($pwd))",
             {
-                "fname": form.first_name,
-                "lname": form.last_name,
-                "email": form.email,
-                "pwd": form.password,
+                "fname": form['first_name'],
+                "lname": form['last_name'],
+                "email": form['email'],
+                "pwd": form['password'],
             },
         )
         # Assign the variable on the connection
@@ -41,14 +35,14 @@ class AuthDB:
 
 
 async def init_db(app) -> AuthDB:
-    db = Surreal(app.config["SURREAL_URI"])
+    SCHEMA_FILE = os.getenv("SCHEMA_FILE")
+
+    db = AsyncSurrealDB(app.config["SURREAL_URI"])
     await db.connect()
-    await db.signin(
-        {
-            "user": DB_USER,
-            "pass": DB_PASSWORD,
-        }
-    )
+    
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
     await db.use("partyscene", "partyscene")
     
         # Load and execute schema file

@@ -4,8 +4,11 @@ FROM python:alpine3.19
 
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install -r requirements.txt
-
+# Copy the service-specific files
 COPY . .
-CMD ["python", "run.py"]
+
+# Set PYTHONPATH to include shared libraries
+ENV PYTHONPATH="/app/shared:${PYTHONPATH}"
+
+# Install dependencies when the container starts
+CMD pip install -r /app/shared/requirements.txt && pip install -r requirements.txt && python run.py

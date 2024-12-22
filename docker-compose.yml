@@ -15,14 +15,16 @@ services:
         ipv4_address: 10.0.0.15
     depends_on:
       - microservices.auth
+    env_file:
+      - .env
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
       GOOGLE_CLOUD_PROJECT: partyscene-441317
       LOCATION: us-central1
     volumes:
-      - C:/Users/User/AppData/Roaming/gcloud:/root/.config/gcloud:ro
-        # Change this if not windows 
-
+      - C:/Users/User/AppData/Roaming/gcloud:/root/.config/gcloud:ro 
+      # Change this if not windows 
+      - ./shared:/app/shared/
 
   microservices.auth:
     container_name: microservices.auth
@@ -37,21 +39,26 @@ services:
       - .env
     volumes:
       - ./init/schema.surql:/home/schema.surql
+      - ./shared:/app/shared/
     environment:
       - SCHEMA_FILE=/home/schema.surql
 
-  # microservices.livestream:
-  #   container_name: microservices.livestream
-  #   build: livestream
-  #   restart: always
-  #   networks:
-  #     backstage_network:
-  #       ipv4_address: 10.0.0.13
-  #   environment:
-  #     GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
-  #     GOOGLE_CLOUD_PROJECT: partyscene-441317
-  #   depends_on:
-  #     - microservices.auth
+  microservices.livestream:
+    container_name: microservices.livestream
+    build: livestream
+    restart: always
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.13
+    env_file:
+      - .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+      GOOGLE_CLOUD_PROJECT: partyscene-441317
+    volumes:
+      - ./shared:/app/shared/
+    depends_on:
+      - microservices.auth
 
   microservices.events:
     container_name: microservices.events
@@ -60,22 +67,26 @@ services:
     networks:
       backstage_network:
         ipv4_address: 10.0.0.12
-    # ports:
-    #   - "8082:5510"  # exposed for only debugging
+    env_file:
+      - .env
+    volumes:
+      - ./shared:/app/shared/
     depends_on:
       - microservices.auth
 
-  # microservices.posts:
-  #   container_name: microservices.posts
-  #   build: posts
-  #   restart: always
-  #   networks:
-  #     backstage_network:
-  #       ipv4_address: 10.0.0.11
-  #   ports:
-  #     - "8083:5510"
-  #   depends_on:
-  #     - microservices.auth
+  microservices.posts:
+    container_name: microservices.posts
+    build: posts
+    restart: always
+    networks:
+      backstage_network:
+        ipv4_address: 10.0.0.11
+    env_file:
+      - .env
+    volumes:
+      - ./shared:/app/shared/
+    depends_on:
+      - microservices.auth
 
   microservices.users:
     container_name: microservices.users
@@ -84,6 +95,10 @@ services:
     networks:
       backstage_network:
         ipv4_address: 10.0.0.10
+    env_file:
+      - .env
+    volumes:
+      - ./shared:/app/shared/
     depends_on:
       - microservices.auth
 

@@ -4,7 +4,7 @@ from quart_jwt_extended import jwt_required
 from google.cloud import storage
 import werkzeug.datastructures
 
-from ..classful import route, QuartClassful
+from classful import route, QuartClassful
 
 import os
 import io

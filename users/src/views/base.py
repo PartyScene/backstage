@@ -5,7 +5,7 @@ from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from ..connectors import UsersDB
 
-from ..classful import route, QuartClassful
+from classful import route, QuartClassful
 
 
 class BaseView(QuartClassful):

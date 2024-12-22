@@ -1,15 +1,16 @@
 from quart import Quart
-from surrealdb import Surreal
+from surrealdb import AsyncSurrealDB
+import os
 
 
 class UsersDB:
     def __init__(self, db) -> None:
-        self.db: Surreal = db
+        self.db: AsyncSurrealDB = db
         self.users = self.Users(db)
 
     class Users:
         def __init__(self, db) -> None:
-            self.db: Surreal = db
+            self.db: AsyncSurrealDB = db
 
         async def fetch(self, email) -> dict:
             """
@@ -52,13 +53,11 @@ class UsersDB:
 
 
 async def init_db(app: Quart) -> UsersDB:
-    db = Surreal(app.config["SURREAL_URI"])
+    db = AsyncSurrealDB(app.config["SURREAL_URI"])
     await db.connect()
-    await db.signin(
-        {
-            "user": "root",
-            "pass": "rootrm",
-        }
-    )
+    
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
     await db.use("partyscene", "partyscene")
     return UsersDB(db)

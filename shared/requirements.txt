@@ -1,0 +1,9 @@
+quart
+ujson
+uvloop
+surrealdb
+quart-schema
+quart-redis
+quart-jwt-extended
+typing-extensions
+httpx

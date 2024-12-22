@@ -8,7 +8,7 @@ from quart_schema import document_querystring, DataSource
 
 from ..connectors import EventsDB
 from ..schema import Events
-from ..classful import route, QuartClassful
+from classful import route, QuartClassful
 
 from quart_jwt_extended import jwt_required
 
