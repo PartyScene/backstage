@@ -10,7 +10,7 @@ class AuthDB:
             "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password);",
             {"password": data['password']},
         )
-        return result[0]["result"][0]["email"] == data.email
+        return result[0]["result"][0]["email"] == data['email']
 
     async def _create(self, form):
         result = await self.db.query(

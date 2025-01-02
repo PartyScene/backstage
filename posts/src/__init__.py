@@ -33,8 +33,8 @@ class PostsMicroservice(Quart):
         async def log_request():
             self.logging.info(f"Request received: {request.method} {request.path}")
             self.logging.debug(f"Request headers: {request.headers}")
-            self.logging.debug(f"Request body: {await request.get_json()}")
-            self.logging.debug(f"Request files: {await request.files}")
+            # self.logging.debug(f"Request body: {await request.get_json()}")
+            # self.logging.debug(f"Request files: {await request.files}")
             self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
 
 

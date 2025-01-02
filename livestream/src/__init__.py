@@ -18,7 +18,7 @@ class LiveStreamMicroservice(Quart):
         super(LiveStreamMicroservice, self).__init__(*args)
 
         logging.basicConfig(
-            level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
         self.db = None  # Asyncpg pool
         self.logging = logging
@@ -32,9 +32,9 @@ class LiveStreamMicroservice(Quart):
         @self.before_request
         async def log_request():
             self.logging.info(f"Request received: {request.method} {request.path}")
-            self.logging.debug(f"Request headers: {request.headers}")
-            self.logging.debug(f"Request body: {await request.get_json()}")
-            self.logging.debug(f"Request files: {await request.files}")
+            # self.logging.debug(f"Request headers: {request.headers}")
+            # self.logging.debug(f"Request body: {await request.get_json()}")
+            # self.logging.debug(f"Request files: {await request.files}")
             self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
 
 

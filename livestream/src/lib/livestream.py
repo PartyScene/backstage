@@ -7,10 +7,10 @@ from logging import Logger
 import os
 import uuid
 from google.cloud.video import live_stream_v1 as ls1 
-from google.cloud.video.live_stream_v1 import LivestreamServiceClient
+from google.cloud.video.live_stream_v1 import LivestreamServiceAsyncClient
 from google.cloud.video.live_stream_v1.types import Manifest, AudioStream, VideoStream, MuxStream, ElementaryStream, Input, InputAttachment, Channel, ChannelOperationResponse
 
-from livestream.src.connectors import LiveStreamDB
+from src.connectors import LiveStreamDB
 
 
 class LiveStream:
@@ -19,8 +19,8 @@ class LiveStream:
         self.PROJECT_ID = os.environ['GOOGLE_CLOUD_PROJECT']
         self.LOCATION = os.environ['LOCATION']
         self.STREAM_TYPE = os.environ['STREAM_TYPE']
-        self.OUTPUT_URI = "gs://partyscene/outputs"
-        self.client = LivestreamServiceClient()
+        self.OUTPUT_URI = os.environ['OUTPUT_URI']
+        self.client = LivestreamServiceAsyncClient()
         self.db : LiveStreamDB = db
         self.logger = logger
         
@@ -35,15 +35,15 @@ class LiveStream:
         Returns:
             bool: `True` if the stream was created successfully ig
         """ 
-        self.logger.debug("CREATING INPUT FOR LIVESTREAM FOR EVENT %s" % event)
+        self.logger.info("CREATING INPUT FOR LIVESTREAM FOR EVENT %s" % event)
         input_response = await self._create_input()
         
-        self.logger.debug("CREATING CHANNEL FOR LIVESTREAM FOR EVENT %s" % event)
+        self.logger.info("CREATING CHANNEL FOR LIVESTREAM FOR EVENT %s" % event)
         channel_response = await self._create_channel(input_response.name)
         
-        await self.db.store_livestream(channel_response.name, input_response.uri, channel_response.output.uri, event)
+        await self.db.store_livestream(channel_response, input_response, event)
         await self._start_channel(channel_response.name)
-        self.logger.debug("DONE LIVESTREAM FOR EVENT %s" % event)
+        self.logger.info("DONE LIVESTREAM FOR EVENT %s" % event)
         return True
         
     async def get_stream(self, event : str):
@@ -52,7 +52,7 @@ class LiveStream:
         Args:
             event (str): the event ID to fetch stream
         """
-        self.logger.debug("FETCHING STREAM DETAILS (CHANNEL, PLAYBACK_URL, INGEST_URL) FOR LIVESTREAM FOR EVENT %s" % event)
+        self.logger.info("FETCHING STREAM DETAILS (CHANNEL, PLAYBACK_URL, INGEST_URL) FOR LIVESTREAM FOR EVENT %s" % event)
         result = await self.db.fetch_livestream(event)
         return result
     
@@ -65,7 +65,7 @@ class LiveStream:
         )
 
         # Make the request
-        response = self.client.get_input(request=request)
+        response = await self.client.get_input(request=request)
 
         # Handle the response
         return response
@@ -76,11 +76,11 @@ class LiveStream:
         )
 
         # Make the request
-        operation = self.client.start_channel(request=request)
+        operation = await self.client.start_channel(request=request)
 
         print("Waiting for operation to complete...")
 
-        response = (await operation).result()
+        response = await operation.result()
 
         # Handle the response
         print(response)
@@ -98,8 +98,8 @@ class LiveStream:
         input_config = Input(type_="RTMP_PUSH")
 
         # Create input via LivestreamServiceClient
-        operation = self.client.create_input(parent=self.get_parent(), input=input_config, input_id=input_id)
-        response = (await operation).result()  # Wait for the operation to complete (900 seconds)
+        operation = await self.client.create_input(parent=self.get_parent(), input=input_config, input_id=input_id)
+        response = await operation.result()  # Wait for the operation to complete (900 seconds)
         return response
     
     async def _create_channel(self, input_name: str) -> Channel:
@@ -150,6 +150,7 @@ class LiveStream:
             ],
             manifests = [
                 Manifest(
+                    file_name = "%s_manifest.m3u8" % channel_id,
                     type = self.STREAM_TYPE,
                     mux_streams = ["%s_mux_video" % channel_id, "%s_mux_audio" % channel_id],
                     
@@ -159,11 +160,11 @@ class LiveStream:
             streaming_state=Channel.StreamingState.AWAITING_INPUT
         )
         # Make the request
-        operation = self.client.create_channel(parent=self.get_parent(), channel=channel, channel_id=channel_id)
+        operation = await self.client.create_channel(parent=self.get_parent(), channel=channel, channel_id=channel_id)
 
         print("Waiting for operation to complete...")
 
-        response = (await operation).result()
+        response = await operation.result()
 
         # Handle the response
-        print(response)
+        return response

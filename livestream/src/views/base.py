@@ -11,8 +11,10 @@ from classful import route, QuartClassful
 
 class BaseView(QuartClassful):
     
-    app = app
-    livestream = LiveStream(app.db, app.logger)
+    @classmethod
+    def register(self, app):
+        self.livestream = LiveStream(app.db, app.logger)
+        super().register(app)
 
     @route("/<event_id>", methods=["GET", "POST"])
     async def index(self, event_id):

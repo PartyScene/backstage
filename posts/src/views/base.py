@@ -21,6 +21,7 @@ class BaseView(QuartClassful):
         ...
     
     @route("/", methods=["POST"])
+    @jwt_required()
     async def create_post(self):
         """
         Asynchronously creates a new post with the provided content, and optionally uploads media files.
@@ -62,7 +63,7 @@ class BaseView(QuartClassful):
                     
                     # Extract media URL from the Media Microservice response
                     media_data = media_response.json()
-                    if not media_links:
+                    if not media_data:
                         return jsonify({"error": "Invalid response from Media Microservice"}), 500
                 media_links.append(media_data.get('url'))
                 

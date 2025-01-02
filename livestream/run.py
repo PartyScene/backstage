@@ -1,3 +1,3 @@
-from src import LiveStreamMicroService
+from src import LiveStreamMicroservice
 
-LiveStreamMicroService(__name__).run()
+LiveStreamMicroservice(__name__).run()

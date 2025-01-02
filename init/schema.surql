@@ -17,6 +17,7 @@ DEFINE FIELD OVERWRITE channel_id on TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE input_id on TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE ingest_url on TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE playback_url on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE manifests ON TABLE user TYPE array<string>;
 DEFINE FIELD OVERWRITE event on TABLE livestreams TYPE record<events>;
 
 DEFINE TABLE IF NOT EXISTS posts schemafull;

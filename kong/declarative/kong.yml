@@ -1,6 +1,18 @@
 _format_version: "3.0"
 _transform: true
 
+# plugins:
+# - name: request-transformer
+#   service: scene-start-service
+#   protocols:
+#   - https
+#   - http
+#   config:
+#     remove:
+#       headers: [ "x-event-id" ]
+#     add:
+#       headers: [ "{{uri_captures[1]}}" ]
+
 services:
 
 - host: microservices.auth
@@ -37,7 +49,7 @@ services:
   routes:
   - name: fetch-all-events
     paths:
-    - /events/all
+    - /events/all/
     strip_path: true
     methods:
     - GET
@@ -146,6 +158,30 @@ services:
     methods:
     - POST
 
+- host: microservices.livestream
+  name: scene-start-service
+  port: 5510
+  protocol: http
+  path: /
+  routes:
+  - name: start-scene
+    paths:
+    - ~/scenes/[a-zA-Z0-9]
+    methods:
+    - POST
+
+- host: microservices.livestream
+  name: scene-fetch-service
+  port: 5510
+  protocol: http
+  path: /
+  routes:
+  - name: fetch-scene
+    paths:
+    - ~/scenes/[a-zA-Z0-9]
+    methods:
+    - GET
+
 - host: microservices.posts
   name: create-post-service
   port: 5510
@@ -155,7 +191,6 @@ services:
   - name: create-new-post
     paths:
     - /posts/
-    strip_path: true
     methods:
     - POST
 
