@@ -33,9 +33,12 @@ class EventsMicroService(Quart):
     
         @self.before_request
         async def log_request():
+            logging.info("Retrieving Secret...")
+            await self.get_shared_secret()
             self.logging.info(f"Request received: {request.method} {request.path}")
-            self.logging.debug(f"Request headers: {request.headers}")
             self.logging.debug(f"Request body: {await request.get_json()}")
+            self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
+
             
     async def services(self):
         """Initialize db before app is being served."""
@@ -47,9 +50,6 @@ class EventsMicroService(Quart):
 
         logging.info("Printing Application Routes...")
         logging.info(self.url_map)
-
-        logging.info("Retrieving Secret...")
-        await self.get_shared_secret()
 
     async def get_shared_secret(self):
         """"""
@@ -64,3 +64,7 @@ class EventsMicroService(Quart):
         super(EventsMicroService, self).run(
             host="0.0.0.0", port=5510, loop=uvloop.new_event_loop()
         )
+
+
+
+

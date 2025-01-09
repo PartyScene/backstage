@@ -21,7 +21,7 @@ class BaseView(QuartClassful):
         ...
     
     @route("/", methods=["POST"])
-    @jwt_required()
+    @jwt_required
     async def create_post(self):
         """
         Asynchronously creates a new post with the provided content, and optionally uploads media files.

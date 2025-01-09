@@ -33,6 +33,6 @@ class BaseView(QuartClassful):
         Verify user credentials
         """
         data = await request.get_json()
-        if await self.db._login(data):
-            access_token = create_access_token(identity=data['email'])
+        if result := await self.db._login(data):
+            access_token = create_access_token(identity=result['id'].id)
             return dict(access_token=access_token), 200

@@ -5,12 +5,13 @@ class AuthDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurrealDB = db
 
-    async def _login(self, data):
+    async def _login(self, data) -> dict:
         result = await self.db.query(
             "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password);",
             {"password": data['password']},
         )
-        return result[0]["result"][0]["email"] == data['email']
+        assert result[0]["result"][0]["email"] == data['email']
+        return result[0]["result"][0]
 
     async def _create(self, form):
         result = await self.db.query(
@@ -22,6 +23,7 @@ class AuthDB:
                 "pwd": form['password'],
             },
         )
+        return result[0]
         # Assign the variable on the connection
 
 

@@ -1,6 +1,7 @@
 from quart import Quart
 from surrealdb import AsyncSurrealDB
 import os
+from ..schema import Events
 
 
 class EventsDB:
@@ -11,23 +12,50 @@ class EventsDB:
     class Events:
         def __init__(self, db) -> None:
             self.db: AsyncSurrealDB = db
-            
-        async def fetch_by_distance(self, location, distance: int, *, live : bool = False) -> list:
-            """Fetch all events within a certain distance
+        
+        async def create(self, data: Events):
+            """
+            Create a new event
+
+            Args:
+                data (Events, required): The event data object containing event details
+            """
+            result = await self.db.query(
+                """
+                INSERT INTO events (title, description, coordinates, is_private, timestamp, price, host)
+                VALUES ($title, $description, $coordinates, $is_private, $timestamp, $price, type::thing('users', $host))
+                """,
+                {
+                    "title": data.title,
+                    "description": data.description,
+                    "coordinates": data.coordinates,
+                    "is_private": data.is_private,
+                    "timestamp": data.timestamp,
+                    "price": data.price,
+                    "host": data.host
+                    
+                 }
+            )
+            return result[0]["result"]
+        
+        
+        async def fetch_by_distance(self, coordinates, distance: int, *, live : bool = False) -> list:
+            """
+            Fetch all events within a certain distance
 
             Args:
                 distance (int, required): The distance in meters
-                location (Point)
+                coordinates (Point)
                 live (bool, optional): If set to True, only live events selected. Defaults to False.
             """
             result = await self.db.query(
                 "SELECT *, <-attends<-users AS attendees FROM events "
                 "WHERE is_live = $live " 
-                "AND geo::distance(location, type::point($location)) <= $distance;",
+                "AND geo::distance(coordinates, type::point($coordinates)) <= $distance;",
                 {
                     "live": live,
                     "distance": distance,
-                    "location": location
+                    "location": coordinates
                 }
             )
             return result[0]["result"]
@@ -35,7 +63,8 @@ class EventsDB:
 
         
         async def fetch_all(self) -> list:
-            """Fetches all parties / events / scenes.
+            """
+            Fetches all parties / events / scenes.
 
             Returns:
                 list: array containing parties.

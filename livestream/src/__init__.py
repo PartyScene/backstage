@@ -31,6 +31,8 @@ class LiveStreamMicroservice(Quart):
     
         @self.before_request
         async def log_request():
+            logging.info("Retrieving Secret...")
+            await self.get_shared_secret()
             self.logging.info(f"Request received: {request.method} {request.path}")
             # self.logging.debug(f"Request headers: {request.headers}")
             # self.logging.debug(f"Request body: {await request.get_json()}")
@@ -53,9 +55,6 @@ class LiveStreamMicroservice(Quart):
 
         logging.info("Printing Application Routes...")
         logging.info(self.url_map)
-
-        logging.info("Retrieving Secret...")
-        await self.get_shared_secret()
 
     async def get_shared_secret(self):
         """"""

@@ -28,6 +28,25 @@ class BaseView(QuartClassful):
 
         return response, 200
     
+    
+    @route("/relationships/create", methods=["POST"])
+    @jwt_required
+    async def create_relationship(self):
+        """Create a Friend Relationship in the Database with the logged in user."""
+        data = await request.get_json()
+        data['origin'] = get_jwt_identity()
+        response = await self.db.users.create_friend_relationship(data)
+        return response, 201
+    
+    @route("/relationships/find", methods=["GET"])
+    @jwt_required
+    async def find_relationship(self):
+        """Find a Friend Relationship in the Database with the logged in user."""
+        data = await request.get_json() # data is structured as {'degree': 1}
+        data['origin'] = get_jwt_identity()
+        response = await self.db.users.find_friend_relationship(data, degree = data['degree'])
+        return response, 200
+    
     @route("/users/upload", methods=["POST"])
     @jwt_required
     async def upload_media(self):
@@ -37,7 +56,7 @@ class BaseView(QuartClassful):
             _type_: _description_
         """
         data = {
-            'email' : get_jwt_identity()
+            'user' : get_jwt_identity()
         }
         
         # check if there is an upload.

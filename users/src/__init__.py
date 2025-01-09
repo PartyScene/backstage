@@ -17,8 +17,6 @@ class UsersMicroService(Quart):
 
     def __init__(self, *args):
         super(UsersMicroService, self).__init__(*args)
-        QuartSchema(self)
-
         logging.basicConfig(
             level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s"
         )
@@ -32,6 +30,8 @@ class UsersMicroService(Quart):
         
         @self.before_request
         async def log_request():
+            logging.info("Retrieving Secret...")
+            await self.get_shared_secret()
             self.logging.info(f"Request received: {request.method} {request.path}")
             self.logging.debug(f"Request headers: {request.headers}")
             self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")

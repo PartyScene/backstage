@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
-from quart_schema import document_querystring, DataSource
+from quart_schema import validate_request, DataSource
 
 from ..connectors import EventsDB
 from ..schema import Events
@@ -18,18 +18,25 @@ class BaseView(QuartClassful):
 
     def __init__(self):
         self.db: EventsDB = app.db
-
-    route_base = "/events/"
-
+        
+    @route("/create", methods=["POST"])
+    @jwt_required
+    @validate_request(Events)
+    async def create_event(self, event: Events):
+        """Create an event"""
+        result = await self.db.events.create(event)
+        return result, 201
+    
+    
     @route("/all", methods=["GET"])
     @jwt_required
-    @document_querystring(Events)
     async def fetch_all(self):
         """This endpoints returns all the events"""
         result = await self.db.events.fetch_all()
         return result, 200
     
     @route("/events/location", methods=["GET"])
+    @jwt_required
     async def fetch_by_location(self):
         """Fetch a list of events by location. If the `nearby` endpoint is called, then...
 

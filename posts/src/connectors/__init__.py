@@ -9,16 +9,16 @@ class PostsDB:
 
     async def create_post(self, content, media_links, author) -> dict:
         """
-        Asynchronously creates a new post with the given data.
-        Args:
-            data (dict): The data for the new post, including content, media links, and author.
-        Returns:
-            dict: The result of the creation operation.
-        Raises:
-            Exception: If the creation operation fails.
+        Asynchronously creates a new post in the database.
+            Args:
+                content (str): The content of the post.
+                media_links (list): A list of media links associated with the post.
+                author (str): The ID of the author creating the post.
+            Returns:
+                dict: A dictionary containing the result of the post creation query.
         """
         query = """
-        CREATE post SET content = $content, media_links = $media_links, author = $author
+        CREATE post SET content = $content, media_links = $media_links, author = type::thing('users', $author)
         """
         params = {
             "content": content,

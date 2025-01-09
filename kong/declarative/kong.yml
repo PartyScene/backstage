@@ -133,6 +133,32 @@ services:
     - POST
 
 - host: microservices.users
+  name: create-user-relationship-service
+  port: 5510
+  protocol: http
+  path: /relationships/create
+  routes:
+  - name: create-user-relationship
+    paths:
+    - /users/relationships/create
+    strip_path: true
+    methods:
+    - POST
+
+- host: microservices.users
+  name: find-user-relationship-service
+  port: 5510
+  protocol: http
+  path: /relationships/find
+  routes:
+  - name: find-user-relationship
+    paths:
+    - /users/relationships/find
+    strip_path: true
+    methods:
+    - GET
+
+- host: microservices.users
   name: edit-logged-user-service
   port: 5510
   protocol: http
