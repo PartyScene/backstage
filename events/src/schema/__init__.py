@@ -10,7 +10,7 @@ class Events(BaseModel):
     is_live: bool
     is_private: bool
     host: str
-    timestamp: datetime
+    timestamp: Optional[datetime] = None
     price: str
     categories: List[str]
     tags: List[str]

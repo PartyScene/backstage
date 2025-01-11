@@ -18,7 +18,7 @@ class UsersMicroService(Quart):
     def __init__(self, *args):
         super(UsersMicroService, self).__init__(*args)
         logging.basicConfig(
-            level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s"
+            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
         )
 
         self.db = None  # Asyncpg pool

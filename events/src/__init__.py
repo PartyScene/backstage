@@ -19,7 +19,7 @@ class EventsMicroService(Quart):
         QuartSchema(self)
 
         logging.basicConfig(
-            level=logging.DEBUG , format="%(asctime)s %(levelname)s %(message)s"
+            level=logging.INFO , format="%(asctime)s %(levelname)s %(message)s"
         )
 
         self.db: EventsDB = None  # Asyncpg pool

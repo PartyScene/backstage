@@ -45,11 +45,11 @@ services:
   name: fetch-event-service
   port: 5510
   protocol: http
-  path: /all
+  path: /events/all
   routes:
   - name: fetch-all-events
     paths:
-    - /events/all/
+    - /events/all
     strip_path: true
     methods:
     - GET

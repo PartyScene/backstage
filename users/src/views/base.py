@@ -1,97 +1,163 @@
 import httpx
-from quart import current_app as app, request, jsonify
-from quart.datastructures import FileStorage
+from quart import request
 from quart_jwt_extended import get_jwt_identity, jwt_required
-
-from ..connectors import UsersDB
+from http import HTTPStatus
+from typing import Tuple, Dict, Any
 
 from classful import route, QuartClassful
+from ..connectors import UsersDB
 
 
 class BaseView(QuartClassful):
-
     def __init__(self):
         self.MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
-        self.db: UsersDB = app.db
+        self.db: UsersDB = self.app.db
 
-    @route("/users/", methods=["GET", "POST", "DELETE"])
+    @route("/me", methods=["GET"])
     @jwt_required
-    async def index(self):
-        """Fetch a USER profile"""
-        ...
-        data = await request.get_json()
-        match request.method:
-            case "POST":
-                response = await self.db.users.fetch(data["email"])
-            case "DELETE":
-                response = await self.db.users.delete(data["email"])
+    async def get_me(self) -> Tuple[Dict[str, Any], int]:
+        """Get current user details including friend connections and attended events"""
+        try:
+            user_id = get_jwt_identity()
+            user = await self.db.users.fetch(user_id)
+            if not user:
+                return {"error": "User not found"}, HTTPStatus.NOT_FOUND
+            return user, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
-        return response, 200
-    
-    
-    @route("/relationships/create", methods=["POST"])
+    @route("/me", methods=["DELETE"])
     @jwt_required
-    async def create_relationship(self):
-        """Create a Friend Relationship in the Database with the logged in user."""
-        data = await request.get_json()
-        data['origin'] = get_jwt_identity()
-        response = await self.db.users.create_friend_relationship(data)
-        return response, 201
-    
-    @route("/relationships/find", methods=["GET"])
+    async def delete_me(self) -> Tuple[Dict[str, Any], int]:
+        """Delete current user and their relationships"""
+        try:
+            user_id = get_jwt_identity()
+            result = await self.db.users.delete(user_id)
+            if not result:
+                return {"error": "User not found"}, HTTPStatus.NOT_FOUND
+            return {"message": "User deleted successfully"}, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/me", methods=["PATCH"])
     @jwt_required
-    async def find_relationship(self):
-        """Find a Friend Relationship in the Database with the logged in user."""
-        data = await request.get_json() # data is structured as {'degree': 1}
-        data['origin'] = get_jwt_identity()
-        response = await self.db.users.find_friend_relationship(data, degree = data['degree'])
-        return response, 200
-    
-    @route("/users/upload", methods=["POST"])
+    async def update_me(self) -> Tuple[Dict[str, Any], int]:
+        """Update current user information"""
+        try:
+            user_id = get_jwt_identity()
+            data = await request.get_json()
+            data['id'] = user_id
+            result = await self.db.users.update(data)
+            return result, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/friends", methods=["GET"])
+    @jwt_required
+    async def get_friends(self) -> Tuple[Dict[str, Any], int]:
+        """Get user's friends with specified degree of separation"""
+        try:
+            user_id = get_jwt_identity()
+            degree = request.args.get('degree', type=int, default=1)
+            target_id = request.args.get('target')
+            
+            data = {"origin": user_id}
+            if target_id:
+                data["target"] = target_id
+                
+            result = await self.db.users.find_friend_relationship(data, degree)
+            return {"friends": result}, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/friends", methods=["POST"])
+    @jwt_required
+    async def create_friendship(self) -> Tuple[Dict[str, Any], int]:
+        """Create a friendship connection with another user"""
+        try:
+            user_id = get_jwt_identity()
+            data = await request.get_json()
+            data['origin'] = user_id
+            
+            if 'target' not in data:
+                return {"error": "Target user ID is required"}, HTTPStatus.BAD_REQUEST
+                
+            result = await self.db.users.create_friend_relationship(data)
+            return result, HTTPStatus.CREATED
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/upload", methods=["POST"])
     @jwt_required
     async def upload_media(self):
-        """This endpoint is the primary upload endpoint - TODO: handle multiple media types
+        """Upload user media (avatar, etc.)"""
+        try:
+            user_id = get_jwt_identity()
+            data = {'id': user_id}  # Changed from 'user' to 'id' to match update method
+            
+            file = (await request.files).get('file')
+            if not file:
+                return {"error": "No file provided"}, HTTPStatus.BAD_REQUEST
 
-        Returns:
-            _type_: _description_
-        """
-        data = {
-            'user' : get_jwt_identity()
-        }
-        
-        # check if there is an upload.
-        file = (await request.files).get('file')
-        if file:
-                # Relay file to the Media Microservice
+            # Relay file to the Media Microservice
             async with httpx.AsyncClient() as client:
                 try:
                     media_response = await client.post(
                         self.MEDIA_MICROSERVICE_URL,
                         files={"file": (file.filename, file.stream, file.content_type)},
-                        headers = request.headers
+                        headers=request.headers
                     )
                     media_response.raise_for_status()
                 except httpx.HTTPError as e:
-                    return jsonify({"error": f"Media upload failed: {str(e)}"}), 500
+                    return {"error": f"Media upload failed: {str(e)}"}, HTTPStatus.BAD_GATEWAY
 
-            # Extract media URL from the Media Microservice response
-            media_data = media_response.json()
-            media_link = media_data.get('url')
-            if not media_link:
-                return jsonify({"error": "Invalid response from Media Microservice"}), 500
-            
-            data['avatar_url'] = media_link # Set the media link to the database field we have currently
-        response = await self.db.users.update(data)
-        return response, 200
-
-    @route("/me", methods=["GET", "POST", "PUT", "PATCH"])
-    @jwt_required
-    async def me(self):
-        """Endpoint for the currently authenticated user"""
-        match request.method:
-            case "PATCH":
-                data = await request.get_json()
+                # Extract media URL from the Media Microservice response
+                media_data = media_response.json()
+                media_link = media_data.get('url')
+                if not media_link:
+                    return {"error": "Invalid response from Media Microservice"}, HTTPStatus.BAD_GATEWAY
+                
+                data['avatar_url'] = media_link
                 response = await self.db.users.update(data)
-            case "POST":
-                response = await self.db.users.fetch(get_jwt_identity())
-        return response, 200
+                return response, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/users/<user_id>", methods=["GET"])
+    @jwt_required
+    async def get_user(self, user_id: str) -> Tuple[Dict[str, Any], int]:
+        """Get another user's public profile"""
+        try:
+            user = await self.db.users.fetch(user_id)
+            if not user:
+                return {"error": "User not found"}, HTTPStatus.NOT_FOUND
+            # Could filter sensitive information here if needed
+            return user, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/friends/connections", methods=["GET"])
+    @jwt_required
+    async def get_connections_at_degree(self) -> Tuple[Dict[str, Any], int]:
+        """Get all connections at a specific degree of separation"""
+        try:
+            user_id = get_jwt_identity()
+            degree = request.args.get('degree', type=int, default=1)
+            
+            result = await self.db.users.find_connections_at_degree(user_id, degree)
+            return {"connections": result}, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/friends/path/<target_id>", methods=["GET"])
+    @jwt_required
+    async def find_path_to_user(self, target_id: str) -> Tuple[Dict[str, Any], int]:
+        """Find shortest path to another user"""
+        try:
+            user_id = get_jwt_identity()
+            max_degree = request.args.get('max_degree', type=int, default=6)
+            
+            result = await self.db.users.find_shortest_path(user_id, target_id, max_degree)
+            return result, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
