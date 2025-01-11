@@ -40,7 +40,7 @@ DEFINE FIELD OVERWRITE created_at on TABLE posts TYPE datetime DEFAULT time::now
 DEFINE FIELD OVERWRITE metadata ON TABLE posts FLEXIBLE TYPE object;
 
 -- A table for friends
-DEFINE TABLE IF NOT EXISTS friends SCHEMAFULL;
+DEFINE TABLE IF NOT EXISTS friends TYPE RELATION IN users to users;
 DEFINE FIELD OVERWRITE out ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE in ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();

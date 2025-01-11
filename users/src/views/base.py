@@ -139,25 +139,20 @@ class BaseView(QuartClassful):
     @route("/friends/connections", methods=["GET"])
     @jwt_required
     async def get_connections_at_degree(self) -> Tuple[Dict[str, Any], int]:
-        """Get all connections at a specific degree of separation"""
+        """
+        Get all connections up to N degrees of separation
+        
+        Query Parameters:
+            max_degree (int): Maximum degree of separation (1-6, default: 3)
+        """
         try:
             user_id = get_jwt_identity()
-            degree = request.args.get('degree', type=int, default=1)
+            max_degree = request.args.get('max_degree', type=int, default=3)
             
-            result = await self.db.users.find_connections_at_degree(user_id, degree)
+            if max_degree < 1 or max_degree > 6:
+                return {"error": "max_degree must be between 1 and 6"}, HTTPStatus.BAD_REQUEST
+                
+            result = await self.db.users.find_connections_at_degree(user_id, max_degree)
             return {"connections": result}, HTTPStatus.OK
-        except Exception as e:
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-
-    @route("/friends/path/<target_id>", methods=["GET"])
-    @jwt_required
-    async def find_path_to_user(self, target_id: str) -> Tuple[Dict[str, Any], int]:
-        """Find shortest path to another user"""
-        try:
-            user_id = get_jwt_identity()
-            max_degree = request.args.get('max_degree', type=int, default=6)
-            
-            result = await self.db.users.find_shortest_path(user_id, target_id, max_degree)
-            return result, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
