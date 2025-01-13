@@ -1,5 +1,5 @@
 import httpx
-from quart import request
+from quart import request, current_app as app
 from quart_jwt_extended import get_jwt_identity, jwt_required
 from http import HTTPStatus
 from typing import Tuple, Dict, Any
@@ -11,7 +11,7 @@ from ..connectors import UsersDB
 class BaseView(QuartClassful):
     def __init__(self):
         self.MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
-        self.db: UsersDB = self.app.db
+        self.db: UsersDB = app.db
 
     @route("/me", methods=["GET"])
     @jwt_required

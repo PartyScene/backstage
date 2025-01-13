@@ -2,6 +2,7 @@
 DEFINE TABLE IF NOT EXISTS users schemafull;
 DEFINE FIELD OVERWRITE first_name on TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name on TABLE users TYPE string;
+DEFINE FIELD OVERWRITE avatar_url on TABLE users TYPE string default "";
 DEFINE FIELD OVERWRITE email on TABLE users TYPE string value string::lowercase($value) ASSERT string::is::email($value);
 DEFINE INDEX emailIndex ON TABLE users COLUMNS email UNIQUE;
 DEFINE FIELD OVERWRITE password on TABLE users TYPE string;
@@ -53,7 +54,7 @@ DEFINE FIELD OVERWRITE type ON media TYPE "image" | "video" | "vod";
 DEFINE FIELD OVERWRITE url ON media TYPE string 
   ASSERT string::len($value) > 0;
   
-DEFINE FIELD OVERWRITE metadata ON media TYPE FLEXIBLE object;
+DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object;
 
 -- Metadata fields
 DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime 

@@ -2,7 +2,6 @@ from pprint import pprint
 import secrets
 
 from quart_schema import QuartSchema
-import uvloop
 import logging
 
 from quart import Quart, request
@@ -30,8 +29,6 @@ class UsersMicroService(Quart):
         
         @self.before_request
         async def log_request():
-            logging.info("Retrieving Secret...")
-            await self.get_shared_secret()
             self.logging.info(f"Request received: {request.method} {request.path}")
             self.logging.debug(f"Request headers: {request.headers}")
             self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
@@ -66,5 +63,5 @@ class UsersMicroService(Quart):
     def run(self):
         """Custom Run Method."""
         super(UsersMicroService, self).run(
-            host="0.0.0.0", port=5510, loop=uvloop.new_event_loop()
+            host="0.0.0.0", port=5510
         )

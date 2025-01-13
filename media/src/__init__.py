@@ -20,7 +20,7 @@ class MediaMicroService(Quart):
         QuartSchema(self)
 
         logging.basicConfig(
-            level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
         self.db = None  # Asyncpg pool
         self.logging = logging

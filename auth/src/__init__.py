@@ -20,7 +20,7 @@ class AuthMicroService(Quart):
         QuartSchema(self)
 
         logging.basicConfig(
-            level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s"
+            level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
         )
 
         self.db = None  # Asyncpg pool
@@ -29,7 +29,7 @@ class AuthMicroService(Quart):
         self.redis_handler = RedisHandler(self)
         self.jwt = JWTManager(self)
 
-        self.before_serving(self.services)
+        # self.before_serving(self.services)
         
         @self.before_request
         async def log_request():
@@ -41,6 +41,10 @@ class AuthMicroService(Quart):
         async def log_response(response):
             self.logging.info(f"Response sent: {response.status_code}")
             return response
+        
+        @self.before_serving
+        async def before_serv():
+            await self.services()
 
     async def services(self):
         """Initialize db before app is being served."""

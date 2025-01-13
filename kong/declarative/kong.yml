@@ -101,8 +101,7 @@ services:
   routes:
   - name: fetch-user-information
     paths:
-    - /users/
-    strip_path: true
+    - ~/users/[a-zA-Z0-9]
     methods:
     - POST
 
@@ -136,12 +135,11 @@ services:
   name: create-user-relationship-service
   port: 5510
   protocol: http
-  path: /relationships/create
+  path: /friends
   routes:
   - name: create-user-relationship
     paths:
-    - /users/relationships/create
-    strip_path: true
+    - /users/friends
     methods:
     - POST
 
@@ -149,12 +147,11 @@ services:
   name: find-user-relationship-service
   port: 5510
   protocol: http
-  path: /relationships/find
+  path: /friends/connections
   routes:
   - name: find-user-relationship
     paths:
-    - /users/relationships/find
-    strip_path: true
+    - /users/friends/connections
     methods:
     - GET
 

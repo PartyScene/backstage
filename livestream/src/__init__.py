@@ -27,7 +27,7 @@ class LiveStreamMicroservice(Quart):
         
         # These functions are preprocessing methods.
 
-        self.before_serving(self.services)
+        # self.before_serving(self.services)
     
         @self.before_request
         async def log_request():
@@ -44,6 +44,10 @@ class LiveStreamMicroservice(Quart):
         async def log_response(response):
             self.logging.info(f"Response sent: {response.status_code}")
             return response
+        
+        @self.before_serving
+        async def before_serv():
+            await self.services()
 
     async def services(self):
         """Initialize db before app is being served."""

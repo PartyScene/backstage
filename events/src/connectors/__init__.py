@@ -163,6 +163,51 @@ class EventsDB:
             logging.error(f"Failed to kill live query: {str(e)}")
             raise
 
+    async def update_event_status(self, event_id: str, status: str, metadata: dict = None) -> Dict[str, Any]:
+        """
+        Update the status of an event and optionally add metadata
+        
+        Args:
+            event_id (str): The ID of the event to update
+            status (str): The new status ('scheduled', 'live', 'ended', 'cancelled')
+            metadata (dict, optional): Additional metadata about the status change
+            
+        Returns:
+            Dict[str, Any]: Updated event data
+        """
+        try:
+            # Validate status
+            valid_statuses = ['scheduled', 'live', 'ended', 'cancelled']
+            if status not in valid_statuses:
+                raise ValueError(f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+            
+            # Build update query
+            update_data = {
+                "status": status,
+                "updated_at": "time::now()",
+            }
+            if metadata:
+                update_data["metadata"] = metadata
+                
+            result = await self.db.query(
+                """
+                UPDATE type::thing('events', $event_id) MERGE $update_data
+                RETURN 
+                    *,
+                    <-attends<-users AS attendees,
+                    array::len(<-attends<-users) as attendees_count;
+                """,
+                {
+                    "event_id": event_id,
+                    "update_data": update_data
+                }
+            )
+            return result[0]["result"][0]
+            
+        except Exception as e:
+            logging.error(f"Failed to update event status: {str(e)}")
+            raise
+
 
 async def init_db(app: Quart) -> EventsDB:
     """Initialize database connection"""

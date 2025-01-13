@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import timedelta
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
 from quart_schema import validate_request, validate_response, document_querystring
@@ -32,7 +33,7 @@ class BaseView(QuartClassful):
         """
         Verify user credentials
         """
-        data = request.get_json()
-        if await self.db._login(data):
-            access_token = create_access_token(identity=data['email'])
+        data = await request.get_json()
+        if result := await self.db._login(data):
+            access_token = create_access_token(identity=result['id'].id, expires_delta=timedelta(days=1))
             return dict(access_token=access_token), 200

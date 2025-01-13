@@ -44,14 +44,14 @@ class BaseView(QuartClassful):
     @validate_request(Events)
     async def create_event(self, event: Events):
         """Create an event"""
-        result = await self.db.events.create(event)
+        result = await self.db.create(event)
         return result, 201
     
     @route("/events/all", methods=["GET"])
     @jwt_required
     async def fetch_all(self):
         """This endpoints returns all the events"""
-        result = await self.db.events.fetch_all()
+        result = await self.db.fetch_all()
         return result, 200
     
     @route("/events/location", methods=["GET"])
@@ -67,7 +67,7 @@ class BaseView(QuartClassful):
             float(request.args.get('long'))
         )
         distance = int(request.args.get('distance'))
-        result = await self.db.events.fetch_by_distance(location, distance)
+        result = await self.db.fetch_by_distance(location, distance)
         return result, 200
 
     @route("/events/<event_id>/status", methods=["PATCH"])
@@ -79,11 +79,11 @@ class BaseView(QuartClassful):
             data = await request.get_json()
             
             # Verify user has permission to update this event
-            event = await self.db.events.fetch(event_id)
+            event = await self.db.fetch(event_id)
             if not event or event['host']['id'] != user_id:
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
             
-            result = await self.db.events.update_event_status(
+            result = await self.db.update_event_status(
                 event_id,
                 status=data['status'],
                 metadata=data.get('metadata')
@@ -122,49 +122,6 @@ class BaseView(QuartClassful):
 
         except Exception as e:
             app.logging.error(f"Failed to start live query: {str(e)}")
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-
-    @route("/events/<event_id>/live/ws")
-    @jwt_required
-    async def event_live_updates_ws(self, event_id: str):
-        """WebSocket endpoint for real-time event updates"""
-        try:
-            user_id = get_jwt_identity()
-            
-            # Verify user has access to this event
-            event = await self.db.fetch(event_id)
-            if not event or (
-                event['host']['id'] != user_id
-            ):
-                return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
-
-            # Get the live query ID from Redis
-            live_id = await self._get_live_query(event_id)
-            if not live_id:
-                return {"error": "Live query not started"}, HTTPStatus.BAD_REQUEST
-
-            async with websocket.accept():
-                try:
-                    # Get the notifications generator
-                    notifications = await self.db.get_live_notifications(live_id)
-                    
-                    # Process notifications
-                    async for notification in notifications:
-                        if notification:
-                            await websocket.send(json.dumps(notification))
-                            
-                except Exception as e:
-                    app.logging.error(f"WebSocket error: {str(e)}")
-                finally:
-                    # Cleanup
-                    try:
-                        await self.db.kill_live_query(live_id)
-                        await self._remove_live_query(event_id)
-                    except Exception as e:
-                        app.logging.error(f"Cleanup error: {str(e)}")
-
-        except Exception as e:
-            app.logging.error(f"Live updates error: {str(e)}")
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/<event_id>/live", methods=["DELETE"])
