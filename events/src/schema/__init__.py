@@ -7,10 +7,11 @@ class Events(BaseModel):
     title: str
     description: str
     coordinates: tuple[int, int]
-    is_live: bool
+    status: str
     is_private: bool
     host: str
     timestamp: Optional[datetime] = None
     price: str
     categories: List[str]
     tags: List[str]
+    metadata: Optional[dict] = None

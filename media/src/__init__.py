@@ -29,7 +29,9 @@ class MediaMicroService(Quart):
         
         # These functions are preprocessing methods.
 
-        self.before_serving(self.services)
+        @self.before_serving
+        async def before_serv():
+            await self.services()
     
         @self.before_request
         async def log_request():

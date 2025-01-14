@@ -19,14 +19,12 @@ class PostsMicroservice(Quart):
         logging.basicConfig(
             level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-        self.db = None  # Asyncpg pool
+        self.db = None
         self.logging = logging
         self.config.from_pyfile("/app/shared/settings.py")
         self.redis_handler = RedisHandler(self)
         
         # These functions are preprocessing methods.
-
-        # self.before_serving(self.services)
     
         @self.before_request
         async def log_request():

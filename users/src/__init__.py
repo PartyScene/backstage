@@ -20,13 +20,11 @@ class UsersMicroService(Quart):
             level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
         )
 
-        self.db = None  # Asyncpg pool
+        self.db = None  # SurrealDB
         self.logging = logging
         self.config.from_pyfile("/app/shared/settings.py")
         self.redis_handler = RedisHandler(self)
 
-        self.before_serving(self.services)
-        
         @self.before_request
         async def log_request():
             self.logging.info(f"Request received: {request.method} {request.path}")
@@ -37,6 +35,10 @@ class UsersMicroService(Quart):
         async def log_response(response):
             self.logging.info(f"Response sent: {response.status_code}")
             return response
+    
+        @self.before_serving
+        async def before_serv():
+            await self.services()
 
     async def services(self):
         """Initialize db before app is being served."""

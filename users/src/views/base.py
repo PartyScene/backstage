@@ -70,6 +70,40 @@ class BaseView(QuartClassful):
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
+    @route("/users/<user_id>", methods=["GET"])
+    @jwt_required
+    async def get_user(self, user_id: str) -> Tuple[Dict[str, Any], int]:
+        """Get another user's public profile"""
+        try:
+            user = await self.db.users.fetch(user_id)
+            if not user:
+                return {"error": "User not found"}, HTTPStatus.NOT_FOUND
+            # Could filter sensitive information here if needed
+            return user, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/friends/connections", methods=["GET"])
+    @jwt_required
+    async def get_connections_at_degree(self) -> Tuple[Dict[str, Any], int]:
+        """
+        Get all connections up to N degrees of separation
+        
+        Query Parameters:
+            max_degree (int): Maximum degree of separation (1-6, default: 3)
+        """
+        try:
+            user_id = get_jwt_identity()
+            max_degree = request.args.get('max_degree', type=int, default=3)
+            
+            if max_degree < 1 or max_degree > 6:
+                return {"error": "max_degree must be between 1 and 6"}, HTTPStatus.BAD_REQUEST
+                
+            result = await self.db.users.find_connections_at_degree(user_id, max_degree)
+            return {"connections": result}, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
     @route("/friends", methods=["POST"])
     @jwt_required
     async def create_friendship(self) -> Tuple[Dict[str, Any], int]:
@@ -120,39 +154,5 @@ class BaseView(QuartClassful):
                 data['avatar_url'] = media_link
                 response = await self.db.users.update(data)
                 return response, HTTPStatus.OK
-        except Exception as e:
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-
-    @route("/users/<user_id>", methods=["GET"])
-    @jwt_required
-    async def get_user(self, user_id: str) -> Tuple[Dict[str, Any], int]:
-        """Get another user's public profile"""
-        try:
-            user = await self.db.users.fetch(user_id)
-            if not user:
-                return {"error": "User not found"}, HTTPStatus.NOT_FOUND
-            # Could filter sensitive information here if needed
-            return user, HTTPStatus.OK
-        except Exception as e:
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-
-    @route("/friends/connections", methods=["GET"])
-    @jwt_required
-    async def get_connections_at_degree(self) -> Tuple[Dict[str, Any], int]:
-        """
-        Get all connections up to N degrees of separation
-        
-        Query Parameters:
-            max_degree (int): Maximum degree of separation (1-6, default: 3)
-        """
-        try:
-            user_id = get_jwt_identity()
-            max_degree = request.args.get('max_degree', type=int, default=3)
-            
-            if max_degree < 1 or max_degree > 6:
-                return {"error": "max_degree must be between 1 and 6"}, HTTPStatus.BAD_REQUEST
-                
-            result = await self.db.users.find_connections_at_degree(user_id, max_degree)
-            return {"connections": result}, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR

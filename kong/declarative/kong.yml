@@ -1,18 +1,6 @@
 _format_version: "3.0"
 _transform: true
 
-# plugins:
-# - name: request-transformer
-#   service: scene-start-service
-#   protocols:
-#   - https
-#   - http
-#   config:
-#     remove:
-#       headers: [ "x-event-id" ]
-#     add:
-#       headers: [ "{{uri_captures[1]}}" ]
-
 services:
 
 - host: microservices.auth
@@ -40,6 +28,14 @@ services:
     strip_path: true
     methods:
     - POST
+
+  
+  #########################
+  #                       #
+  #  EVENTS MICROSERVICE  #
+  #                       #
+  #########################
+
 
 - host: microservices.events
   name: fetch-event-service
@@ -93,6 +89,39 @@ services:
     methods:
     - POST
 
+- host: microservices.events
+  name: event-live-updates-service
+  port: 5510
+  protocol: http
+  path: /events
+  routes:
+  - name: update-event-status
+    paths:
+    - ~/events/[a-zA-Z0-9]+/status
+    strip_path: false
+    methods:
+    - PATCH
+  - name: start-event-live-updates
+    paths:
+    - ~/events/[a-zA-Z0-9]+/live
+    strip_path: false
+    methods:
+    - GET
+  - name: stop-event-live-updates
+    paths:
+    - ~/events/[a-zA-Z0-9]+/live
+    strip_path: false
+    methods:
+    - DELETE
+
+
+
+  #######################
+  #                     #
+  #  USERS MICROSERVICE #
+  #                     #
+  #######################
+
 - host: microservices.users
   name: fetch-user-service
   port: 5510
@@ -102,8 +131,9 @@ services:
   - name: fetch-user-information
     paths:
     - ~/users/[a-zA-Z0-9]
+    strip_path: false
     methods:
-    - POST
+    - GET
 
 - host: microservices.users
   name: delete-user-service
@@ -119,19 +149,6 @@ services:
     - DELETE
 
 - host: microservices.users
-  name: fetch-logged-user-service
-  port: 5510
-  protocol: http
-  path: /me
-  routes:
-  - name: fetch-logged-user
-    paths:
-    - /users/me
-    strip_path: true
-    methods:
-    - POST
-
-- host: microservices.users
   name: create-user-relationship-service
   port: 5510
   protocol: http
@@ -144,16 +161,54 @@ services:
     - POST
 
 - host: microservices.users
-  name: find-user-relationship-service
+  name: find-user-connections-service
   port: 5510
   protocol: http
   path: /friends/connections
   routes:
-  - name: find-user-relationship
+  - name: find-user-connections
     paths:
     - /users/friends/connections
     methods:
     - GET
+
+- host: microservices.users
+  name: find-direct-connections-service
+  port: 5510
+  protocol: http
+  path: /friends
+  routes:
+  - name: find-direct-connections
+    paths:
+    - /users/friends
+    methods:
+    - GET
+
+- host: microservices.users
+  name: fetch-logged-user-service
+  port: 5510
+  protocol: http
+  path: /me
+  routes:
+  - name: fetch-logged-user
+    paths:
+    - /users/me
+    strip_path: true
+    methods:
+    - GET
+
+- host: microservices.users
+  name: delete-logged-user-service
+  port: 5510
+  protocol: http
+  path: /me
+  routes:
+  - name: delete-logged-user
+    paths:
+    - /users/me
+    strip_path: true
+    methods:
+    - DELETE
 
 - host: microservices.users
   name: edit-logged-user-service
@@ -181,6 +236,13 @@ services:
     methods:
     - POST
 
+
+  ##############################
+  #                            #
+  #  LIVE STREAM MICROSERVICE  #
+  #                            #
+  ##############################
+
 - host: microservices.livestream
   name: scene-start-service
   port: 5510
@@ -202,8 +264,18 @@ services:
   - name: fetch-scene
     paths:
     - ~/scenes/[a-zA-Z0-9]
+    strip_path: false
     methods:
     - GET
+
+
+
+  #######################
+  #                     #
+  #  POSTS MICROSERVICE #
+  #                     #
+  #######################
+
 
 - host: microservices.posts
   name: create-post-service

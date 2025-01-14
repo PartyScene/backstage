@@ -28,9 +28,6 @@ class EventsMicroService(Quart):
 
         self.redis_handler = RedisHandler(self)
 
-        # self.before_serving(self.services)
-        
-    
         @self.before_request
         async def log_request():
             self.logging.info(f"Request received: {request.method} {request.path}")
@@ -45,8 +42,6 @@ class EventsMicroService(Quart):
         """Initialize services before app is being served."""
         logging.info("Initializing SurrealDB Database Connection...")
         self.db = await init_db(self)
-
-        await self.get_shared_secret()
         
         logging.info("Registering Application Routes.")
         BaseView.register(self)
