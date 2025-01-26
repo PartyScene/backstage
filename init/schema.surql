@@ -12,17 +12,17 @@ DEFINE TABLE IF NOT EXISTS attends TYPE RELATION IN users TO events;
 
 -- Now let's define the events table
 DEFINE TABLE IF NOT EXISTS events schemafull;
-DEFINE FIELD OVERWRITE name on TABLE events TYPE string;
+DEFINE FIELD OVERWRITE title on TABLE events TYPE string;
 DEFINE FIELD OVERWRITE description on TABLE events TYPE string;
 DEFINE FIELD OVERWRITE price on TABLE events TYPE decimal;
-DEFINE FIELD OVERWRITE is_live on TABLE events TYPE option<bool> default false;
+DEFINE FIELD OVERWRITE status on TABLE events TYPE string default 'scheduled';
 DEFINE FIELD OVERWRITE is_private on TABLE events TYPE option<bool> default false;
 DEFINE FIELD OVERWRITE host on TABLE events TYPE record<users>;
-DEFINE FIELD OVERWRITE timestamp on TABLE events TYPE datetime;
+DEFINE FIELD OVERWRITE created_at on TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE categories on TABLE events TYPE array<string>;
 DEFINE FIELD OVERWRITE tags on TABLE events TYPE array<string>;
 DEFINE FIELD OVERWRITE coordinates on TABLE events TYPE geometry;
-DEFINE FIELD OVERWRITE metadata on TABLE events FLEXIBLE TYPE object;
+DEFINE FIELD OVERWRITE metadata on TABLE events FLEXIBLE TYPE object DEFAULT {};
 
 -- Let's define a table for livestreams
 DEFINE TABLE IF NOT EXISTS livestreams schemafull;

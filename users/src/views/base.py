@@ -13,7 +13,7 @@ class BaseView(QuartClassful):
         self.MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
         self.db: UsersDB = app.db
 
-    @route("/me", methods=["GET"])
+    @route("/user", methods=["GET"])
     @jwt_required
     async def get_me(self) -> Tuple[Dict[str, Any], int]:
         """Get current user details including friend connections and attended events"""
@@ -26,7 +26,7 @@ class BaseView(QuartClassful):
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
-    @route("/me", methods=["DELETE"])
+    @route("/user", methods=["DELETE"])
     @jwt_required
     async def delete_me(self) -> Tuple[Dict[str, Any], int]:
         """Delete current user and their relationships"""
@@ -39,7 +39,7 @@ class BaseView(QuartClassful):
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
-    @route("/me", methods=["PATCH"])
+    @route("/user", methods=["PATCH"])
     @jwt_required
     async def update_me(self) -> Tuple[Dict[str, Any], int]:
         """Update current user information"""

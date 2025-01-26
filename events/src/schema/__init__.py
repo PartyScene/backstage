@@ -1,17 +1,17 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, PositiveFloat
+from typing import Optional, List, Tuple, Dict, Any
 from datetime import datetime
 
 class Events(BaseModel):
     id: Optional[str] = None
     title: str
     description: str
-    coordinates: tuple[int, int]
-    status: str
+    coordinates: List[float]  # Changed to List[float] to ensure proper serialization
+    status: Optional[str] = None
     is_private: bool
     host: str
     timestamp: Optional[datetime] = None
-    price: str
+    price: PositiveFloat
     categories: List[str]
     tags: List[str]
-    metadata: Optional[dict] = None
+    metadata: Optional[Dict[str, Any]] = None

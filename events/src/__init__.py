@@ -1,52 +1,97 @@
 import json
 from pprint import pprint
-
-from quart_redis import RedisHandler
-from quart_schema import QuartSchema
+import uvloop
 import logging
+from logging.config import dictConfig
 
+from quart_redis import RedisHandler, get_redis
+from quart_schema import QuartSchema
 from quart import Quart, request, websocket
 from quart_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 
 from .connectors import EventsDB, init_db
 from .views.base import BaseView
 
+# Configure logging
+dictConfig({
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'default': {
+            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        }
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'default',
+            'level': 'INFO',
+        }
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    }
+})
+
+logger = logging.getLogger(__name__)
 
 class EventsMicroService(Quart):
-
     def __init__(self, *args):
         super(EventsMicroService, self).__init__(*args)
         QuartSchema(self)
 
-        logging.basicConfig(
-            level=logging.INFO , format="%(asctime)s %(levelname)s %(message)s"
-        )
-
-        self.db: EventsDB = None  # Asyncpg pool
-        self.logging = logging
+        self.db: EventsDB = None
         self.config.from_pyfile("/app/shared/settings.py")
-
+        
+        # Initialize Redis with decode_responses=True
+        # self.config["REDIS_URL"] = self.config.get("REDIS_URI", "redis://redis")
+        self.config["REDIS_DECODE_RESPONSES"] = True
         self.redis_handler = RedisHandler(self)
 
         @self.before_request
         async def log_request():
-            self.logging.info(f"Request received: {request.method} {request.path}")
-            self.logging.debug(f"Request body: {await request.get_json()}")
-            self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
+            logger.info(f"Request received: {request.method} {request.path}")
+            logger.debug(f"Request headers: {request.headers}")
+            logger.debug(f"Request body: {await request.get_json()}")
+
+        @self.after_request
+        async def log_response(response):
+            logger.info(f"Response sent: {response.status_code}")
+            return response
 
         @self.before_serving
-        async def before_serv():
-            await self.services()
+        async def services():
+            """Initialize services before app is being served."""
+            logger.info("Initializing services...")
+            await self.init_services()
 
-    async def services(self):
-        """Initialize services before app is being served."""
-        logging.info("Initializing SurrealDB Database Connection...")
-        self.db = await init_db(self)
-        
-        logging.info("Registering Application Routes.")
-        BaseView.register(self)
+    async def init_services(self):
+        """Initialize all required services"""
+        try:
+            # Initialize DB
+            logger.info("Initializing SurrealDB connection...")
+            self.db = await init_db(self)
+            
+            # Get JWT secret
+            logger.info("Retrieving JWT secret...")
+            await self.get_shared_secret()
+            
+            # Register routes
+            logger.info("Registering application routes...")
+            BaseView.register(self)
+            
+            # Register WebSocket routes
+            self.register_websocket_routes()
+            
+            logger.info("All services initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
+            raise
 
-        # Register WebSocket route
+    def register_websocket_routes(self):
+        """Register WebSocket routes"""
         @self.websocket("/events/<event_id>/live/ws")
         @jwt_required
         async def event_live_updates(event_id: str):
@@ -55,62 +100,65 @@ class EventsMicroService(Quart):
                 
                 # Verify user has access to this event
                 event = await self.db.fetch(event_id)
-                self.logger.info(event)
                 if not event or (
                     event['host']['id'] != user_id and 
                     user_id not in [a['id'] for a in event.get('attendees', [])]
                 ):
-                    return  # WebSocket will not be accepted
+                    logger.warning(f"Unauthorized WebSocket connection attempt for event {event_id}")
+                    return
 
-                # Get live query ID from Redis
-                live_id = await self.redis_handler.get_connection().get(f"live_query:{event_id}")
+                # Get live query ID from Redis using get_redis()
+                redis = await get_redis()
+                live_id = await redis.get(f"live_query:{event_id}")
                 if not live_id:
-                    return  # WebSocket will not be accepted
+                    logger.warning(f"No live query found for event {event_id}")
+                    return
 
                 await websocket.accept()
+                logger.info(f"WebSocket connection accepted for event {event_id}")
                 
                 try:
-                    # Get notifications generator
                     notifications = await self.db.get_live_notifications(live_id)
-                    
-                    # Process notifications
-                    async for notification in notifications:
-                        if notification:
-                            await websocket.send(json.dumps(notification))
+                    while True:
+                        try:
+                            if not websocket.connected:
+                                break
+                                
+                            notification = await notifications.__anext__()
+                            if notification:
+                                await websocket.send(json.dumps(notification))
+                                
+                        except StopAsyncIteration:
+                            break
                             
                 except Exception as e:
-                    self.logging.error(f"WebSocket error: {str(e)}")
+                    logger.error(f"WebSocket error: {str(e)}", exc_info=True)
                 finally:
-                    # Cleanup
                     try:
                         await self.db.kill_live_query(live_id)
-                        await self.redis_handler.get_connection().delete(f"live_query:{event_id}")
+                        await redis.delete(f"live_query:{event_id}")
+                        logger.info(f"Cleaned up resources for event {event_id}")
                     except Exception as e:
-                        self.logging.error(f"Cleanup error: {str(e)}")
+                        logger.error(f"Cleanup error: {str(e)}", exc_info=True)
                         
             except Exception as e:
-                self.logging.error(f"Live updates error: {str(e)}")
-
-        logging.info("Printing Application Routes...")
-        logging.info(self.url_map)
-
-        logging.info("Retrieving Secret...")
-        await self.get_shared_secret()
+                logger.error(f"Live updates error: {str(e)}", exc_info=True)
 
     async def get_shared_secret(self):
-        """"""
-        conn = self.redis_handler.get_connection()
-        self.config["SECRET_KEY"] = await conn.get("SECRET_KEY")
-
-        # Then Initialize JWT
-        self.jwt = JWTManager(self)
-
-    def run(self):
-        """Custom Run Method."""
-        super(EventsMicroService, self).run(
-            host="0.0.0.0", 
-            port=5510
-        )
+        """Get JWT secret from Redis"""
+        try:
+            redis = await get_redis()
+            secret = await redis.get("SECRET_KEY")
+            if not secret:
+                raise ValueError("JWT secret not found in Redis")
+                
+            self.config["SECRET_KEY"] = secret
+            self.jwt = JWTManager(self)
+            logger.info("JWT secret retrieved and manager initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
+            raise
 
 
 

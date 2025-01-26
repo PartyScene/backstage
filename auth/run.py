@@ -1,3 +1,3 @@
 from src import AuthMicroService
 
-AuthMicroService(__name__).run()
+app = AuthMicroService(__name__)

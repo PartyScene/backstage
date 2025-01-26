@@ -98,19 +98,19 @@ services:
   - name: update-event-status
     paths:
     - ~/events/[a-zA-Z0-9]+/status
-    strip_path: false
+    strip_path: true
     methods:
     - PATCH
   - name: start-event-live-updates
     paths:
     - ~/events/[a-zA-Z0-9]+/live
-    strip_path: false
+    strip_path: true
     methods:
     - GET
   - name: stop-event-live-updates
     paths:
     - ~/events/[a-zA-Z0-9]+/live
-    strip_path: false
+    strip_path: true
     methods:
     - DELETE
 
@@ -126,11 +126,11 @@ services:
   name: fetch-user-service
   port: 5510
   protocol: http
-  path: /users
+  path: /
   routes:
   - name: fetch-user-information
     paths:
-    - ~/users/[a-zA-Z0-9]
+    - ~/users/[a-zA-Z0-9]+
     strip_path: false
     methods:
     - GET
@@ -149,7 +149,7 @@ services:
     - DELETE
 
 - host: microservices.users
-  name: create-user-relationship-service
+  name: users-relationship-service
   port: 5510
   protocol: http
   path: /friends
@@ -157,8 +157,15 @@ services:
   - name: create-user-relationship
     paths:
     - /users/friends
+    strip_path: true
     methods:
     - POST
+  - name: find-direct-connections
+    paths:
+    - /users/friends
+    strip_path: true
+    methods:
+    - GET
 
 - host: microservices.users
   name: find-user-connections-service
@@ -169,59 +176,24 @@ services:
   - name: find-user-connections
     paths:
     - /users/friends/connections
-    methods:
-    - GET
-
-- host: microservices.users
-  name: find-direct-connections-service
-  port: 5510
-  protocol: http
-  path: /friends
-  routes:
-  - name: find-direct-connections
-    paths:
-    - /users/friends
-    methods:
-    - GET
-
-- host: microservices.users
-  name: fetch-logged-user-service
-  port: 5510
-  protocol: http
-  path: /me
-  routes:
-  - name: fetch-logged-user
-    paths:
-    - /users/me
     strip_path: true
     methods:
     - GET
 
 - host: microservices.users
-  name: delete-logged-user-service
+  name: logged-user-service
   port: 5510
   protocol: http
-  path: /me
+  path: /user
   routes:
-  - name: delete-logged-user
+  - name: logged-user-routes
     paths:
-    - /users/me
+    - /user
     strip_path: true
     methods:
-    - DELETE
-
-- host: microservices.users
-  name: edit-logged-user-service
-  port: 5510
-  protocol: http
-  path: /me
-  routes:
-  - name: edit-logged-user
-    paths:
-    - /users/me
-    strip_path: true
-    methods:
+    - GET 
     - PATCH
+    - DELETE
 
 - host: microservices.users
   name: profile-upload-service
@@ -252,6 +224,7 @@ services:
   - name: start-scene
     paths:
     - ~/scenes/[a-zA-Z0-9]
+    strip_path: true
     methods:
     - POST
 
@@ -264,7 +237,7 @@ services:
   - name: fetch-scene
     paths:
     - ~/scenes/[a-zA-Z0-9]
-    strip_path: false
+    strip_path: true
     methods:
     - GET
 
@@ -278,7 +251,7 @@ services:
 
 
 - host: microservices.posts
-  name: create-post-service
+  name: posts-service
   port: 5510
   protocol: http
   path: /
@@ -286,15 +259,10 @@ services:
   - name: create-new-post
     paths:
     - /posts/
+    strip_path: true
     methods:
     - POST
-
-- host: microservices.posts
-  name: fetch-post-service
-  port: 5510
-  protocol: http
-  path: /
-  routes:
+    
   - name: fetch-post
     paths:
     - /posts/

@@ -1,3 +1,5 @@
 from src import LiveStreamMicroservice
 
-LiveStreamMicroservice(__name__).run()
+app = LiveStreamMicroservice(__name__)
+
+app.run()

@@ -2,7 +2,7 @@ import datetime
 import random
 import json
 import asyncio
-from typing import AsyncGenerator, Dict, Any, Tuple
+from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
 
 from dataclasses import dataclass
@@ -11,18 +11,20 @@ from quart import make_response, render_template, current_app as app, request, j
 from quart_schema import validate_request, DataSource
 
 from ..connectors import EventsDB
-from ..schema import Events
 from classful import route, QuartClassful
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 class BaseView(QuartClassful):
-    app = app
 
     def __init__(self):
         self.db: EventsDB = app.db
         self.redis = app.redis_handler.get_connection()
+        self.logger = logger
 
     async def _store_live_query(self, event_id: str, live_id: str):
         """Store live query ID in Redis"""
@@ -41,11 +43,16 @@ class BaseView(QuartClassful):
 
     @route("/create", methods=["POST"])
     @jwt_required
-    @validate_request(Events)
-    async def create_event(self, event: Events):
+    async def create_event(self):
         """Create an event"""
-        result = await self.db.create(event)
-        return result, 201
+        try:
+            data = await request.get_json()  # Get raw JSON data
+            # You can add your own validation here if needed
+            result = await self.db.create_event(data)  # Pass the raw data to the database method
+            return result, 201
+        except Exception as e:
+            self.logger.error(f"Error creating event: {str(e)}", exc_info=True)
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
     
     @route("/events/all", methods=["GET"])
     @jwt_required
@@ -80,7 +87,12 @@ class BaseView(QuartClassful):
             
             # Verify user has permission to update this event
             event = await self.db.fetch(event_id)
-            if not event or event['host']['id'] != user_id:
+            if not event:
+                self.logger.warning(f"Event not found: {event_id}")
+                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+            
+            if event['host']['id'] != user_id:
+                self.logger.warning(f"Unauthorized access attempt to event {event_id} by user {user_id}")
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
             
             result = await self.db.update_event_status(
@@ -88,8 +100,10 @@ class BaseView(QuartClassful):
                 status=data['status'],
                 metadata=data.get('metadata')
             )
+            self.logger.info(f"Successfully updated status for event {event_id}")
             return result, HTTPStatus.OK
         except Exception as e:
+            self.logger.error(f"Error updating event status for {event_id}: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/<event_id>/live", methods=["GET"])
@@ -101,15 +115,19 @@ class BaseView(QuartClassful):
             
             # Verify user has access to this event
             event = await self.db.fetch(event_id)
-            if not event or (
-                event['host']['id'] != user_id and 
-                user_id not in [a['id'] for a in event.get('attendees', [])]
-            ):
+            if not event:
+                self.logger.warning(f"Event not found: {event_id}")
+                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+
+            if (event['host']['id'] != user_id and 
+                user_id not in [a['id'] for a in event.get('attendees', [])]):
+                self.logger.warning(f"Unauthorized live updates access attempt for event {event_id} by user {user_id}")
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
 
             # Check if live query already exists
             existing_live_id = await self._get_live_query(event_id)
             if existing_live_id:
+                self.logger.info(f"Returning existing live query for event {event_id}")
                 return {"live_query_id": existing_live_id}, HTTPStatus.OK
 
             # Start the live query and get its ID
@@ -118,10 +136,11 @@ class BaseView(QuartClassful):
             # Store in Redis
             await self._store_live_query(event_id, live_id)
             
+            self.logger.info(f"Started new live query for event {event_id}")
             return {"live_query_id": live_id}, HTTPStatus.OK
 
         except Exception as e:
-            app.logging.error(f"Failed to start live query: {str(e)}")
+            self.logger.error(f"Failed to start live query for event {event_id}: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/<event_id>/live", methods=["DELETE"])
@@ -133,7 +152,12 @@ class BaseView(QuartClassful):
             
             # Verify user has access to this event
             event = await self.db.fetch(event_id)
-            if not event or event['host']['id'] != user_id:
+            if not event:
+                self.logger.warning(f"Event not found: {event_id}")
+                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+
+            if event['host']['id'] != user_id:
+                self.logger.warning(f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}")
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
 
             # Get live query ID from Redis
@@ -141,10 +165,12 @@ class BaseView(QuartClassful):
             if live_id:
                 await self.db.kill_live_query(live_id)
                 await self._remove_live_query(event_id)
+                self.logger.info(f"Successfully stopped live updates for event {event_id}")
                 return {"message": "Live updates stopped"}, HTTPStatus.OK
             
+            self.logger.info(f"No live updates running for event {event_id}")
             return {"message": "No live updates running"}, HTTPStatus.OK
 
         except Exception as e:
-            app.logging.error(f"Failed to stop live query: {str(e)}")
+            self.logger.error(f"Failed to stop live query for event {event_id}: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR

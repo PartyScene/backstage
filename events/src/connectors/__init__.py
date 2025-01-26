@@ -1,5 +1,5 @@
 from quart import Quart
-from surrealdb import AsyncSurrealDB
+from surrealdb import AsyncSurrealDB, Table, GeometryPoint, RecordID
 import os
 from typing import Optional, List, Dict, Any
 from ..schema import Events
@@ -10,35 +10,47 @@ class EventsDB:
     def __init__(self, db: AsyncSurrealDB) -> None:
         self.db = db
 
-    async def create(self, data: Events) -> Dict[str, Any]:
+    async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
+        logging.info(f"Creating event: {data}")
         try:
+            data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
+            data['host'] = RecordID('users', data['host'])
+            data['price'] = float(data["price"])
+
+            # result = await self.db.create(Table("events"), data)
             result = await self.db.query(
-                """
-                CREATE events CONTENT {
-                    title: $title,
-                    description: $description,
-                    coordinates: type::point($coordinates),
-                    is_private: $is_private,
-                    timestamp: $timestamp,
-                    price: $price,
-                    host: type::thing('users', $host),
-                    created_at: time::now(),
-                    status: 'scheduled',
-                    attendees_count: 0
-                };
-                """,
-                {
-                    "title": data.title,
-                    "description": data.description,
-                    "coordinates": data.coordinates,
-                    "is_private": data.is_private,
-                    "timestamp": data.timestamp,
-                    "price": data.price,
-                    "host": data.host
-                }
-            )
-            return result[0]["result"][0]
+                        """
+                        INSERT INTO events {
+                            "title": $title,
+                            "description": $description,
+                            "coordinates": $coordinates,
+                            "is_private": $is_private,
+                            "price": $price,
+                            "categories": $categories,
+                            "tags": $tags,
+                            "host": $host,
+                            "status": 'scheduled'
+                        } RETURN VALUE id;
+                        """,
+                        {
+                            "title": data.get("title"),
+                            "description": data.get("description"),
+                            "coordinates": data.get("coordinates"),
+                            "is_private": data.get("is_private", False),
+                            "price": data['price'],
+                            "categories": data.get("categories", []),
+                            "tags": data.get("tags", []),
+                            "host": data.get("host")
+                        }
+                    )
+            logging.info(f"Query result: {result}")
+            if result[0]['status'] == 'ERR':
+                raise Exception(f"Error creating event: {result[0]['result']}")  # Handle error case
+            
+            created_event = result[0]["result"][0]
+            logging.info(f"Created event: {created_event}")
+            return created_event
         except Exception as e:
             logging.error(f"Failed to create event: {str(e)}")
             raise
