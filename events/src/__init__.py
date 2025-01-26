@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pprint import pprint
 import uvloop
@@ -118,17 +119,17 @@ class EventsMicroService(Quart):
                 logger.info(f"WebSocket connection accepted for event {event_id}")
                 
                 try:
-                    notifications = await self.db.get_live_notifications(live_id)
+                    notifications : asyncio.Queue = await self.db.get_live_notifications(live_id)
                     while True:
                         try:
                             if not websocket.connected:
                                 break
                                 
-                            notification = await notifications.__anext__()
+                            notification = await notifications.get()
                             if notification:
                                 await websocket.send(json.dumps(notification))
                                 
-                        except StopAsyncIteration:
+                        except asyncio.QueueEmpty:
                             break
                             
                 except Exception as e:

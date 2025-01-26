@@ -1,19 +1,43 @@
-# Use a Python image with relevant dependencies
-FROM python:alpine3.19
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy service-specific requirements to cache dependencies
-COPY requirements.txt /app/requirements.txt
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install service-specific dependencies during build
-RUN pip install -r /app/requirements.txt
 
-# Copy the rest of the application files
-COPY . .
-
-# Set PYTHONPATH to include shared libraries
+# Set PYTHONPATH for shared libraries
 ENV PYTHONPATH="/app/shared:${PYTHONPATH}"
 
-# Install shared dependencies at runtime
-CMD pip install -r /app/shared/requirements.txt && python run.py
+# Install shared requirements first
+# RUN pip install --no-cache-dir -r shared/requirements.txt
+
+# Copy and install service requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV QUART_APP=run:app
+ENV QUART_ENV=production
+
+# Run as non-root user
+RUN useradd -m myuser
+USER myuser
+
+# Expose port
+EXPOSE 5510
+
+# Run with Hypercorn
+CMD ["hypercorn", "run:app", \
+     "--bind", "0.0.0.0:5510", \
+     "--workers", "1", \
+     "--access-logfile", "-", \
+     "--error-logfile", "-", \
+     "--worker-class", "asyncio", \
+     "--keep-alive", "120"]

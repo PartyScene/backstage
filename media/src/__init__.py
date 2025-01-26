@@ -4,75 +4,106 @@ import secrets
 from quart_schema import QuartSchema
 import uvloop
 import logging
+from logging.config import dictConfig
 
 from quart import Quart, app, request
 from .connectors import init_db
 from .views.base import BaseView
 
-from quart_redis import RedisHandler
+from quart_redis import RedisHandler, get_redis
 from quart_jwt_extended import JWTManager
 
+# Configure logging
+dictConfig({
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'default': {
+            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        }
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'default',
+            'level': 'INFO',
+        }
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    }
+})
+
+logger = logging.getLogger(__name__)
 
 class MediaMicroService(Quart):
 
     def __init__(self, *args):
         super(MediaMicroService, self).__init__(*args)
         QuartSchema(self)
-
-        logging.basicConfig(
-            level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
         self.db = None  # Asyncpg pool
-        self.logging = logging
         self.config.from_pyfile("/app/shared/settings.py")
         self.redis_handler = RedisHandler(self)
         
-        # These functions are preprocessing methods.
-
-        @self.before_serving
-        async def before_serv():
-            await self.services()
+        # These functions are preprocessing methods
     
         @self.before_request
         async def log_request():
-            logging.info("Retrieving Secret...")
+            logger.info("Retrieving Secret...")
             await self.get_shared_secret()
-            self.logging.info(f"Request received: {request.method} {request.path}")
-            self.logging.debug(f"Request headers: {request.headers}")
-            self.logging.debug(f"Request body: {await request.get_json()}")
-            self.logging.debug(f"Request files: {await request.files}")
-            self.logging.debug(f"KEYS: {self.config['SECRET_KEY']}")
+            logger.info(f"Request received: {request.method} {request.path}")
+            logger.debug(f"Request headers: {request.headers}")
+            logger.debug(f"Request body: {await request.get_json()}")
+            logger.debug(f"Request files: {await request.files}")
+            logger.debug(f"KEYS: {self.config['SECRET_KEY']}")
 
 
         @self.after_request
         async def log_response(response):
-            self.logging.info(f"Response sent: {response.status_code}")
+            logger.info(f"Response sent: {response.status_code}")
             return response
 
-    async def services(self):
-        """Initialize db before app is being served."""
-        logging.info("Initializing SurrealDB Database Connection...")
-        self.db = await init_db(self)
+        @self.before_serving
+        async def services():
+            """Initialize services before app is being served."""
+            logger.info("Initializing services...")
+            await self.init_services()
 
-        logging.info("Registering Application Routes.")
-        BaseView.register(self)
-
-        logging.info("Printing Application Routes...")
-        logging.info(self.url_map)
-
-        logging.info("Retrieving Secret...")
-        await self.get_shared_secret()
+    async def init_services(self):
+        """Initialize all required services"""
+        try:
+            # Initialize DB
+            logger.info("Initializing SurrealDB connection...")
+            self.db = await init_db(self)
+            
+            # Get JWT secret
+            logger.info("Retrieving JWT secret...")
+            await self.get_shared_secret()
+            
+            # Register routes
+            logger.info("Registering application routes...")
+            BaseView.register(self)
+            
+            logger.info("All services initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
+            raise
 
     async def get_shared_secret(self):
-        """"""
-        conn = self.redis_handler.get_connection()
-        self.config["SECRET_KEY"] = await conn.get("SECRET_KEY")
-
-        # Then Initialize JWT
-        self.jwt = JWTManager(self)
-
-    def run(self):
-        """Custom Run Method."""
-        super(MediaMicroService, self).run(
-            host="0.0.0.0", port=5510, loop=uvloop.new_event_loop()
-        )
+        """Get JWT secret from Redis"""
+        try:
+            redis = await get_redis()
+            secret = await redis.get("SECRET_KEY")
+            if not secret:
+                raise ValueError("JWT secret not found in Redis")
+                
+            self.config["SECRET_KEY"] = secret
+            self.config["JWT_SECRET_KEY"] = self.config["SECRET_KEY"]
+            self.jwt = JWTManager(self)
+            logger.info("JWT secret retrieved and manager initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
+            raise

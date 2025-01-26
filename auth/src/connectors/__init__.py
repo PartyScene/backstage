@@ -7,8 +7,8 @@ class AuthDB:
 
     async def _login(self, data) -> dict:
         result = await self.db.query(
-            "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password);",
-            {"password": data['password']},
+            "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password) AND email = $email;",
+            {"password": data['password'], "email": data["email"]},
         )
         assert result[0]["result"][0]["email"] == data['email']
         return result[0]["result"][0]

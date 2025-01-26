@@ -93,24 +93,24 @@ services:
   name: event-live-updates-service
   port: 5510
   protocol: http
-  path: /events
+  path: /
   routes:
   - name: update-event-status
     paths:
-    - ~/events/[a-zA-Z0-9]+/status
-    strip_path: true
+    - ~/events/[a-zA-Z0-9]+/status$
+    strip_path: false
     methods:
     - PATCH
   - name: start-event-live-updates
     paths:
     - ~/events/[a-zA-Z0-9]+/live
-    strip_path: true
+    strip_path: false
     methods:
     - GET
   - name: stop-event-live-updates
     paths:
     - ~/events/[a-zA-Z0-9]+/live
-    strip_path: true
+    strip_path: false
     methods:
     - DELETE
 

@@ -91,7 +91,7 @@ class BaseView(QuartClassful):
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
             
-            if event['host']['id'] != user_id:
+            if event['host'].id != user_id:
                 self.logger.warning(f"Unauthorized access attempt to event {event_id} by user {user_id}")
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
             
@@ -119,7 +119,7 @@ class BaseView(QuartClassful):
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
-            if (event['host']['id'] != user_id and 
+            if (event['host'].id != user_id and 
                 user_id not in [a['id'] for a in event.get('attendees', [])]):
                 self.logger.warning(f"Unauthorized live updates access attempt for event {event_id} by user {user_id}")
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
@@ -156,7 +156,7 @@ class BaseView(QuartClassful):
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
-            if event['host']['id'] != user_id:
+            if event['host'].id != user_id:
                 self.logger.warning(f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}")
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
 

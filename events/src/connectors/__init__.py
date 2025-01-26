@@ -110,6 +110,7 @@ class EventsDB:
                 """
                 SELECT
                     id,
+                    host,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
                 FROM events;
@@ -134,7 +135,8 @@ class EventsDB:
         try:
             result = await self.db.query(
                 """
-                SELECT 
+                SELECT
+                    host,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
                 FROM type::thing('events', $event_id);
@@ -157,7 +159,8 @@ class EventsDB:
             FROM type::thing('events', $event_id)
             FETCH host, attendees;
             """
-            return await self.db.query(query, {"event_id": event_id})
+            result = await self.db.query(query, {"event_id": event_id})
+            return result[0]['result'][0]
         except Exception as e:
             logging.error(f"Failed to create live query: {str(e)}")
             raise
