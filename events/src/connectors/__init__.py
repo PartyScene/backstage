@@ -77,7 +77,7 @@ class EventsDB:
             result = await self.db.query(
                 """
                 SELECT 
-                    *,
+                    id,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count,
                     geo::distance(coordinates, type::point($coordinates)) as distance
@@ -108,12 +108,12 @@ class EventsDB:
         try:
             result = await self.db.query(
                 """
-                SELECT 
-                    *,
+                SELECT
+                    id,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
-                FROM events
-                ORDER BY created_at DESC;
+                FROM events;
+                -- ORDER BY created_at DESC;
                 """
             )
             return result[0]["result"]
@@ -135,7 +135,6 @@ class EventsDB:
             result = await self.db.query(
                 """
                 SELECT 
-                    *,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
                 FROM type::thing('events', $event_id);
