@@ -1,55 +1,48 @@
 from quart import Quart
 import os
-from surrealdb import AsyncSurrealDB
+from surrealdb import AsyncSurrealDB, Table
 
 
 class MediaDB:
+    
     def __init__(self, db) -> None:
         self.db: AsyncSurrealDB = db
-        # self.media = self.Media(db)
 
-    class Media:
-        def __init__(self, db) -> None:
-            self.db: AsyncSurrealDB = db
+    async def fetch_media(self, email) -> dict:
+        """
+        Fetch media record from the database by its unique ID.
+        """
+        result = await self.db.query(
+            "SELECT *, ->attends->events[where true] AS scenes FROM users WHERE email = $email;",
+            {"email": email},
+        )
+        return result[0]["result"][0]
 
-        async def fetch(self, email) -> dict:
-            """
-            Fetch one user
-            """
-            result = await self.db.query(
-                "SELECT *, ->attends->events[where true] AS scenes FROM users WHERE email = $email;",
-                {"email": email},
-            )
-            return result[0]["result"][0]
+    async def delete_media(self, email):
+        """This db function deletes a user.
 
-        async def delete(self, email):
-            """This db function deletes a user.
+        Args:
+            email (__string_): The user email to delete.
+        """
+        result = await self.db.query(
+            "DELETE users WHERE email = $email;", {"email": email}
+        )
+        return result[0]["result"][0]
 
-            Args:
-                email (__string_): The user email to delete.
-            """
-            result = await self.db.query(
-                "DELETE users WHERE email = $email;", {"email": email}
-            )
-            return result[0]["result"][0]
+    async def upload_media(self, data: dict) -> dict:
+        """Uploads media metadata to the database
 
-        async def update(self, data: dict):
-            """This function updates a specific field
-
-            Args:
-                data (dict): _description_
-            """
-            record_id = (
-                await self.db.query(
-                    "SELECT id FROM users WHERE email = $email;",
-                    {"email": data["email"]},
-                )
-            )[0]["result"][0]["id"]
-            result = await self.db.query(
-                "UPDATE $record_id MERGE $content",
-                {"content": data, "record_id": record_id},
-            )
-            return result
+        Args:
+            data (dict): _description_
+        """
+        query = """
+        CREATE media SET type = $type, url = $url, creator = type::thing('users', $creator), event = type::thing('events', $event);
+        """
+        result = await self.db.query(query, data)
+        if result[0]['status'] == 'ERR':
+            raise Exception(f"Error creating media record: {result[0]['result']}")  # Handle error case
+        
+        return result[0]["result"][0]
 
 
 async def init_db(app: Quart) -> MediaDB:

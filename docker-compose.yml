@@ -87,6 +87,8 @@ services:
         ipv4_address: 10.0.0.11
     env_file:
       - .env
+    environment:
+      - MEDIA_MICROSERVICE_URL=http://microservices.media:5510/upload
     volumes:
       - ./shared:/app/shared/
     depends_on:

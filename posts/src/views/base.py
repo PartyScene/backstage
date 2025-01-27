@@ -7,13 +7,15 @@ from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from ..connectors import PostsDB
+from ..lib import MediaClient
 from classful import route, QuartClassful
 
 
 class BaseView(QuartClassful):
-    app = app
-    route_base = "/posts/"
-    MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
+
+    def __init__(self) -> None:
+    __media_client = MediaClient()
+    __posts_handler : PostsDB = app.db
 
     @route("/<id>", methods=["GET", "POST"])
     async def index(self, id: str):
@@ -23,6 +25,7 @@ class BaseView(QuartClassful):
     @route("/", methods=["POST"])
     @jwt_required
     async def create_post(self):
+        
         """
         Asynchronously creates a new post with the provided content, and optionally uploads media files.
         This function handles the following:
@@ -47,25 +50,12 @@ class BaseView(QuartClassful):
         media_links = []
 
         for file_key in files:
-            file: FileStorage = files[file_key]
-            if file:
-            # Send the file to the media microservice
-                async with httpx.AsyncClient() as client:
-                    try:
-                        media_response = await client.post(
-                            self.MEDIA_MICROSERVICE_URL,
-                            files={"file": (file.filename, file.stream, file.content_type)},
-                            headers = request.headers
-                        )
-                        media_response.raise_for_status()
-                    except httpx.HTTPError as e:
-                        return jsonify({"error": f"Media upload failed: {str(e)}"}), 500
-                    
-                    # Extract media URL from the Media Microservice response
-                    media_data = media_response.json()
-                    if not media_data:
-                        return jsonify({"error": "Invalid response from Media Microservice"}), 500
-                media_links.append(media_data.get('url'))
-                
-        await self.app.db.create_post(content=data['content'], media_links=media_links, author = get_jwt_identity())
+            try:
+                media_links.append(
+                    await self.__media_client.upload_media(request, files[file_key])
+                )
+            except:
+                return jsonify({"error": "Error uploading files"}), 400
+                ...
+        await self.__posts_handler.create_post(content=data['content'], media_links=media_links, author = get_jwt_identity())
         return jsonify("Created"), 201

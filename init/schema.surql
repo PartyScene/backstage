@@ -54,18 +54,14 @@ DEFINE FIELD OVERWRITE type ON media TYPE "image" | "video" | "vod";
 DEFINE FIELD OVERWRITE url ON media TYPE string 
   ASSERT string::len($value) > 0;
   
-DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object;
+DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object
+  VALUE $value OR {};
 
 -- Metadata fields
 DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime 
   VALUE $value OR time::now();
 
-DEFINE FIELD OVERWRITE description ON media TYPE string
-  VALUE $value OR NULL;
-
-DEFINE FIELD OVERWRITE tags ON media TYPE array<string>
-  VALUE $value OR [];
-
 -- Relations
 DEFINE FIELD OVERWRITE creator ON media TYPE record<users>;
-DEFINE FIELD OVERWRITE event ON media TYPE record<events>;
+DEFINE FIELD OVERWRITE event ON media TYPE record<events>
+  VALUE $value OR NULL;
