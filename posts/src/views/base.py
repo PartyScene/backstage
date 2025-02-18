@@ -7,15 +7,15 @@ from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from ..connectors import PostsDB
-from ..lib import MediaClient
+from lib import MediaClient
 from classful import route, QuartClassful
 
 
 class BaseView(QuartClassful):
 
     def __init__(self) -> None:
-    __media_client = MediaClient()
-    __posts_handler : PostsDB = app.db
+        self.__media_client = MediaClient()
+        self.__posts_handler : PostsDB = app.db
 
     @route("/<id>", methods=["GET", "POST"])
     async def index(self, id: str):

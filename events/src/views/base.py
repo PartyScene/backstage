@@ -58,7 +58,18 @@ class BaseView(QuartClassful):
     @jwt_required
     async def fetch_all(self):
         """This endpoints returns all the events"""
-        result = await self.db.fetch_all()
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        result = await self.db.fetch_all(page, limit)
+        return result, 200
+
+    @route("/events/public", methods=["GET"])
+    @jwt_required
+    async def fetch_all(self):
+        """This endpoints returns all the public events"""
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        result = await self.db.fetch_all_public(page, limit)
         return result, 200
     
     @route("/events/location", methods=["GET"])
@@ -173,4 +184,32 @@ class BaseView(QuartClassful):
 
         except Exception as e:
             self.logger.error(f"Failed to stop live query for event {event_id}: {str(e)}", exc_info=True)
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    @route("/events/<event_id>/buy_ticket", methods=["POST"])
+    @jwt_required
+    async def buy_ticket(self, event_id: str):
+        """Buy a ticket for an event"""
+        try:
+            user_id = get_jwt_identity()
+            
+            # Verify the event exists
+            event = await self.db.fetch(event_id)
+            if not event:
+                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+            
+            # Create the attendance relationship
+            attendance_data = {
+                "user": user_id,
+                "event": event_id,
+                "status": "confirmed"  # You can add more fields as needed
+            }
+            
+            # Assuming you have a method to create the relationship in your database
+            await self.db.create_attendance(attendance_data)
+            
+            return {"message": "Ticket purchased successfully"}, HTTPStatus.CREATED
+        
+        except Exception as e:
+            self.logger.error(f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR

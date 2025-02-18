@@ -1,11 +1,11 @@
 from quart import Quart
-from surrealdb import AsyncSurrealDB
+from surrealdb import AsyncSurreal
 import os
 from typing import Optional
 
 
 class Users:
-    def __init__(self, db: AsyncSurrealDB) -> None:
+    def __init__(self, db: AsyncSurreal) -> None:
         self.db = db
 
     async def find_connections_at_degree(self, origin_id: str, max_degree: int = 3):
@@ -147,7 +147,7 @@ class Users:
 
 
 class UsersDB:
-    def __init__(self, db: AsyncSurrealDB) -> None:
+    def __init__(self, db: AsyncSurreal) -> None:
         self.db = db
         self.users = Users(db)
 
@@ -162,12 +162,14 @@ async def init_db(app: Quart) -> UsersDB:
     Returns:
         UsersDB: Database connection manager
     """
-    db = AsyncSurrealDB(app.config["SURREAL_URI"])
+    db = AsyncSurreal(app.config["SURREAL_URI"])
     await db.connect()
 
-    await db.sign_in(
-        username=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
+    await db.signin(
+        {
+            "username": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD")
+        }
     )
     await db.use("partyscene", "partyscene")
     return UsersDB(db)

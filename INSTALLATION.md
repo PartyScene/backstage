@@ -6,141 +6,234 @@
 - **Required Tools**:
   - [Docker Desktop](https://www.docker.com/products/docker-desktop) (or Docker CLI for Linux)
   - Python 3.9+ with `pip`
-  - GCP SDK (for media storage)
+  - [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+  - Git
 
-## Environment Setup
+## System Requirements
 
-### 1. Clone the Repository
+- **Minimum Specs**:
+  - 8GB RAM
+  - 20GB Disk Space
+  - Multi-core CPU
+- **Recommended**:
+  - 16GB RAM
+  - SSD Storage
+  - Modern Multi-core Processor
+
+## Project Overview
+
+PartyScene is a microservices-based social platform with the following key services:
+- Users Service
+- Media Service
+- Authentication Service
+- Events Service
+- Posts Service
+- Livestream Service
+
+## Microservices Architecture
+
+### Core Technologies
+- **Backend**: Python (Quart Framework)
+- **Database**: SurrealDB v2.0
+- **Caching**: Redis
+- **API Gateway**: Kong
+- **Containerization**: Docker
+- **Cloud Storage**: Google Cloud Storage
+
+## Prerequisites Installation
+
+### 1. Install Dependencies
+
+#### On Windows
+```powershell
+# Install Docker Desktop
+winget install Docker.DockerDesktop
+
+# Install Python 3.9+
+winget install Python.Python.3.9
+
+# Install Google Cloud SDK
+winget install Google.CloudSDK
+```
+
+#### On macOS
+```bash
+# Install Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Docker Desktop
+brew install --cask docker
+
+# Install Python 3.9+
+brew install python@3.9
+
+# Install Google Cloud SDK
+brew install google-cloud-sdk
+```
+
+#### On Linux (Ubuntu/Debian)
+```bash
+# Install Docker
+sudo apt-get update
+sudo apt-get install docker.io docker-compose
+
+# Install Python 3.9+
+sudo apt-get install python3.9 python3-pip
+
+# Install Google Cloud SDK
+sudo apt-get install apt-transport-https ca-certificates gnupg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+sudo apt-get update && sudo apt-get install google-cloud-sdk
+```
+
+### 2. Configure Google Cloud
+
+```bash
+# Initialize Google Cloud
+gcloud init
+
+# Authenticate and set up application default credentials
+gcloud auth application-default login
+
+# Set your project
+gcloud config set project partyscene-441317
+```
+
+## Repository Setup
+
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/scenes/partyscene.git
 cd partyscene
 ```
 
-### 2. Configure Environment Variables
+### 2. Environment Configuration
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory with the following template:
 
 ```env
+# SurrealDB Credentials
 DB_USER=root
 DB_PASSWORD=your_secure_password
-GCP_PROJECT_ID=your_project_id
-GCP_BUCKET_NAME=your_bucket_name
+
+# Google Cloud Configuration
+GCP_PROJECT_ID=partyscene-441317
+GCP_BUCKET_NAME=partyscene-scenes
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/credentials.json
+
+# JWT and Security
+JWT_SECRET_KEY=your_very_secure_random_key
 ```
 
 ### 3. Create Docker Network
 
 ```bash
 docker network create \
-  --subnet=172.20.0.0/16 \
+  --subnet=11.0.0.0/24 \
   partyscene_network
 ```
 
 ### 4. Build and Start Services
 
 ```bash
-docker-compose up --build
+# Build all services
+docker-compose build
+
+# Start all services
+docker-compose up -d
 ```
 
-This will start:
-- Users Service (Port 5500)
-- Media Service (Port 5510)
-- SurrealDB (Port 8000)
-- Redis
+## Service Endpoints
 
-The services are configured to use:
-- SurrealDB at `ws://surrealdb:8000`
-- Redis at `redis://redis`
-as defined in shared settings.
+| Service         | Port | Description                      |
+|----------------|------|----------------------------------|
+| Users          | 5500 | User management                 |
+| Media          | 5510 | Media upload and management      |
+| Auth           | 5520 | Authentication                  |
+| Events         | 5530 | Event management                |
+| Posts          | 5540 | Social posts                    |
+| Livestream     | 5550 | Livestreaming                   |
+| Kong Gateway   | 8002 | API Gateway                     |
+| SurrealDB      | 8000 | Database                        |
 
-### 5. Verify Installation
+## Verification Steps
 
-1. **Check SurrealDB**:
+1. **Check Service Health**:
 ```bash
+# Verify each microservice
+curl http://localhost:5500/health
+curl http://localhost:5510/health
+curl http://localhost:5520/health
+curl http://localhost:5530/health
+curl http://localhost:5540/health
+curl http://localhost:5550/health
+```
+
+2. **Database Connection**:
+```bash
+# Test SurrealDB connection
 curl http://localhost:8000/sql -d "INFO FOR DB;"
 ```
 
-2. **Test Users Service**:
-```bash
-curl http://localhost:5500/health
-```
-
-3. **Test Media Service**:
-```bash
-curl http://localhost:5510/health
-```
-
-## Service Architecture
-
-### Users Service
-- **Port**: 5500
-- **Features**:
-  - User Authentication
-  - Profile Management
-  - Friend Connections (up to 6 degrees)
-  - Event Attendance
-
-### Media Service
-- **Port**: 5510
-- **Features**:
-  - File Upload to GCS
-  - Media Management
-  - Livestream Integration
-
-### Database Schema
-Key tables and relationships:
-- `users`: Core user data
-- `events`: Event information
-- `friends`: Bidirectional friend relationships
-- `attends`: User-Event relationships
-- `media`: Media storage and metadata
-
-## Development Guidelines
-
-### Adding New Features
-1. Update schema in `init/schema.surql`
-2. Add corresponding endpoints in service
-3. Update tests
-4. Document in README
+## Development Workflow
 
 ### Running Tests
 ```bash
-# Run user service tests
+# Run tests for a specific service
 cd users && python -m pytest
-
-# Run media service tests
 cd media && python -m pytest
+```
+
+### Adding New Features
+1. Update schema in `init/schema.surql`
+2. Add corresponding service endpoints
+3. Write comprehensive tests
+4. Update documentation
+
+## Monitoring & Maintenance
+
+```bash
+# View real-time logs
+docker-compose logs -f
+
+# Check service status
+docker-compose ps
+
+# Monitor specific service
+docker logs microservices.users
 ```
 
 ## Troubleshooting
 
-### Common Issues
+- Ensure all environment variables are correctly set
+- Check Docker network connectivity
+- Verify Google Cloud credentials
+- Validate SurrealDB connection parameters
 
-1. **SurrealDB Connection Issues**:
-   - Verify WebSocket connection at `ws://localhost:8000/rpc`
-   - Check credentials in `.env`
+## Security Recommendations
 
-2. **Friend Connections Not Working**:
-   - Ensure bidirectional relationships in `friends` table
-   - Check degree parameter (1-6 range)
+- Never commit `.env` files to version control
+- Rotate credentials periodically
+- Use strong, unique passwords
+- Limit network access
+- Keep all dependencies updated
 
-3. **Media Upload Failures**:
-   - Verify GCP credentials
-   - Check bucket permissions
+## Performance Tuning
 
-## Monitoring & Maintenance
+- Adjust Docker resource limits in `docker-compose.yml`
+- Monitor service performance using Docker stats
+- Scale services horizontally as needed
 
-- Use `docker-compose logs -f` for real-time logs
-- Monitor SurrealDB with `surreal status`
-- Check GCP Cloud Console for media storage metrics
+## Contributing
 
-## Security Notes
+Please read `CONTRIBUTING.md` for details on our code of conduct and the process for submitting pull requests.
 
-- Keep `.env` files secure and never commit them
-- Regularly rotate JWT secrets
-- Monitor GCP IAM permissions
-- Keep SurrealDB credentials secure
+## License
+
+This project is licensed under the MIT License - see the `LICENSE` file for details.
 
 ---
 
-For more details, check service-specific README files in each directory.
+**Note**: This installation guide is for development setup. Production deployments require additional security and scalability configurations.

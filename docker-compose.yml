@@ -1,17 +1,17 @@
 networks:
-  backstage_network:
+  partyscene_network:
     external: true
     ipam:
       config:
-        - subnet: 10.0.0.0/24
+        - subnet: 11.0.0.0/24
 
 services:
   microservices.auth:
     container_name: microservices.auth
     build: auth
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.14
+      partyscene_network:
+        ipv4_address: 11.0.0.14
     restart: always
     depends_on:
       - redis
@@ -28,8 +28,8 @@ services:
     build: media
     restart: always
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.15
+      partyscene_network:
+        ipv4_address: 11.0.0.15
     depends_on:
       - microservices.auth
     env_file:
@@ -48,8 +48,8 @@ services:
     build: livestream
     restart: always
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.13
+      partyscene_network:
+        ipv4_address: 11.0.0.13
     env_file:
       - .env
     environment:
@@ -69,8 +69,8 @@ services:
     build: events
     restart: always
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.12
+      partyscene_network:
+        ipv4_address: 11.0.0.12
     env_file:
       - .env
     volumes:
@@ -83,8 +83,8 @@ services:
     build: posts
     restart: always
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.11
+      partyscene_network:
+        ipv4_address: 11.0.0.11
     env_file:
       - .env
     environment:
@@ -99,8 +99,8 @@ services:
     build: users
     restart: always
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.10
+      partyscene_network:
+        ipv4_address: 11.0.0.10
     env_file:
       - .env
     volumes:
@@ -111,8 +111,8 @@ services:
   kong:
     image: kong/kong-gateway:3.8.0.0
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.19
+      partyscene_network:
+        ipv4_address: 11.0.0.19
     ports:
       - 8002:8000
       - 8443:8443
@@ -138,8 +138,8 @@ services:
     volumes:
       - ./data/redis:/data
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.18
+      partyscene_network:
+        ipv4_address: 11.0.0.18
 
   surrealdb:
     env_file:
@@ -157,7 +157,7 @@ services:
     ports:
       - 8000:8000
     networks:
-      backstage_network:
-        ipv4_address: 10.0.0.20
+      partyscene_network:
+        ipv4_address: 11.0.0.20
     volumes:
       - ./data/database.db:/database.db

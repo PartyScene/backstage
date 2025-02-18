@@ -1,12 +1,12 @@
 from quart import Quart
 import os
-from surrealdb import AsyncSurrealDB, Table
+from surrealdb import AsyncSurreal, Table
 
 
 class MediaDB:
     
     def __init__(self, db) -> None:
-        self.db: AsyncSurrealDB = db
+        self.db: AsyncSurreal = db
 
     async def fetch_media(self, email) -> dict:
         """
@@ -46,10 +46,13 @@ class MediaDB:
 
 
 async def init_db(app: Quart) -> MediaDB:
-    db = AsyncSurrealDB(app.config["SURREAL_URI"])
+    db = AsyncSurreal(app.config["SURREAL_URI"])
     await db.connect()
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
-    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
+    await db.signin({
+            "username": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD")
+        })
     await db.use("partyscene", "partyscene")
     return MediaDB(db)

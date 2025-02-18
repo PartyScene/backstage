@@ -1,5 +1,5 @@
 from quart import Quart
-from surrealdb import AsyncSurrealDB, Table, GeometryPoint, RecordID
+from surrealdb import AsyncSurreal, Table, Geometry, RecordID
 import os
 from typing import Optional, List, Dict, Any
 from ..schema import Events
@@ -7,14 +7,14 @@ import logging
 
 
 class EventsDB:
-    def __init__(self, db: AsyncSurrealDB) -> None:
+    def __init__(self, db: AsyncSurreal) -> None:
         self.db = db
 
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
         logging.info(f"Creating event: {data}")
         try:
-            data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
+            data['coordinates'] = Geometry(data['coordinates'][0], data["coordinates"][1])
             data['host'] = RecordID('users', data['host'])
             data['price'] = float(data["price"])
 
@@ -77,7 +77,7 @@ class EventsDB:
             result = await self.db.query(
                 """
                 SELECT 
-                    id,
+                    *,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count,
                     geo::distance(coordinates, type::point($coordinates)) as distance
@@ -98,7 +98,11 @@ class EventsDB:
             logging.error(f"Failed to fetch events by distance: {str(e)}")
             raise
 
-    async def fetch_all(self) -> List[Dict[str, Any]]:
+    async def fetch_all(
+        self, 
+        page: int = 1, 
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
         """
         Fetch all events with their attendees
         
@@ -108,18 +112,52 @@ class EventsDB:
         try:
             result = await self.db.query(
                 """
-                SELECT
-                    id,
-                    host,
-                    <-attends<-users AS attendees,
-                    array::len(<-attends<-users) as attendees_count
-                FROM events;
-                -- ORDER BY created_at DESC;
-                """
+                     SELECT *,
+                        <-attends<-users AS attendees,
+                        array::len(<-attends<-users) as attendees_count
+                    FROM events ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
+                """,
+                {
+                    "page": page,
+                    "limit": limit
+                }
             )
             return result[0]["result"]
         except Exception as e:
             logging.error(f"Failed to fetch all events: {str(e)}")
+            raise
+    
+    async def fetch_all_public(
+        self, 
+        page: int = 1, 
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch all public events
+        
+        Args:
+            page (int, optional): The page number. Defaults to 1.
+            limit (int, optional): The number of events per page. Defaults to 20.
+        
+        Returns:
+            List[Dict[str, Any]]: List of public events
+        """
+        try:
+            result = await self.db.query(
+                """
+                     SELECT *,
+                        <-attends<-users AS attendees,
+                        array::len(<-attends<-users) as attendees_count
+                    FROM events WHERE is_private = false ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
+                """,
+                {
+                    "page": page,
+                    "limit": limit
+                }
+            )
+            return result[0]["result"]
+        except Exception as e:
+            logging.error(f"Failed to fetch all public events: {str(e)}")
             raise
 
     async def fetch(self, event_id: str) -> Optional[Dict[str, Any]]:
@@ -136,7 +174,7 @@ class EventsDB:
             result = await self.db.query(
                 """
                 SELECT
-                    host,
+                    *,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
                 FROM type::thing('events', $event_id);
@@ -222,16 +260,37 @@ class EventsDB:
             logging.error(f"Failed to update event status: {str(e)}")
             raise
 
+    async def create_attendance(self, data: Dict[str, Any]):
+        """Create an attendance relationship between user and event"""
+        try:
+            query = """
+            LET $user = type::thing('users', $user_id);
+            LET $event = type::thing('events', $event_id);
+            RELATE $user -> attends -> $event SET status = $status;
+            """
+            result = await self.db.query(query, {
+                "user_id": data["user"],
+                "event_id": data["event"],
+                "status": data["status"]
+            })
+            if result[0]['status'] == 'ERR':
+                raise Exception(f"Error creating attendance: {result[0]['result']}")  # Handle error case
+        except Exception as e:
+            logging.error(f"Failed to create attendance: {str(e)}")
+            raise
+
 
 async def init_db(app: Quart) -> EventsDB:
     """Initialize database connection"""
     try:
-        db = AsyncSurrealDB(app.config["SURREAL_URI"])
+        db = AsyncSurreal(app.config["SURREAL_URI"])
         await db.connect()
         
-        await db.sign_in(
-            username=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD")
+        await db.signin(
+            {
+            "username": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD")
+        }
         )
         await db.use("partyscene", "partyscene")
         return EventsDB(db)

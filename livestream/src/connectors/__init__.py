@@ -1,10 +1,10 @@
 from quart import Quart
-from surrealdb import AsyncSurrealDB
+from surrealdb import AsyncSurreal
 import os
 
 class LiveStreamDB:
     def __init__(self, db) -> None:
-        self.db: AsyncSurrealDB = db
+        self.db: AsyncSurreal = db
     
     async def fetch_livestream(self, event_id: str):
         """
@@ -68,10 +68,13 @@ class LiveStreamDB:
 
 
 async def init_db(app: Quart) -> LiveStreamDB:
-    db = AsyncSurrealDB(app.config["SURREAL_URI"])
+    db = AsyncSurreal(app.config["SURREAL_URI"])
     await db.connect()
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
-    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
+    await db.signin({
+            "username": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD")
+        })
     await db.use("partyscene", "partyscene")
     return LiveStreamDB(db)

@@ -1,11 +1,11 @@
 from quart import Quart
 import os
-from surrealdb import AsyncSurrealDB
+from surrealdb import AsyncSurreal
 
 
 class PostsDB:
     def __init__(self, db) -> None:
-        self.db: AsyncSurrealDB = db
+        self.db: AsyncSurreal = db
 
     async def create_post(self, content, media_links, author) -> dict:
         """
@@ -47,10 +47,13 @@ class PostsDB:
         return result[0]["result"][0]
 
 async def init_db(app: Quart) -> PostsDB:
-    db = AsyncSurrealDB(app.config["SURREAL_URI"])
+    db = AsyncSurreal(app.config["SURREAL_URI"])
     await db.connect()
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
-    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
+    await db.signin({
+            "username": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD")
+        })
     await db.use("partyscene", "partyscene")
     return PostsDB(db)

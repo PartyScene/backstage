@@ -5,6 +5,8 @@ from http import HTTPStatus
 from typing import Tuple, Dict, Any
 
 from classful import route, QuartClassful
+from lib import MediaClient
+
 from ..connectors import UsersDB
 
 
@@ -12,6 +14,7 @@ class BaseView(QuartClassful):
     def __init__(self):
         self.MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
         self.db: UsersDB = app.db
+        self.__media_client = MediaClient()
 
     @route("/user", methods=["GET"])
     @jwt_required
@@ -124,7 +127,15 @@ class BaseView(QuartClassful):
     @route("/upload", methods=["POST"])
     @jwt_required
     async def upload_media(self):
-        """Upload user media (avatar, etc.)"""
+        """
+        Uploads a file to the Media Microservice and updates the user's avatar URL.
+        
+        Request Body:
+            file (file): The file to upload
+        
+        Returns:
+            dict: Updated user data
+        """
         try:
             user_id = get_jwt_identity()
             data = {'id': user_id}  # Changed from 'user' to 'id' to match update method
@@ -134,25 +145,25 @@ class BaseView(QuartClassful):
                 return {"error": "No file provided"}, HTTPStatus.BAD_REQUEST
 
             # Relay file to the Media Microservice
-            async with httpx.AsyncClient() as client:
-                try:
-                    media_response = await client.post(
-                        self.MEDIA_MICROSERVICE_URL,
-                        files={"file": (file.filename, file.stream, file.content_type)},
-                        headers=request.headers
-                    )
-                    media_response.raise_for_status()
-                except httpx.HTTPError as e:
-                    return {"error": f"Media upload failed: {str(e)}"}, HTTPStatus.BAD_GATEWAY
+            media_data = await self.__media_client.upload_media(request, file)
+            # async with httpx.AsyncClient() as client:
+            #     try:
+            #         media_response = await client.post(
+            #             self.MEDIA_MICROSERVICE_URL,
+            #             files={"file": (file.filename, file.stream, file.content_type)},
+            #             headers=request.headers
+            #         )
+            #         media_response.raise_for_status()
+            #     except httpx.HTTPError as e:
+            #         return {"error": f"Media upload failed: {str(e)}"}, HTTPStatus.BAD_GATEWAY
 
                 # Extract media URL from the Media Microservice response
-                media_data = media_response.json()
-                media_link = media_data.get('url')
-                if not media_link:
-                    return {"error": "Invalid response from Media Microservice"}, HTTPStatus.BAD_GATEWAY
-                
-                data['avatar_url'] = media_link
-                response = await self.db.users.update(data)
-                return response, HTTPStatus.OK
+            media_link = media_data.get('url')
+            if not media_link:
+                return {"error": "Invalid response from Media Microservice"}, HTTPStatus.BAD_GATEWAY
+            
+            data['avatar_url'] = media_link
+            response = await self.db.users.update(data)
+            return response, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR

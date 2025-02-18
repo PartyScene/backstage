@@ -1,9 +1,9 @@
-from surrealdb import AsyncSurrealDB
+from surrealdb import AsyncSurreal
 import os
 
 class AuthDB:
     def __init__(self, db) -> None:
-        self.db: AsyncSurrealDB = db
+        self.db: AsyncSurreal = db
 
     async def _login(self, data) -> dict:
         result = await self.db.query(
@@ -39,12 +39,15 @@ class AuthDB:
 async def init_db(app) -> AuthDB:
     SCHEMA_FILE = os.getenv("SCHEMA_FILE")
 
-    db = AsyncSurrealDB(app.config["SURREAL_URI"])
+    db = AsyncSurreal(app.config["SURREAL_URI"])
     await db.connect()
     
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
-    await db.sign_in(username=DB_USER, password=DB_PASSWORD)
+    await db.signin({
+            "username": os.getenv("DB_USER"),
+            "password": os.getenv("DB_PASSWORD")
+        })
     await db.use("partyscene", "partyscene")
     
         # Load and execute schema file
