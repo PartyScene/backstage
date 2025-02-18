@@ -6,6 +6,24 @@ from surrealdb import AsyncSurreal
 class PostsDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
+    
+    async def fetch_event_posts(self, id: str) -> dict:
+        """
+        Asynchronously fetches all posts associated with the given event.
+            Args:
+                id (str): The ID of the event.
+            Returns:
+                dict: A dictionary containing the result of the post fetch query.
+        """
+        query = """
+                SELECT *
+                FROM posts
+                WHERE ->event = type::thing('events', $id);
+            """
+        params = {"id": id}
+        result = await self.db.query(query, params)
+        return result[0]["result"]
+
 
     async def create_post(self, content, media_links, author) -> dict:
         """

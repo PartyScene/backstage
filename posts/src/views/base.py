@@ -17,15 +17,14 @@ class BaseView(QuartClassful):
         self.__media_client = MediaClient()
         self.__posts_handler : PostsDB = app.db
 
-    @route("/<id>", methods=["GET", "POST"])
-    async def index(self, id: str):
-        """Fetch a POST"""
-        ...
-    
-    @route("/", methods=["POST"])
+    @route("/event/<id>", methods=["GET", "POST"])
+    async def fetch_event_posts(self, id: str):
+        """Fetch all posts for a given event"""
+        return jsonify(await self.__posts_handler.fetch_event_posts(id), HTTPStatus.OK)
+
+    @route("/create", methods=["POST"])
     @jwt_required
     async def create_post(self):
-        
         """
         Asynchronously creates a new post with the provided content, and optionally uploads media files.
         This function handles the following:
