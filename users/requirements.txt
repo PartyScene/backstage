@@ -7,3 +7,4 @@ surrealdb
 python-dotenv>=1.0.0
 typing-extensions>=4.7.1
 httpx
+novu-py

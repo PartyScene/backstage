@@ -8,25 +8,21 @@ class MediaDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
 
-    async def fetch_media(self, email) -> dict:
+    async def fetch_media(self, data) -> dict:
         """
         Fetch media record from the database by its unique ID.
         """
-        result = await self.db.query(
-            "SELECT *, ->attends->events[where true] AS scenes FROM users WHERE email = $email;",
-            {"email": email},
-        )
+        result = await self.db.select(RecordID('media', data['id']))
         return result[0]["result"][0]
 
-    async def delete_media(self, email):
-        """This db function deletes a user.
+    async def delete_media(self, data: dict):
+        """This function deletes media data.
 
         Args:
-            email (__string_): The user email to delete.
+            data (__dict__): Must contain media ID.
         """
-        result = await self.db.query(
-            "DELETE users WHERE email = $email;", {"email": email}
-        )
+        result = await self.db.delete(RecordID(**data['id']))
+
         return result[0]["result"][0]
 
     async def upload_media(self, data: dict) -> dict:

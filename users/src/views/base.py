@@ -8,13 +8,17 @@ from classful import route, QuartClassful
 from lib import MediaClient
 
 from ..connectors import UsersDB
+from shared.notifications import NotificationManager
+import logging
 
+logger = logging.getLogger(__name__)
 
 class BaseView(QuartClassful):
     def __init__(self):
         self.MEDIA_MICROSERVICE_URL = 'http://microservices.media:5510/upload'
         self.db: UsersDB = app.db
         self.__media_client = MediaClient()
+        self.__notification_manager = NotificationManager()
 
     @route("/user", methods=["GET"])
     @jwt_required
@@ -107,6 +111,27 @@ class BaseView(QuartClassful):
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
+    @route("/friends/connections", methods=["PATCH"])
+    @jwt_required
+    async def update_connection(self) -> Tuple[Dict[str, Any], int]:
+        """
+        Update the connection status between two users
+        
+        Query Parameters:
+            id (str): The ID of the target relationship
+            status (str): The new connection status (either "friend", "unfriend", or "blocked")
+        """
+        try:
+            data = await request.get_json()
+            
+            if 'id' not in data:
+                return {"error": "Target relationship ID is required"}, HTTPStatus.BAD_REQUEST
+                
+            result = await self.db.users.update_friend_relationship(data)
+            return result, HTTPStatus.OK
+        except Exception as e:
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
     @route("/friends", methods=["POST"])
     @jwt_required
     async def create_friendship(self) -> Tuple[Dict[str, Any], int]:
@@ -120,6 +145,11 @@ class BaseView(QuartClassful):
                 return {"error": "Target user ID is required"}, HTTPStatus.BAD_REQUEST
                 
             result = await self.db.users.create_friend_relationship(data)
+            
+            await self.__notification_manager.send_friend_request_notification(
+                sender=result['relationship']['in']['id'],
+                recipient_id=data['target']
+            )
             return result, HTTPStatus.CREATED
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -167,3 +197,27 @@ class BaseView(QuartClassful):
             return response, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+
+    async def create_friend_request(self, sender_id: str, recipient_id: str):
+        """
+        Send a friend request notification
+        """
+        try:
+            # Assuming create_friend_relationship is an existing method in Users connector
+            friend_request = await self.db.users.create_friend_relationship({
+                'origin': sender_id,
+                'target': recipient_id,
+                'status': 'pending'
+            })
+            
+            # Send notification to the recipient
+            self.notification_manager.send_friend_request_notification(
+                sender_id=sender_id, 
+                recipient_id=recipient_id
+            )
+            
+            return friend_request
+        except Exception as e:
+            # Log the error and handle appropriately
+            logger.error(f"Friend request error: {e}")
+            raise

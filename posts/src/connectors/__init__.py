@@ -1,6 +1,6 @@
 from quart import Quart
 import os
-from surrealdb import AsyncSurreal
+from surrealdb import AsyncSurreal, RecordID
 
 
 class PostsDB:
@@ -16,32 +16,84 @@ class PostsDB:
                 dict: A dictionary containing the result of the post fetch query.
         """
         query = """
-                SELECT *
-                FROM posts
-                WHERE ->event = type::thing('events', $id);
+                SELECT ->posts(WHERE event = type::thing('events', $id)
+                FROM users;
             """
         params = {"id": id}
         result = await self.db.query(query, params)
-        return result[0]["result"]
+        return result[0]["result"][0]
 
+    async def create_comment(self, data):
+        """
+        Asynchronously creates a new comment in the database.
+            Args:
+                data (dict): A dictionary containing the comment data.
+            Returns:
+                dict: A dictionary containing the result of the comment creation query.
+        """
+        await self.db.let('users', RecordID('users', data['author']))
+        await self.db.let('media', RecordID('posts', data['post']))
+        query = """
+        RELATE $user -> comments -> $post SET content = $content
+        """
+        params = {
+            "content": data['content']
+        }
+        result = await self.db.query(
+           query, params
+        )
+        return result[0]["result"][0]
+    
+    async def fetch_comments(self, post_id: str) -> dict:
+        """
+        Asynchronously fetches all comments associated with the given post.
+            Args:
+                post_id (str): The ID of the post.
+            Returns:
+                dict: A dictionary containing the result of the comment fetch query.
+        """
+        query = """
+                SELECT ->comments(WHERE out = type::thing('posts', $post_id)
+                FROM users;
+            """
+        params = {"post_id": post_id}
+        result = await self.db.query(query, params)
+        return result[0]["result"][0]
 
-    async def create_post(self, content, media_links, author) -> dict:
+    
+    async def delete_comment(self, data):
+        """
+        Asynchronously deletes a post associated with the given data.
+        Args:
+            data (dict): post data to be deleted, must include SurrealDB ID.
+        Returns:
+            dict: The result of the deletion operation.
+        Raises:
+            Exception: If the deletion operation fails.
+        """
+        
+        result = await self.db.delete(RecordID('comments', data['id']))
+        return result[0]["result"][0]
+
+    async def create_post(self, data, media_links, author) -> dict:
         """
         Asynchronously creates a new post in the database.
             Args:
-                content (str): The content of the post.
+                data (dict): A dictionary containing the post data.
                 media_links (list): A list of media links associated with the post.
                 author (str): The ID of the author creating the post.
             Returns:
                 dict: A dictionary containing the result of the post creation query.
         """
+        await self.db.let('users', RecordID('users', author))
+        await self.db.let('media', [RecordID(media['id']) for media in media_links])
         query = """
-        CREATE post SET content = $content, media_links = $media_links, author = type::thing('users', $author)
+        RELATE $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
         """
         params = {
-            "content": content,
+            "content": data['content'],
             "media_links": media_links,
-            "author": author
+            "event": data['event']
         }
         result = await self.db.query(
            query, params
@@ -52,16 +104,14 @@ class PostsDB:
         """
         Asynchronously deletes a post associated with the given data.
         Args:
-            data (dict): ### post to be deleted.
+            data (dict): post data to be deleted, must include SurrealDB ID.
         Returns:
             dict: The result of the deletion operation.
         Raises:
             Exception: If the deletion operation fails.
         """
         
-        result = await self.db.query(
-           # 
-        )
+        result = await self.db.delete(RecordID('posts', data['id']))
         return result[0]["result"][0]
 
 async def init_db(app: Quart) -> PostsDB:

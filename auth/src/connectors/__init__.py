@@ -13,7 +13,7 @@ class AuthDB:
         assert result[0]["result"][0]["email"] == data['email']
         return result[0]["result"][0]
 
-    async def _create(self, form):
+    async def _create_user(self, form):
         result = await self.db.query(
             "INSERT INTO users (first_name, last_name, email, password) VALUES ($fname, $lname, $email, crypto::bcrypt::generate($pwd))",
             {
@@ -23,7 +23,7 @@ class AuthDB:
                 "pwd": form['password'],
             },
         )
-        return result[0]
+        return result[0]["result"]
         # Assign the variable on the connection
 
 

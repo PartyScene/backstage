@@ -3,6 +3,7 @@ DEFINE TABLE IF NOT EXISTS users schemafull;
 DEFINE FIELD OVERWRITE first_name on TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name on TABLE users TYPE string;
 DEFINE FIELD OVERWRITE avatar_url on TABLE users TYPE string default "";
+DEFINE FIELD OVERWRITE sharedLoc on TABLE users TYPE option<bool> default false;
 DEFINE FIELD OVERWRITE email on TABLE users TYPE string value string::lowercase($value) ASSERT string::is::email($value);
 DEFINE INDEX emailIndex ON TABLE users COLUMNS email UNIQUE;
 DEFINE FIELD OVERWRITE password on TABLE users TYPE string;
@@ -19,9 +20,12 @@ DEFINE FIELD OVERWRITE status on TABLE events TYPE string default 'scheduled';
 DEFINE FIELD OVERWRITE is_private on TABLE events TYPE option<bool> default false;
 DEFINE FIELD OVERWRITE host on TABLE events TYPE record<users>;
 DEFINE FIELD OVERWRITE created_at on TABLE events TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE time on TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE categories on TABLE events TYPE array<string>;
 DEFINE FIELD OVERWRITE tags on TABLE events TYPE array<string>;
-DEFINE FIELD OVERWRITE coordinates on TABLE events TYPE geometry;
+DEFINE FIELD OVERWRITE location on TABLE events FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE location.address on TABLE events TYPE string;
+DEFINE FIELD OVERWRITE location.coordinates on TABLE events TYPE geometry;
 DEFINE FIELD OVERWRITE metadata on TABLE events FLEXIBLE TYPE object DEFAULT {};
 
 -- Let's define a table for livestreams
@@ -34,11 +38,20 @@ DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;
 DEFINE FIELD OVERWRITE event on TABLE livestreams TYPE record<events>;
 
 -- A table for posts
-DEFINE TABLE IF NOT EXISTS posts schemafull;
-DEFINE FIELD OVERWRITE author on TABLE posts TYPE record<users>;
+DEFINE TABLE IF NOT EXISTS posts TYPE RELATION IN users TO media;
+DEFINE FIELD OVERWRITE out ON TABLE posts TYPE record<media>;
+DEFINE FIELD OVERWRITE in ON TABLE posts TYPE record<users>;
 DEFINE FIELD OVERWRITE content on TABLE posts TYPE string;
 DEFINE FIELD OVERWRITE created_at on TABLE posts TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE metadata ON TABLE posts FLEXIBLE TYPE object;
+DEFINE FIELD OVERWRITE event on TABLE posts TYPE record<events>;
+
+-- A table for comments
+DEFINE TABLE IF NOT EXISTS comments TYPE RELATION IN users TO posts;
+DEFINE FIELD OVERWRITE out ON TABLE posts TYPE record<posts>;
+DEFINE FIELD OVERWRITE in ON TABLE posts TYPE record<users>;
+DEFINE FIELD OVERWRITE content on TABLE posts TYPE string;
+DEFINE FIELD OVERWRITE created_at on TABLE posts TYPE datetime DEFAULT time::now();
 
 -- A table for friends
 DEFINE TABLE IF NOT EXISTS friends TYPE RELATION IN users to users;

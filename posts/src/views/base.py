@@ -56,5 +56,23 @@ class BaseView(QuartClassful):
             except:
                 return jsonify({"error": "Error uploading files"}), 400
                 ...
-        await self.__posts_handler.create_post(content=data['content'], media_links=media_links, author = get_jwt_identity())
+        await self.__posts_handler.create_post(data=data, media_links=media_links, author = get_jwt_identity())
         return jsonify("Created"), 201
+
+    @route("/delete", methods=["POST"])
+    @jwt_required
+    async def delete_post(self):
+        """
+        Asynchronously deletes a post with the provided ID.
+        This function handles the following:
+        - Extracts form data from the request to get the ID of the post to be deleted.
+        - Validates that the ID is provided.
+        - Deletes the post with the given ID from the database.
+        - Returns a success message as a JSON response.
+        Returns:
+            Response: A JSON response containing a success message and a status code of 200 if successful.
+                      If ID is missing, returns a JSON error message and a status code of 400.
+        """
+        data = await request.get_json()
+        await self.__posts_handler.delete_post(data)
+        return jsonify("Deleted"), 200

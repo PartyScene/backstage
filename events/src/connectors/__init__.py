@@ -7,8 +7,8 @@ import logging
 
 
 class EventsDB:
-    def __init__(self, db: AsyncSurreal) -> None:
-        self.db = db
+    def __init__(self, db) -> None:
+        self.db : AsyncSurreal = db
 
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
@@ -54,7 +54,19 @@ class EventsDB:
         except Exception as e:
             logging.error(f"Failed to create event: {str(e)}")
             raise
-
+    
+    async def delete_event(self, event_id: str):
+        """
+        Delete an event by ID
+        
+        Args:
+            event_id (str): The ID of the event to delete
+        """
+        result = await self.db.delete(RecordID('events', event_id))
+        if result[0]['status'] == 'ERR':
+            raise Exception(f"Error deleting event: {result[0]['result']}")  # Handle error case
+        return result[0]["result"][0]
+    
     async def fetch_by_distance(
         self, 
         coordinates: tuple[float, float], 
@@ -205,7 +217,7 @@ class EventsDB:
 
     async def get_live_notifications(self, live_id: str):
         """Get notifications for a live query"""
-        return self.db.live_notifications(live_id)
+        return self.db.subscribe_live(live_id)
 
     async def kill_live_query(self, live_id: str):
         """Kill a live query"""
@@ -263,14 +275,12 @@ class EventsDB:
     async def create_attendance(self, data: Dict[str, Any]):
         """Create an attendance relationship between user and event"""
         try:
+            await self.db.let('user', RecordID('users', data['user']))
+            await self.db.let('event', RecordID('events', data['event']))
             query = """
-            LET $user = type::thing('users', $user_id);
-            LET $event = type::thing('events', $event_id);
             RELATE $user -> attends -> $event SET status = $status;
             """
             result = await self.db.query(query, {
-                "user_id": data["user"],
-                "event_id": data["event"],
                 "status": data["status"]
             })
             if result[0]['status'] == 'ERR':
@@ -290,7 +300,7 @@ async def init_db(app: Quart) -> EventsDB:
             {
             "username": os.getenv("DB_USER"),
             "password": os.getenv("DB_PASSWORD")
-        }
+            }
         )
         await db.use("partyscene", "partyscene")
         return EventsDB(db)

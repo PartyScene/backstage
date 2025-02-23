@@ -54,6 +54,17 @@ class BaseView(QuartClassful):
             self.logger.error(f"Error creating event: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
     
+    @route("/events/<event_id>/delete", methods=["DELETE"])
+    @jwt_required
+    async def delete_event(self, event_id: str):
+        """Delete an event"""
+        try:
+            await self.db.delete_event(event_id)
+            return {"message": "Event deleted successfully"}, 200
+        except Exception as e:
+            self.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
+            return {"error": str(e)}, 500
+    
     @route("/events/all", methods=["GET"])
     @jwt_required
     async def fetch_all(self):

@@ -7,3 +7,4 @@ quart-redis
 quart-jwt-extended
 typing-extensions
 httpx
+novu-py
