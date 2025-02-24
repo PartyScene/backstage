@@ -69,7 +69,8 @@ class Users:
                 RELATE $origin -> friends -> $target SET
                     status = $status,
                     created_at = time::now()
-            ) ELSE $existing;
+            ) ELSE $existing
+            END;
             
             RETURN {
                 relationship: $new,

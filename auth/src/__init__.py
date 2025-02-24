@@ -1,10 +1,12 @@
 import logging
+import os
 import secrets
+
 from logging.config import dictConfig
 
+from redis.asyncio import Redis
 from quart_schema import QuartSchema
 from quart import Quart, request
-from quart_redis import RedisHandler, get_redis
 from quart_jwt_extended import JWTManager
 
 from .connectors import init_db
@@ -40,11 +42,19 @@ class AuthMicroService(Quart):
         QuartSchema(self)
 
         self.db = None
-        self.config.from_pyfile("/app/shared/settings.py")
-        
-        # Initialize Redis with decode_responses=True
+        self.redis = None
+
+        if len(ENV_VAR := os.getenv("CONFIG_FILE", "/app/shared/settings.py")) > 0:
+            self.config.from_pyfile(ENV_VAR)
+
+        # Set dev environment settings
+        if os.getenv("ENVIRONMENT") == "dev":
+            self.config["DEBUG"] = True
+            self.config["TESTING"] = True
+            self.DEBUG = True
+        logger.info(self.config)
+
         self.config["REDIS_DECODE_RESPONSES"] = True
-        self.redis_handler = RedisHandler(self)
 
         @self.before_request
         async def log_request():
@@ -63,20 +73,36 @@ class AuthMicroService(Quart):
             logger.info("Initializing services...")
             await self.init_services()
 
+    async def init_redis(self):
+        """Initialize Redis connection"""
+        try:
+            logger.info("Initializing Redis connection...")
+            self.redis = Redis.from_url(
+                self.config["REDIS_URI"],
+                decode_responses=True,
+                encoding="utf-8"
+            )
+            # Test connection
+            await self.redis.ping()
+            logger.info("Redis connection established")
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis: {str(e)}")
+            raise
+
     async def init_services(self):
         """Initialize all required services"""
         try:
+            # Initialize Redis
+            await self.init_redis()
+            
             # Initialize DB
-            logger.info("Initializing SurrealDB connection...")
-            self.db = await init_db(self)
+            if not self.DEBUG:
+                logger.info("Initializing SurrealDB connection...")
+                self.db = await init_db(self)
             
             # Set JWT secret
             logger.info("Setting JWT secret...")
             await self.set_shared_secret()
-            
-            # Register routes
-            logger.info("Registering application routes...")
-            BaseView.register(self)
             
             logger.info("All services initialized successfully")
             
@@ -87,10 +113,8 @@ class AuthMicroService(Quart):
     async def set_shared_secret(self):
         """Set JWT secret in Redis if it doesn't exist"""
         try:
-            redis = await get_redis()
-            
             # Check if secret already exists
-            existing_secret = await redis.get("SECRET_KEY")
+            existing_secret = await self.redis.get("SECRET_KEY")
             if existing_secret:
                 logger.info("Using existing JWT secret from Redis")
                 self.config["SECRET_KEY"] = existing_secret
@@ -98,7 +122,7 @@ class AuthMicroService(Quart):
                 # Generate and set new secret
                 logger.info("Generating new JWT secret")
                 self.config["SECRET_KEY"] = secrets.token_hex(32)
-                await redis.set("SECRET_KEY", self.config["SECRET_KEY"])
+                await self.redis.set("SECRET_KEY", self.config["SECRET_KEY"])
                 logger.info("New JWT secret stored in Redis")
             
             # Set JWT secret key and initialize manager
@@ -110,8 +134,13 @@ class AuthMicroService(Quart):
             logger.error(f"Failed to handle JWT secret: {str(e)}", exc_info=True)
             raise
 
-    def run(self):
-        """Custom Run Method."""
-        super(AuthMicroService, self).run(
-            host="0.0.0.0", port=5510
-        )
+    async def cleanup(self):
+        """Cleanup connections on shutdown"""
+        if self.redis:
+            await self.redis.close()
+            logger.info("Redis connection closed")
+
+    def register_routes(self):
+        # Register routes
+        logger.info("Registering application routes...")
+        BaseView.register(self)

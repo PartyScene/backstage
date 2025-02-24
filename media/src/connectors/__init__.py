@@ -13,7 +13,8 @@ class MediaDB:
         Fetch media record from the database by its unique ID.
         """
         result = await self.db.select(RecordID('media', data['id']))
-        return result[0]["result"][0]
+        result['id'] = result['id'].id
+        return result
 
     async def delete_media(self, data: dict):
         """This function deletes media data.

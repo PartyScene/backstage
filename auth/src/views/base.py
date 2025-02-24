@@ -4,7 +4,7 @@ from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
 from quart_schema import validate_request, validate_response, document_querystring
 
-from src.connectors import AuthDB
+from ..connectors import AuthDB
 
 import sys
 sys.path.append('/app/shared')
@@ -52,8 +52,8 @@ class BaseView(QuartClassful):
             access_token = create_access_token(identity=result['id'].id, expires_delta=timedelta(days=1))
             await self.__notification_manager.recent_login_notification(
                 user_id=result['id'].id,)
-            return dict(access_token=access_token), 200
-
+            return jsonify(access_token=access_token, token_type = "bearer")
+    
     
     async def __n_register_user(self, user_data: dict):
         """

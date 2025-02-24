@@ -1,3 +1,35 @@
+# Test stage
+FROM python:3.11-slim as test
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set PYTHONPATH for shared libraries
+ENV PYTHONPATH="/app/shared:${PYTHONPATH}"
+
+# Copy requirements files
+COPY requirements.txt .
+COPY ../requirements-test.txt .
+COPY ../shared/requirements.txt ./shared-requirements.txt
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-test.txt \
+    && pip install --no-cache-dir -r shared-requirements.txt
+
+# Copy application code and tests
+COPY . .
+COPY ../tests ./tests
+COPY ../shared ./shared
+
+# Run tests
+RUN python -m pytest tests/auth/test_authentication.py -v
+
+# Main stage
 FROM python:3.11-slim
 
 WORKDIR /app
