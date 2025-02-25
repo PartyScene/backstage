@@ -36,7 +36,15 @@ class NotificationManager:
                 'firstName': first_name,
                 'lastName': last_name
             }
-            
+            if (exists := await self.novu_client.subscribers.search_async(request={'email': email})):
+                if len(exists.result.data) >= 1:
+                    print("Found a Novu Subscriber with %s " % email)
+                    print(exists.result)
+                    return await self.novu_client.subscribers.update_async(
+                        subscriber_id=exists.result.data[0].subscriber_id,
+                        update_subscriber_request_dto={
+                            "email": subscriber_data['email']}
+                    )
             return await self.novu_client.subscribers.create_async(
                 create_subscriber_request_dto = subscriber_data
             )

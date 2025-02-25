@@ -6,24 +6,31 @@ class AuthDB:
         self.db: AsyncSurreal = db
 
     async def _login(self, data) -> dict:
-        result = await self.db.query(
-            "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password) AND email = $email;",
-            {"password": data['password'], "email": data["email"]},
-        )
-        assert result[0]["result"][0]["email"] == data['email']
-        return result[0]["result"][0]
+        try:
+            result = (await self.db.query(
+                "SELECT * FROM users WHERE crypto::bcrypt::compare(password, $password) AND email = $email;",
+                {"password": data['password'], "email": data["email"]},
+            ))[0]
+        except IndexError:
+            return False
+        print(result)
+        assert result["email"] == data['email']
+        result['id'] = result['id'].id
+        return result
 
     async def _create_user(self, form):
-        result = await self.db.query(
-            "INSERT INTO users (first_name, last_name, email, password) VALUES ($fname, $lname, $email, crypto::bcrypt::generate($pwd))",
+        result = (await self.db.query(
+            "INSERT INTO users (first_name, last_name, email, password) VALUES ($fname, $lname, $email, crypto::bcrypt::generate($pwd)) RETURN AFTER;",
             {
                 "fname": form['first_name'],
                 "lname": form['last_name'],
                 "email": form['email'],
                 "pwd": form['password'],
             },
-        )
-        return result[0]["result"]
+        ))[0]
+
+        result['id'] = result['id'].id
+        return result
         # Assign the variable on the connection
 
 

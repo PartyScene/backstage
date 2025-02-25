@@ -32,8 +32,10 @@ fake = Faker()
 
 @pytest.fixture(scope='session')
 def event_loop():
-    """Create an event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
+    """Create an instance of the default event loop for each test case."""
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
@@ -53,9 +55,8 @@ async def async_client(auth_app):
         yield test_client
 
 @pytest_asyncio.fixture(scope='session')
-async def surreal(test_config):
+async def surreal(event_loop, test_config):
     db = AsyncSurreal(test_config['SURREAL_URI'])
-    print(test_config)
     await db.connect(test_config['SURREAL_URI'])
 
     await db.signin(
@@ -74,6 +75,7 @@ async def auth_app(surreal, test_config):
     os.environ["CONFIG_FILE"] = ""
     os.environ["ENVIRONMENT"] = "dev"
     os.environ["USE_FAKE_REDIS"] = "true"
+    os.environ["NOVU_SECRET_KEY"] = "26fa1c421a0fb45df02a0d63adffaa1e"
 
     from auth.run import app
     from auth.src.connectors import AuthDB  # Add this import
@@ -111,6 +113,7 @@ async def auth_app(surreal, test_config):
 
     # Register routes before testing
     async with app.app_context():
+        await app.set_shared_secret()
         app.register_routes()
     
     return app
