@@ -1,29 +1,38 @@
 import pytest
 from faker import Faker
+from test_events_base import TestEventsBase
 
 fake = Faker()
 
 @pytest.mark.asyncio
-class TestEventUpdates:
-    async def test_update_event_details(self, client, created_event):
+class TestEventUpdates(TestEventsBase):
+    async def test_update_event_details(self, event_client, mock_event, bearer):
         """Test updating an existing event."""
         update_data = {
             "title": fake.catch_phrase(),
             "description": fake.text()
         }
-        
-        response = await client.patch(f"/events/{created_event['id']}", json=update_data)
+        response = await self.create_event(event_client, mock_event, bearer)
+        data = await response.get_json()
+        assert response.status_code == 201
+
+        response = await self.update_event(event_client, data['id'], update_data, bearer)
         assert response.status_code == 200
         
-        updated_event = response.json()
+        updated_event = await response.get_json()
         assert updated_event['title'] == update_data['title']
 
-    async def test_update_event_status(self, client, created_event):
+    async def test_update_event_status(self, event_client, mock_event, bearer):
         """Test changing event status."""
         status_update = {"status": "cancelled"}
         
-        response = await client.patch(f"/events/{created_event['id']}/status", json=status_update)
+        response = await self.create_event(event_client, mock_event, bearer)
+        data = await response.get_json()
+        assert response.status_code == 201
+        
+        response = await self.update_event_status(event_client, data['id'], status_update, bearer)
+        # response = await client.patch(f"/events/{data['id']}/status", json=status_update)
         assert response.status_code == 200
         
-        updated_event = response.json()
+        updated_event = await response.get_json()
         assert updated_event['status'] == 'cancelled'

@@ -30,15 +30,6 @@ logger = logging.getLogger(__name__)
 fake = Faker()
 
 @pytest.fixture(scope='session')
-def event_loop():
-    """Create an instance of the default event loop for each test case."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    loop.close()
-
-@pytest.fixture(scope='session')
 def test_config():
     return {
         "REDIS_URI" : "redis://default:dQOWKWUYVSTqS7GB2Fjio4SIb05wOMwN@redis-14077.c16.us-east-1-2.ec2.redns.redis-cloud.com",
@@ -47,29 +38,18 @@ def test_config():
         "SURREAL_USER" : "root"
         }
 
-@pytest_asyncio.fixture
-async def client(event_app):
-    """Create an async HTTP client for testing."""
-    async with event_app.test_client() as test_client:
-        yield test_client
-
-@pytest_asyncio.fixture(scope='session')
-async def surreal(event_loop, test_config):
-    db = AsyncSurreal(test_config['SURREAL_URI'])
-    await db.connect(test_config['SURREAL_URI'])
-
-    await db.signin(
-        {
-            'username': test_config['SURREAL_USER'],
-            'password': test_config['SURREAL_PASS']
+@pytest.fixture(scope="session")
+def mock_event():
+    return {
+        "title": fake.catch_phrase(),
+        "description": fake.text(),
+        "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
+        "coordinates": fake.latlng(),
+        "location": fake.address(),
+        "price": fake.numerify('##'),
         }
-    )
-    await db.use('partyscene', 'partyscene')
-    yield db
-    await db.close()
-
-
-@pytest_asyncio.fixture(scope='session', autouse=True)
+        
+@pytest_asyncio.fixture(scope='session', loop_scope="session")  # Changed from module to session
 async def event_app(surreal, test_config):
     os.environ["CONFIG_FILE"] = ""
     os.environ["ENVIRONMENT"] = "dev"
@@ -77,9 +57,7 @@ async def event_app(surreal, test_config):
     os.environ["NOVU_SECRET_KEY"] = "26fa1c421a0fb45df02a0d63adffaa1e"
 
     from events.run import app
-    from events.src.connectors import EventsDB  # Add this import
-    
-    # Set config
+    from events.src.connectors import EventsDB
     app.config.update(
         TESTING=True,
         SECRET_KEY="test-secret-key",
@@ -106,53 +84,54 @@ async def event_app(surreal, test_config):
             pass
 
     app.redis = AsyncRedisMock()
-    
-    # Wrap the surreal connection with AuthDB
     app.db = EventsDB(surreal)
+    try:
+        async with app.app_context():
+            await app.get_shared_secret()
+            app.register_routes()
+            yield app
+    except Exception as e:
+        logger.error(f"Error in event_app fixture: {str(e)}")
+        raise
+    finally:
+        # Clean up resources
+        if hasattr(app, 'redis'):
+            await app.redis.close()
 
-    # Register routes before testing
-    async with app.app_context():
-        await app.get_shared_secret()
-        app.register_routes()
-    
-    return app
+@pytest_asyncio.fixture(scope='session')  # Changed from module to session
+async def event_client(event_app, bearer):
+    """Create an async HTTP client for testing."""
+    try:
+        async with event_app.test_client() as test_client:
+            test_client.headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {bearer}"
+            }
+            async with event_app.app_context():
+                yield test_client
+    except Exception as e:
+        logger.error(f"Error in event_client fixture: {str(e)}")
+        raise
+# @pytest.fixture(scope='session')
+# def environment(request):
+#     """Determine the test environment."""
+#     return request.config.getoption("--env")
 
-@pytest_asyncio.fixture
-async def client(event_app):
-    """Create a test client"""
-    async with event_app.test_client() as test_client:
-        yield test_client
+# @pytest.fixture(scope='session')
+# def performance_profiling(request):
+#     """Enable performance profiling if requested."""
+#     return request.config.getoption("--profile")
 
-@pytest.fixture
-def mock_user():
-    return {
-        "first_name": "John",
-        "last_name": "Doe",
-        "email": "oyinxdoubx@gmail.com",
-        "password": "testingTs",
-        "confirm_password": "testingTs"
-    }
-
-@pytest.fixture(scope='session')
-def environment(request):
-    """Determine the test environment."""
-    return request.config.getoption("--env")
-
-@pytest.fixture(scope='session')
-def performance_profiling(request):
-    """Enable performance profiling if requested."""
-    return request.config.getoption("--profile")
-
-def pytest_configure(config):
-    """Configure pytest markers and settings."""
-    config.addinivalue_line(
-        "markers",
-        "integration: mark test as an integration test"
-    )
-    config.addinivalue_line(
-        "markers",
-        "performance: mark test for performance evaluation"
-    )
+# def pytest_configure(config):
+#     """Configure pytest markers and settings."""
+#     config.addinivalue_line(
+#         "markers",
+#         "integration: mark test as an integration test"
+#     )
+#     config.addinivalue_line(
+#         "markers",
+#         "performance: mark test for performance evaluation"
+#     )
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Custom terminal summary for test run."""

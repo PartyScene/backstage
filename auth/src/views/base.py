@@ -29,7 +29,7 @@ class BaseView(QuartClassful):
         self.__notification_manager = NotificationManager()
         
     @route("/register", methods=["POST"])
-    async def _register(self):
+    async def register_user(self):
         """
         Register a user account into the SurrealDB.
         """
@@ -44,7 +44,7 @@ class BaseView(QuartClassful):
         return jsonify(created_acct), HTTPStatus.CREATED
 
     @route("/login", methods=["POST"])
-    async def login_user(self):
+    async def _login_user(self):
         """
         Verify user credentials
         """

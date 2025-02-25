@@ -1,8 +1,8 @@
 from quart import Quart
-from surrealdb import AsyncSurreal, Table, Geometry, RecordID
+from surrealdb import AsyncSurreal
+from surrealdb.data import GeometryPoint, RecordID, Table
 import os
 from typing import Optional, List, Dict, Any
-from ..schema import Events
 import logging
 
 
@@ -14,43 +14,58 @@ class EventsDB:
         """Create a new event"""
         logging.info(f"Creating event: {data}")
         try:
-            data['coordinates'] = Geometry(data['coordinates'][0], data["coordinates"][1])
+            # data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
             data['host'] = RecordID('users', data['host'])
+            # data['coordinates'] = GeometryPoint(*data['coordinates'])
             data['price'] = float(data["price"])
 
+            data['location'] = {
+                "address" : data.get("location"),
+                "coordinates" : data['coordinates']
+            }
+
             # result = await self.db.create(Table("events"), data)
-            result = await self.db.query(
-                        """
-                        INSERT INTO events {
-                            "title": $title,
-                            "description": $description,
-                            "coordinates": $coordinates,
-                            "is_private": $is_private,
-                            "price": $price,
-                            "categories": $categories,
-                            "tags": $tags,
-                            "host": $host,
-                            "status": 'scheduled'
-                        } RETURN VALUE id;
-                        """,
-                        {
-                            "title": data.get("title"),
-                            "description": data.get("description"),
-                            "coordinates": data.get("coordinates"),
-                            "is_private": data.get("is_private", False),
-                            "price": data['price'],
-                            "categories": data.get("categories", []),
-                            "tags": data.get("tags", []),
-                            "host": data.get("host")
-                        }
-                    )
+            logging.info(f"Creating event: {data}")
+            result = await self.db.create('events', data)
+            # result = await self.db.query(
+                        # """
+                        # CREATE events SET
+                    #         title = $title,
+                    #         description = $description,
+                    #         location.address = $location,
+                    #         location.coordinates_hash = geo::hash::encode($coordinates),
+                    #         is_private = $is_private,
+                    #         price = $price,
+                    #         categories = $categories,
+                    #         tags = $tags,
+                    #         host = $host,
+                    #         status = 'scheduled'
+                    #     RETURN AFTER;
+                    #     """,
+                    #     {
+                    #         "title": data.get("title"),
+                    #         "description": data.get("description"),
+                    #         "location": data.get("location"),
+                    #         "coordinates": data.get("coordinates"),
+                    #         "is_private": data.get("is_private", False),
+                    #         "price": data['price'],
+                    #         "categories": data.get("categories", []),
+                    #         "tags": data.get("tags", []),
+                    #         "host": data.get("host")
+                    #     }
+                    # )
             logging.info(f"Query result: {result}")
-            if result[0]['status'] == 'ERR':
-                raise Exception(f"Error creating event: {result[0]['result']}")  # Handle error case
+            result['id'] = result['id'].id
+            result['host'] = result['host'].id
+            if 'ERR' in result:
+                raise Exception(f"Error creating event: {result}")  # Handle error case
             
-            created_event = result[0]["result"][0]
+            created_event = result
             logging.info(f"Created event: {created_event}")
             return created_event
+        except KeyError:
+            logging.error(f"Invalid Params: {data}")
+            return
         except Exception as e:
             logging.error(f"Failed to create event: {str(e)}")
             raise
@@ -63,9 +78,9 @@ class EventsDB:
             event_id (str): The ID of the event to delete
         """
         result = await self.db.delete(RecordID('events', event_id))
-        if result[0]['status'] == 'ERR':
+        if 'ERR' in result[0]:
             raise Exception(f"Error deleting event: {result[0]['result']}")  # Handle error case
-        return result[0]["result"][0]
+        return result[0]
     
     async def fetch_by_distance(
         self, 
@@ -105,7 +120,8 @@ class EventsDB:
                     "coordinates": coordinates
                 }
             )
-            return result[0]["result"]
+            result = [{'id': entry.pop('id').id, 'host': entry.pop('host'), **entry} for entry in result]
+            return result
         except Exception as e:
             logging.error(f"Failed to fetch events by distance: {str(e)}")
             raise
@@ -134,7 +150,9 @@ class EventsDB:
                     "limit": limit
                 }
             )
-            return result[0]["result"]
+            logging.info(f"Query result: {result}")
+            result = [{'id': entry.pop('id').id, 'host': entry.pop('host').id, **entry} for entry in result]
+            return result
         except Exception as e:
             logging.error(f"Failed to fetch all events: {str(e)}")
             raise
@@ -193,7 +211,12 @@ class EventsDB:
                 """,
                 {"event_id": event_id}
             )
-            return result[0]["result"][0] if result[0]["result"] else None
+            if isinstance(result[0], dict):
+                result = [{'id': entry.pop('id').id, 'host': entry.pop('host').id, **entry} for entry in result]
+                return result[0]
+            else:
+                logging.error(f"No Events Found")
+                return
         except Exception as e:
             logging.error(f"Failed to fetch event: {str(e)}")
             raise
@@ -226,6 +249,26 @@ class EventsDB:
         except Exception as e:
             logging.error(f"Failed to kill live query: {str(e)}")
             raise
+    async def update_event_data(self, event_id: str, data: dict):
+        """
+        Update the data of an event 
+        
+        Args:
+            event_id (str): The ID of the event to update
+            data (dict, optional): metadata to change
+            
+        Returns:
+            Dict[str, Any]: Updated event data
+        """
+        result = await self.db.update(
+            RecordID('events', event_id),
+            data
+        )
+        if 'ERR' in result:
+            raise Exception(f"Error updating event: {result}")  # Handle error case
+        logging.info(f"Updated event: {result}")
+        result = {'id': result.pop('id').id, **result}
+        return result
 
     async def update_event_status(self, event_id: str, status: str, metadata: dict = None) -> Dict[str, Any]:
         """
@@ -266,7 +309,8 @@ class EventsDB:
                     "update_data": update_data
                 }
             )
-            return result[0]["result"][0]
+            result = [{'id': entry.pop('id').id, 'host': entry.pop('host').id, **entry} for entry in result][0]
+            return result
             
         except Exception as e:
             logging.error(f"Failed to update event status: {str(e)}")

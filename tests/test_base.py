@@ -11,7 +11,6 @@ class TestAuthBase:
         """Helper method to login a user"""
         return await client.post('/login', json=credentials)
     
-    @pytest_asyncio.fixture(scope='module')
     async def get_token(self, client: QuartClient, user_data: dict):
         """Helper method to get auth token"""
         await self.register_user(client, user_data)

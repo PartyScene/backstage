@@ -25,7 +25,7 @@ DEFINE FIELD OVERWRITE categories on TABLE events TYPE array<string>;
 DEFINE FIELD OVERWRITE tags on TABLE events TYPE array<string>;
 DEFINE FIELD OVERWRITE location on TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE location.address on TABLE events TYPE string;
-DEFINE FIELD OVERWRITE location.coordinates on TABLE events TYPE geometry;
+DEFINE FIELD OVERWRITE location.coordinates on TABLE events TYPE array<decimal>;
 DEFINE FIELD OVERWRITE metadata on TABLE events FLEXIBLE TYPE object DEFAULT {};
 
 -- Let's define a table for livestreams

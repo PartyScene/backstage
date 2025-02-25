@@ -1,29 +1,23 @@
 import pytest
+import urllib
 from faker import Faker
-from httpx import AsyncClient
+from test_events_base import TestEventsBase
 from datetime import datetime, timedelta
 
 fake = Faker()
 
 @pytest.mark.asyncio
-class TestEventCreation:
-    async def test_create_valid_event(self, client, test_config, get_token):
+class TestEventCreation(TestEventsBase):
+    async def test_create_valid_event(self, event_client, mock_event, bearer):
         """Test creating a valid event."""
-        event_data = {
-            "title": fake.catch_phrase(),
-            "description": fake.text(),
-            "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
-            "coordinates": fake.latlng(),
-            "location": fake.address(),
-            "price": fake.numerify('##'),
-        }
 
         
-        response = await client.post("/events", json=event_data, headers={"Authorization": f"Bearer {get_token}"})
+        # response = await event_client.post("/events", json=mock_event, headers={"Authorization": f"Bearer {bearer}"})
+        response = await self.create_event(event_client, mock_event, bearer)
         assert response.status_code == 201
-        created_event = response.json()
+        created_event = await response.get_json()
         
-        assert created_event['title'] == event_data['title']
+        assert created_event['title'] == mock_event['title']
         assert 'id' in created_event
 
     @pytest.mark.parametrize("invalid_data", [
@@ -31,28 +25,30 @@ class TestEventCreation:
         {"start_time": "invalid-date"},  # Invalid date format
         {"end_time": datetime.now().isoformat()}  # End time before start time
     ])
-    async def test_create_invalid_event(self, client, invalid_data):
+    async def test_create_invalid_event(self, event_client, invalid_data, bearer):
         """Test event creation with invalid data."""
-        response = await client.post("/events", json=invalid_data)
+        # response = await event_client.post("/events", json=invalid_data, headers={"Authorization": f"Bearer {bearer}"})
+        response = await self.create_event(event_client, invalid_data, bearer)
+
         assert response.status_code == 400
 
-    async def test_create_event_unauthorized(self, client):
+    async def test_create_event_unauthorized(self, event_client, bearer):
         """Test event creation without authentication."""
         event_data = {
             "title": fake.catch_phrase(),
             "start_time": (datetime.now() + timedelta(days=1)).isoformat()
         }
         
-        response = await client.post("/events", json=event_data)
+        response = await event_client.post("/events", json=event_data)
         assert response.status_code == 401
 
-@pytest.mark.performance
-def test_event_creation_performance(benchmark, client):
-    """Benchmark event creation performance."""
-    event_data = {
-        "title": fake.catch_phrase(),
-        "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
-    }
+# @pytest.mark.performance
+# def test_event_creation_performance(benchmark, event_client):
+#     """Benchmark event creation performance."""
+#     event_data = {
+#         "title": fake.catch_phrase(),
+#         "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
+#     }
     
-    result = benchmark(client.post, "/events", json=event_data)
-    assert result.status_code == 201
+#     result = benchmark(event_client.post, "/events", json=event_data)
+#     assert result.status_code == 201

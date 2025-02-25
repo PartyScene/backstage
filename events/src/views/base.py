@@ -41,6 +41,32 @@ class BaseView(QuartClassful):
         key = f"live_query:{event_id}"
         await self.redis.delete(key)
 
+    @route("/events", methods=["GET"])
+    @route("/events/<event_id>", methods=["GET"])
+    @jwt_required
+    async def fetch_events(self, event_id = None):
+        """This endpoints returns all the events"""
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        
+        if event_id:
+            if (result := await self.db.fetch(event_id)):
+                return result, HTTPStatus.OK
+            return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+
+        result = await self.db.fetch_all(page, limit)
+        return result, HTTPStatus.OK
+
+    @route("/events/<event_id>", methods=["PATCH"])
+    @jwt_required
+    async def update_event(self, event_id = None):
+        """This endpoints returns all the events"""
+        data = await request.get_json()
+        if event_id:
+            if (result := await self.db.update_event_data(event_id, data)):
+                return result, HTTPStatus.OK
+            return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+
     @route("/events", methods=["POST"])
     @jwt_required
     async def create_event(self):
@@ -49,11 +75,12 @@ class BaseView(QuartClassful):
             data = await request.get_json()  # Get raw JSON data
             # You can add your own validation here if needed
             data['host'] = data.get('host', get_jwt_identity())
-            result = await self.db.create_event(data)  # Pass the raw data to the database method
-            return result, 201
+            if (result := await self.db.create_event(data)):  # Pass the raw data to the database method
+                return jsonify(result), HTTPStatus.CREATED
+            return {"error": "Bad params"}, HTTPStatus.BAD_REQUEST
         except Exception as e:
             self.logger.error(f"Error creating event: {str(e)}", exc_info=True)
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            return {"error": str(e)}, HTTPStatus.BAD_REQUEST
     
     @route("/events/<event_id>/delete", methods=["DELETE"])
     @jwt_required
@@ -65,40 +92,31 @@ class BaseView(QuartClassful):
         except Exception as e:
             self.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
             return {"error": str(e)}, 500
-    
-    @route("/events", methods=["GET"])
-    @jwt_required
-    async def fetch_all(self):
-        """This endpoints returns all the events"""
-        page = int(request.args.get('page', 1))
-        limit = int(request.args.get('limit', 20))
-        result = await self.db.fetch_all(page, limit)
-        return result, 200
 
     @route("/events/public", methods=["GET"])
     @jwt_required
-    async def fetch_all(self):
+    async def fetch_public_events(self):
         """This endpoints returns all the public events"""
         page = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 20))
         result = await self.db.fetch_all_public(page, limit)
         return result, 200
     
-    @route("/events/location", methods=["GET"])
+    @route("/events/distance", methods=["GET"])
     @jwt_required
-    async def fetch_by_location(self):
-        """Fetch a list of events by location. If the `nearby` endpoint is called, then...
+    async def fetch_by_distance(self):
+        """Fetch a list of events by distance. If the `nearby` endpoint is called, then...
 
         Returns:
             array : List of events
         """
         location = (
-            float(request.args.get('lat')),
-            float(request.args.get('long'))
+            float(request.args.get('lat', 0)),
+            float(request.args.get('lng', 0))
         )
-        distance = int(request.args.get('distance'))
+        distance = int(request.args.get('distance', 1000))
         result = await self.db.fetch_by_distance(location, distance)
-        return result, 200
+        return result, HTTPStatus.OK
 
     @route("/events/<event_id>/status", methods=["PATCH"])
     @jwt_required
@@ -114,7 +132,7 @@ class BaseView(QuartClassful):
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
             
-            if event['host'].id != user_id:
+            if event['host'] != user_id:
                 self.logger.warning(f"Unauthorized access attempt to event {event_id} by user {user_id}")
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
             
