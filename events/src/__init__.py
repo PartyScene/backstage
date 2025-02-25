@@ -1,11 +1,10 @@
 import asyncio
 import json
 from pprint import pprint
-import uvloop
+import os
 import logging
 from logging.config import dictConfig
 
-from quart_redis import RedisHandler, get_redis
 from quart_schema import QuartSchema
 from quart import Quart, request, websocket
 from quart_jwt_extended import JWTManager, jwt_required, get_jwt_identity
@@ -43,12 +42,21 @@ class EventsMicroService(Quart):
         QuartSchema(self)
 
         self.db: EventsDB = None
-        self.config.from_pyfile("/app/shared/settings.py")
+        self.redis: Redis = None
+
+        if len(ENV_VAR := os.getenv("CONFIG_FILE", "/app/shared/settings.py")) > 0:
+            self.config.from_pyfile(ENV_VAR)
+
+        # Set dev environment settings
+        if os.getenv("ENVIRONMENT") == "dev":
+            self.config["DEBUG"] = True
+            self.config["TESTING"] = True
+            self.DEBUG = True
+        logger.info(self.config)
         
         # Initialize Redis with decode_responses=True
         # self.config["REDIS_URL"] = self.config.get("REDIS_URI", "redis://redis")
         self.config["REDIS_DECODE_RESPONSES"] = True
-        self.redis_handler = RedisHandler(self)
 
         @self.before_request
         async def log_request():
@@ -67,6 +75,22 @@ class EventsMicroService(Quart):
             logger.info("Initializing services...")
             await self.init_services()
 
+    async def init_redis(self):
+        """Initialize Redis connection"""
+        try:
+            logger.info("Initializing Redis connection...")
+            self.redis = Redis.from_url(
+                self.config["REDIS_URI"],
+                decode_responses=True,
+                encoding="utf-8"
+            )
+            # Test connection
+            await self.redis.ping()
+            logger.info("Redis connection established")
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis: {str(e)}")
+            raise
+
     async def init_services(self):
         """Initialize all required services"""
         try:
@@ -78,18 +102,19 @@ class EventsMicroService(Quart):
             logger.info("Retrieving JWT secret...")
             await self.get_shared_secret()
             
-            # Register routes
-            logger.info("Registering application routes...")
-            BaseView.register(self)
-            
-            # Register WebSocket routes
-            self.register_websocket_routes()
-            
             logger.info("All services initialized successfully")
             
         except Exception as e:
             logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
             raise
+    
+    def register_routes(self):
+        # Register routes
+        logger.info("Registering application routes...")
+        BaseView.register(self)
+            
+        # Register WebSocket routes
+        self.register_websocket_routes()
 
     def register_websocket_routes(self):
         """Register WebSocket routes"""
@@ -109,8 +134,7 @@ class EventsMicroService(Quart):
                     return
 
                 # Get live query ID from Redis using get_redis()
-                redis = await get_redis()
-                live_id = await redis.get(f"live_query:{event_id}")
+                live_id = await self.redis.get(f"live_query:{event_id}")
                 if not live_id:
                     logger.warning(f"No live query found for event {event_id}")
                     return
@@ -137,7 +161,7 @@ class EventsMicroService(Quart):
                 finally:
                     try:
                         await self.db.kill_live_query(live_id)
-                        await redis.delete(f"live_query:{event_id}")
+                        await self.redis.delete(f"live_query:{event_id}")
                         logger.info(f"Cleaned up resources for event {event_id}")
                     except Exception as e:
                         logger.error(f"Cleanup error: {str(e)}", exc_info=True)
@@ -148,8 +172,7 @@ class EventsMicroService(Quart):
     async def get_shared_secret(self):
         """Get JWT secret from Redis"""
         try:
-            redis = await get_redis()
-            secret = await redis.get("SECRET_KEY")
+            secret = await self.redis.get("SECRET_KEY")
             if not secret:
                 raise ValueError("JWT secret not found in Redis")
                 

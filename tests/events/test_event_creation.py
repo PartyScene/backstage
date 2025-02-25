@@ -7,18 +7,19 @@ fake = Faker()
 
 @pytest.mark.asyncio
 class TestEventCreation:
-    async def test_create_valid_event(self, async_client, test_config):
+    async def test_create_valid_event(self, client, test_config, get_token):
         """Test creating a valid event."""
         event_data = {
             "title": fake.catch_phrase(),
             "description": fake.text(),
             "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
-            "end_time": (datetime.now() + timedelta(days=2)).isoformat(),
+            "coordinates": fake.latlng(),
             "location": fake.address(),
-            "organizer_id": test_config['test_user']['id']
+            "price": fake.numerify('##'),
         }
+
         
-        response = await async_client.post("/events", json=event_data)
+        response = await client.post("/events", json=event_data, headers={"Authorization": f"Bearer {get_token}"})
         assert response.status_code == 201
         created_event = response.json()
         
@@ -30,29 +31,28 @@ class TestEventCreation:
         {"start_time": "invalid-date"},  # Invalid date format
         {"end_time": datetime.now().isoformat()}  # End time before start time
     ])
-    async def test_create_invalid_event(self, async_client, invalid_data):
+    async def test_create_invalid_event(self, client, invalid_data):
         """Test event creation with invalid data."""
-        response = await async_client.post("/events", json=invalid_data)
+        response = await client.post("/events", json=invalid_data)
         assert response.status_code == 400
 
-    async def test_create_event_unauthorized(self, async_client):
+    async def test_create_event_unauthorized(self, client):
         """Test event creation without authentication."""
         event_data = {
             "title": fake.catch_phrase(),
             "start_time": (datetime.now() + timedelta(days=1)).isoformat()
         }
         
-        response = await async_client.post("/events", json=event_data)
+        response = await client.post("/events", json=event_data)
         assert response.status_code == 401
 
 @pytest.mark.performance
-def test_event_creation_performance(benchmark, async_client, test_config):
+def test_event_creation_performance(benchmark, client):
     """Benchmark event creation performance."""
     event_data = {
         "title": fake.catch_phrase(),
         "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
-        "organizer_id": test_config['test_user']['id']
     }
     
-    result = benchmark(async_client.post, "/events", json=event_data)
+    result = benchmark(client.post, "/events", json=event_data)
     assert result.status_code == 201

@@ -19,3 +19,4 @@ quart-redis
 quart-jwt-extended
 fakeredis
 redis
+uvloop

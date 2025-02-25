@@ -1,9 +1,9 @@
 import asyncio
-import uvloop
+import os
 from hypercorn.config import Config
 from hypercorn.asyncio import serve
 
-from src import EventsMicroService
+from .src import EventsMicroService
 
 # Create app instance
 app = EventsMicroService(__name__)
@@ -20,7 +20,11 @@ config.keepalive_timeout = 120
 
 def main():
     """Run the application with uvloop"""
-    uvloop.install()
+    if os.name == "nt":
+        ...
+    else:
+        import uvloop
+        uvloop.install()
     asyncio.run(serve(app, config))
 
 if __name__ == "__main__":

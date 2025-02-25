@@ -23,7 +23,7 @@ class BaseView(QuartClassful):
 
     def __init__(self):
         self.db: EventsDB = app.db
-        self.redis = app.redis_handler.get_connection()
+        self.redis = app.redis
         self.logger = logger
 
     async def _store_live_query(self, event_id: str, live_id: str):
@@ -41,13 +41,14 @@ class BaseView(QuartClassful):
         key = f"live_query:{event_id}"
         await self.redis.delete(key)
 
-    @route("/create", methods=["POST"])
+    @route("/events", methods=["POST"])
     @jwt_required
     async def create_event(self):
         """Create an event"""
         try:
             data = await request.get_json()  # Get raw JSON data
             # You can add your own validation here if needed
+            data['host'] = data.get('host', get_jwt_identity())
             result = await self.db.create_event(data)  # Pass the raw data to the database method
             return result, 201
         except Exception as e:
@@ -65,7 +66,7 @@ class BaseView(QuartClassful):
             self.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
             return {"error": str(e)}, 500
     
-    @route("/events/all", methods=["GET"])
+    @route("/events", methods=["GET"])
     @jwt_required
     async def fetch_all(self):
         """This endpoints returns all the events"""
