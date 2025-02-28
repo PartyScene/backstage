@@ -66,14 +66,14 @@ async def surreal(test_config):
 @pytest_asyncio.fixture(scope='session', loop_scope="session")
 async def auth_app(surreal, test_config):
     """Create a session-scoped auth app"""
-    try:
-        os.environ["CONFIG_FILE"] = ""
-        os.environ["ENVIRONMENT"] = "dev"
-        os.environ["USE_FAKE_REDIS"] = "true"
-        os.environ["NOVU_SECRET_KEY"] = "26fa1c421a0fb45df02a0d63adffaa1e"
+    os.environ["CONFIG_FILE"] = ""
+    os.environ["ENVIRONMENT"] = "dev"
+    os.environ["USE_FAKE_REDIS"] = "true"
+    os.environ["NOVU_SECRET_KEY"] = "26fa1c421a0fb45df02a0d63adffaa1e"
 
-        from auth.run import app
-        from auth.src.connectors import AuthDB
+    from auth.run import app
+    from auth.src.connectors import AuthDB
+    try:
 
         app.config.update(
             TESTING=True,

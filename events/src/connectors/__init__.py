@@ -260,14 +260,14 @@ class EventsDB:
         Returns:
             Dict[str, Any]: Updated event data
         """
-        result = await self.db.update(
+        result = await self.db.merge(
             RecordID('events', event_id),
             data
         )
         if 'ERR' in result:
             raise Exception(f"Error updating event: {result}")  # Handle error case
         logging.info(f"Updated event: {result}")
-        result = {'id': result.pop('id').id, **result}
+        result = {'id': result.pop('id').id, 'host': result.pop('host').id, **result}
         return result
 
     async def update_event_status(self, event_id: str, status: str, metadata: dict = None) -> Dict[str, Any]:

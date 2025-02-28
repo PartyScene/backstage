@@ -8,9 +8,9 @@ from quart_schema import validate_request, validate_response, document_querystri
 from ..connectors import AuthDB
 
 import sys
-sys.path.append('/app/shared')
+sys.path.append('/auth/shared')
 
-from classful import route, QuartClassful
+from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import create_access_token
 from shared.notifications import NotificationManager

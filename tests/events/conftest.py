@@ -48,7 +48,7 @@ def mock_event():
         "location": fake.address(),
         "price": fake.numerify('##'),
         }
-        
+
 @pytest_asyncio.fixture(scope='session', loop_scope="session")  # Changed from module to session
 async def event_app(surreal, test_config):
     os.environ["CONFIG_FILE"] = ""
@@ -117,10 +117,10 @@ async def event_client(event_app, bearer):
 #     """Determine the test environment."""
 #     return request.config.getoption("--env")
 
-# @pytest.fixture(scope='session')
-# def performance_profiling(request):
-#     """Enable performance profiling if requested."""
-#     return request.config.getoption("--profile")
+@pytest.fixture(scope='session')
+def performance_profiling(request):
+    """Enable performance profiling if requested."""
+    return request.config.getoption("--profile")
 
 # def pytest_configure(config):
 #     """Configure pytest markers and settings."""

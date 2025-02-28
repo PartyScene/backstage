@@ -38,13 +38,15 @@ logger = logging.getLogger(__name__)
 
 class AuthMicroService(Quart):
     def __init__(self, *args):
+        self.DEBUG = False
+        
         super(AuthMicroService, self).__init__(*args)
         QuartSchema(self)
 
         self.db = None
         self.redis = None
 
-        if len(ENV_VAR := os.getenv("CONFIG_FILE", "/app/shared/settings.py")) > 0:
+        if len(ENV_VAR := os.getenv("CONFIG_FILE", "settings.py")) > 0:
             self.config.from_pyfile(ENV_VAR)
 
         # Set dev environment settings
