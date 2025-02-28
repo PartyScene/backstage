@@ -11,13 +11,13 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 import pytest
 import pytest_asyncio
 from faker import Faker
+from dotenv import load_dotenv
 import asyncio
 import logging
 import httpx
 from datetime import datetime, timedelta
 import io
 from unittest.mock import MagicMock
-from auth.src import AuthMicroService
 from surrealdb import AsyncSurreal
 
 # Configure logging
@@ -31,13 +31,8 @@ logger = logging.getLogger(__name__)
 fake = Faker()
 
 @pytest.fixture(scope='session')
-def test_config():
-    return {
-        "REDIS_URI" : "redis://default:dQOWKWUYVSTqS7GB2Fjio4SIb05wOMwN@redis-14077.c16.us-east-1-2.ec2.redns.redis-cloud.com",
-        "SURREAL_URI" : "ws://localhost:8000",
-        "SURREAL_PASS" : "root",
-        "SURREAL_USER" : "root"
-        }
+def load_dotenv():
+    load_dotenv()
 
 # the custom event_loop fixture and update the async fixtures
 @pytest.fixture(scope='session', autouse=True)
@@ -48,15 +43,14 @@ def event_loop():
     loop.close()
 
 @pytest_asyncio.fixture(scope='session', loop_scope="session")
-async def surreal(test_config):
+async def surreal():
     """Create a session-scoped database connection"""
-    db = AsyncSurreal(test_config['SURREAL_URI'])
-    await db.connect(test_config['SURREAL_URI'])
-
+    db = AsyncSurreal(os.environ['SURREAL_URI'])
+    await db.connect(os.environ['SURREAL_URI'])
     await db.signin(
         {
-            'username': test_config['SURREAL_USER'],
-            'password': test_config['SURREAL_PASS']
+            'username': os.environ['SURREAL_USER'],
+            'password': os.environ['SURREAL_PASS']
         }
     )
     await db.use('partyscene', 'partyscene')
@@ -64,12 +58,8 @@ async def surreal(test_config):
     await db.close()
 
 @pytest_asyncio.fixture(scope='session', loop_scope="session")
-async def auth_app(surreal, test_config):
+async def auth_app(surreal):
     """Create a session-scoped auth app"""
-    os.environ["CONFIG_FILE"] = ""
-    os.environ["ENVIRONMENT"] = "dev"
-    os.environ["USE_FAKE_REDIS"] = "true"
-    os.environ["NOVU_SECRET_KEY"] = "26fa1c421a0fb45df02a0d63adffaa1e"
 
     from auth.run import app
     from auth.src.connectors import AuthDB
@@ -79,7 +69,6 @@ async def auth_app(surreal, test_config):
             TESTING=True,
             SECRET_KEY="test-secret-key",
             JWT_SECRET_KEY="test-secret-key",
-            **test_config
         )
 
         class AsyncRedisMock:
@@ -149,6 +138,17 @@ def mock_user():
         "confirm_password": "testingTs"
     }
 
+@pytest.fixture(scope="session")
+def mock_event():
+    return {
+        "title": fake.catch_phrase(),
+        "description": fake.text(),
+        "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
+        "coordinates": fake.latlng(),
+        "location": fake.address(),
+        "price": fake.numerify('##'),
+        }
+        
 def pytest_addoption(parser):
     """Add custom command-line options for testing."""
     parser.addoption(

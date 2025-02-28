@@ -17,7 +17,7 @@ class LiveStreamDB:
             """,
             {"event_id": event_id}
         )
-            return result[0]["result"][0]
+            return result[0]
         except IndexError:
             return {'error': 'None found.'}
     
@@ -35,7 +35,7 @@ class LiveStreamDB:
             """,
             {"channel_id": channel_response.name, "input_id": input_response.name, "ingest_url": input_response.uri, "playback_url": channel_response.output.uri, "manifests": [x.file_name for x in channel_response.manifests], "event_id": event_id},
         )
-        return result[0]["result"][0]
+        return result[0]
 
     # async def delete(self, email) :
     #     """This db function deletes a user.
@@ -68,7 +68,7 @@ class LiveStreamDB:
 
 
 async def init_db(app: Quart) -> LiveStreamDB:
-    db = AsyncSurreal(app.config["SURREAL_URI"])
+    db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")

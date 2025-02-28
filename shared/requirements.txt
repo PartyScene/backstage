@@ -1,10 +1,12 @@
 quart
 ujson
-uvloop
 surrealdb
 quart-schema
-quart-redis
+redis
 quart-jwt-extended
 typing-extensions
 httpx
 novu-py
+surrealdb
+python-dotenv
+hypercorn[uvloop]

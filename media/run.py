@@ -1,3 +1,3 @@
-from src import MediaMicroService
+from media.src import MediaMicroService
 
 app = MediaMicroService(__name__)

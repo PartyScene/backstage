@@ -7,14 +7,15 @@ from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from ..connectors import PostsDB
-from lib import MediaClient
+from shared.lib import create_media_client, MediaClient
 from classful import route, QuartClassful
-
+from http import HTTPStatus
+import os
 
 class BaseView(QuartClassful):
 
     def __init__(self) -> None:
-        self.__media_client = MediaClient()
+        self.__media_client : MediaClient = create_media_client(os.environ['MEDIA_MICROSERVICE_URL'])
         self.__posts_handler : PostsDB = app.db
 
     @route("/event/<id>", methods=["GET", "POST"])
@@ -22,7 +23,7 @@ class BaseView(QuartClassful):
         """Fetch all posts for a given event"""
         return jsonify(await self.__posts_handler.fetch_event_posts(id), HTTPStatus.OK)
 
-    @route("/create", methods=["POST"])
+    @route("/", methods=["POST"])
     @jwt_required
     async def create_post(self):
         """
@@ -50,18 +51,29 @@ class BaseView(QuartClassful):
 
         for file_key in files:
             try:
+                req = await self.__media_client.upload_media(request, files[file_key])
                 media_links.append(
-                    await self.__media_client.upload_media(request, files[file_key])
+                    req['url']
                 )
             except:
                 return jsonify({"error": "Error uploading files"}), 400
-                ...
-        await self.__posts_handler.create_post(data=data, media_links=media_links, author = get_jwt_identity())
-        return jsonify("Created"), 201
+        result = await self.__posts_handler.create_post(data=data, media_links=media_links, author = get_jwt_identity())
+        return result, HTTPStatus.CREATED
 
-    @route("/delete", methods=["POST"])
+    @route("/<id>", methods=["GET"])
     @jwt_required
-    async def delete_post(self):
+    async def fetch_post(self, id: str):
+        """
+        Asynchronously gets a post with the provided ID.
+        Returns:
+            Response: A JSON response containing a success message and a status code of 200 if successful.
+                      If ID is missing, returns a JSON error message and a status code of 400.
+        """
+        return jsonify(await self.__posts_handler.fetch_post(id), HTTPStatus.OK)
+
+    @route("/<id>", methods=["DELETE"])
+    @jwt_required
+    async def delete_post(self, id: str):
         """
         Asynchronously deletes a post with the provided ID.
         This function handles the following:
@@ -73,6 +85,5 @@ class BaseView(QuartClassful):
             Response: A JSON response containing a success message and a status code of 200 if successful.
                       If ID is missing, returns a JSON error message and a status code of 400.
         """
-        data = await request.get_json()
-        await self.__posts_handler.delete_post(data)
-        return jsonify("Deleted"), 200
+        await self.__posts_handler.delete_post(id)
+        return jsonify("Deleted"), HTTPStatus.OK

@@ -3,7 +3,7 @@ import uvloop
 from hypercorn.config import Config
 from hypercorn.asyncio import serve
 
-from src import UsersMicroService
+from users.src import UsersMicroService
 
 # Create app instance
 app = UsersMicroService(__name__)

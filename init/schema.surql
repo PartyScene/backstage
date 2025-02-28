@@ -2,6 +2,8 @@
 DEFINE TABLE IF NOT EXISTS users schemafull;
 DEFINE FIELD OVERWRITE first_name on TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name on TABLE users TYPE string;
+DEFINE FIELD OVERWRITE bio on TABLE users TYPE string default "";
+DEFINE FIELD OVERWRITE display_name on TABLE users TYPE string default "";
 DEFINE FIELD OVERWRITE avatar_url on TABLE users TYPE string default "";
 DEFINE FIELD OVERWRITE sharedLoc on TABLE users TYPE option<bool> default false;
 DEFINE FIELD OVERWRITE email on TABLE users TYPE string value string::lowercase($value) ASSERT string::is::email($value);

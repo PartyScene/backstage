@@ -2,7 +2,7 @@ import pytest
 import pytest_asyncio
 # from ..conftest import auth_app, mock_user  # Import from parent conftest
 
-@pytest_asyncio.fixture(scope='session')
+@pytest_asyncio.fixture(scope='function')
 async def auth_client(auth_app):
     """Create a test client specific for auth tests"""
     try:

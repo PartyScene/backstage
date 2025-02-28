@@ -11,7 +11,7 @@ from quart import make_response, render_template, current_app as app, request, j
 from quart_schema import validate_request, DataSource
 
 from ..connectors import EventsDB
-from classful import route, QuartClassful
+from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 

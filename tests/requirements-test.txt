@@ -20,3 +20,5 @@ quart-jwt-extended
 fakeredis
 redis
 uvloop
+python-dotenv
+google-cloud-video-live-stream>=1.3.1

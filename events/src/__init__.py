@@ -44,14 +44,12 @@ class EventsMicroService(Quart):
         self.db: EventsDB = None
         self.redis: Redis = None
 
-        if len(ENV_VAR := os.getenv("CONFIG_FILE", "/app/shared/settings.py")) > 0:
-            self.config.from_pyfile(ENV_VAR)
-
         # Set dev environment settings
         if os.getenv("ENVIRONMENT") == "dev":
             self.config["DEBUG"] = True
             self.config["TESTING"] = True
             self.DEBUG = True
+
         logger.info(self.config)
         
         # Initialize Redis with decode_responses=True
@@ -80,7 +78,7 @@ class EventsMicroService(Quart):
         try:
             logger.info("Initializing Redis connection...")
             self.redis = Redis.from_url(
-                self.config["REDIS_URI"],
+                os.environ["REDIS_URI"],
                 decode_responses=True,
                 encoding="utf-8"
             )
@@ -95,8 +93,10 @@ class EventsMicroService(Quart):
         """Initialize all required services"""
         try:
             # Initialize DB
-            logger.info("Initializing SurrealDB connection...")
-            self.db = await init_db(self)
+            
+            if not self.DEBUG:
+                logger.info("Initializing SurrealDB connection...")
+                self.db = await init_db(self)
             
             # Get JWT secret
             logger.info("Retrieving JWT secret...")

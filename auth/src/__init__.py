@@ -46,16 +46,12 @@ class AuthMicroService(Quart):
         self.db = None
         self.redis = None
 
-        if len(ENV_VAR := os.getenv("CONFIG_FILE", "settings.py")) > 0:
-            self.config.from_pyfile(ENV_VAR)
-
         # Set dev environment settings
         if os.getenv("ENVIRONMENT") == "dev":
             self.config["DEBUG"] = True
             self.config["TESTING"] = True
             self.DEBUG = True
-        logger.info(self.config)
-
+            
         self.config["REDIS_DECODE_RESPONSES"] = True
 
         @self.before_request
@@ -80,7 +76,7 @@ class AuthMicroService(Quart):
         try:
             logger.info("Initializing Redis connection...")
             self.redis = Redis.from_url(
-                self.config["REDIS_URI"],
+                os.environ["REDIS_URI"],
                 decode_responses=True,
                 encoding="utf-8"
             )

@@ -337,7 +337,7 @@ class EventsDB:
 async def init_db(app: Quart) -> EventsDB:
     """Initialize database connection"""
     try:
-        db = AsyncSurreal(app.config["SURREAL_URI"])
+        db = AsyncSurreal(os.environ["SURREAL_URI"])
         await db.connect()
         
         await db.signin(

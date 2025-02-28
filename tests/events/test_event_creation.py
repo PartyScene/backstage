@@ -16,6 +16,8 @@ class TestEventCreation(TestEventsBase):
         response = await self.create_event(event_client, mock_event, bearer)
         assert response.status_code == 201
         created_event = await response.get_json()
+
+        mock_event['id'] = created_event['id']
         
         assert created_event['title'] == mock_event['title']
         assert 'id' in created_event

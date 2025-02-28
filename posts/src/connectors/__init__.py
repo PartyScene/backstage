@@ -21,7 +21,7 @@ class PostsDB:
             """
         params = {"id": id}
         result = await self.db.query(query, params)
-        return result[0]["result"][0]
+        return result[0]
 
     async def create_comment(self, data):
         """
@@ -31,8 +31,8 @@ class PostsDB:
             Returns:
                 dict: A dictionary containing the result of the comment creation query.
         """
-        await self.db.let('users', RecordID('users', data['author']))
-        await self.db.let('media', RecordID('posts', data['post']))
+        await self.db.let('user', RecordID('users', data['author']))
+        await self.db.let('post', RecordID('posts', data['post']))
         query = """
         RELATE $user -> comments -> $post SET content = $content
         """
@@ -42,7 +42,7 @@ class PostsDB:
         result = await self.db.query(
            query, params
         )
-        return result[0]["result"][0]
+        return result[0]
     
     async def fetch_comments(self, post_id: str) -> dict:
         """
@@ -58,7 +58,7 @@ class PostsDB:
             """
         params = {"post_id": post_id}
         result = await self.db.query(query, params)
-        return result[0]["result"][0]
+        return result[0]
 
     
     async def delete_comment(self, data):
@@ -100,22 +100,36 @@ class PostsDB:
         )
         return result[0]["result"][0]
 
-    async def delete_post(self, data):
+    async def delete_post(self, id: str):
         """
-        Asynchronously deletes a post associated with the given data.
+        Asynchronously deletes a post associated with the given ID.
         Args:
-            data (dict): post data to be deleted, must include SurrealDB ID.
+            id (str): ID of the post to be deleted.
         Returns:
             dict: The result of the deletion operation.
         Raises:
             Exception: If the deletion operation fails.
         """
         
-        result = await self.db.delete(RecordID('posts', data['id']))
-        return result[0]["result"][0]
+        result = await self.db.delete(RecordID('posts', id))
+        return result
+
+    async def fetch_post(self, id: str) -> dict:
+        """
+        Asynchronously fetches a post associated with the given ID.
+        Args:
+            id (str): ID of the post to be fetched.
+        Returns:
+            dict: The result of the fetch operation.
+        Raises:
+            Exception: If the deletion operation fails.
+        """
+        
+        result = await self.db.select(RecordID('posts', id))
+        return result
 
 async def init_db(app: Quart) -> PostsDB:
-    db = AsyncSurreal(app.config["SURREAL_URI"])
+    db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")

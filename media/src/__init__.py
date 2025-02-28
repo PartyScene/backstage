@@ -10,7 +10,6 @@ from quart import Quart, app, request
 from .connectors import init_db
 from .views.base import BaseView
 
-from quart_redis import RedisHandler, get_redis
 from quart_jwt_extended import JWTManager
 
 # Configure logging
@@ -43,9 +42,17 @@ class MediaMicroService(Quart):
         super(MediaMicroService, self).__init__(*args)
         QuartSchema(self)
         self.db = None  # Asyncpg pool
-        self.config.from_pyfile("/app/shared/settings.py")
-        self.redis_handler = RedisHandler(self)
-        
+        self.redis = None
+
+        # Set dev environment settings
+        if os.getenv("ENVIRONMENT") == "dev":
+            self.config["DEBUG"] = True
+            self.config["TESTING"] = True
+            self.DEBUG = True
+            
+        # Initialize Redis with decode_responses=True
+        self.config["REDIS_DECODE_RESPONSES"] = True
+
         # These functions are preprocessing methods
     
         @self.before_request
@@ -70,20 +77,37 @@ class MediaMicroService(Quart):
             logger.info("Initializing services...")
             await self.init_services()
 
+
+
+    async def init_redis(self):
+        """Initialize Redis connection"""
+        try:
+            logger.info("Initializing Redis connection...")
+            self.redis = Redis.from_url(
+                os.environ["REDIS_URI"],
+                decode_responses=True,
+                encoding="utf-8"
+            )
+            # Test connection
+            await self.redis.ping()
+            logger.info("Redis connection established")
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis: {str(e)}")
+            raise
+
+
     async def init_services(self):
         """Initialize all required services"""
         try:
+            await self.init_redis()
             # Initialize DB
-            logger.info("Initializing SurrealDB connection...")
-            self.db = await init_db(self)
+            if not self.DEBUG:
+                logger.info("Initializing SurrealDB connection...")
+                self.db = await init_db(self)
             
             # Get JWT secret
             logger.info("Retrieving JWT secret...")
             await self.get_shared_secret()
-            
-            # Register routes
-            logger.info("Registering application routes...")
-            BaseView.register(self)
             
             logger.info("All services initialized successfully")
             
@@ -94,8 +118,7 @@ class MediaMicroService(Quart):
     async def get_shared_secret(self):
         """Get JWT secret from Redis"""
         try:
-            redis = await get_redis()
-            secret = await redis.get("SECRET_KEY")
+            secret = await self.redis.get("SECRET_KEY")
             if not secret:
                 raise ValueError("JWT secret not found in Redis")
                 
@@ -107,3 +130,12 @@ class MediaMicroService(Quart):
         except Exception as e:
             logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
             raise
+        
+            
+    def register_routes(self):
+        # Register routes
+        logger.info("Registering application routes...")
+        BaseView.register(self)
+        
+        logger.info("Printing Application Routes...")
+        logger.info(self.url_map)

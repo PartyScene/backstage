@@ -16,7 +16,7 @@ import logging
 import httpx
 from datetime import datetime, timedelta
 import io
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from dotenv import load_dotenv
 
 # Configure logging
@@ -25,15 +25,35 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-load_dotenv()
 
 # Global Faker instance for generating test data
 fake = Faker()
 
+# @pytest.fixture()
+# def mock_stream():
+#     return {
+#             "title": fake.catch_phrase(),
+#             "description": fake.text(max_nb_chars=200),
+#             "scheduled_start": (datetime.now() + timedelta(hours=1)).isoformat(),
+#             "category": fake.random_element(['gaming', 'music', 'talk-show', 'education']),
+#             "tags": [fake.word() for _ in range(3)]
+#         }
+
 @pytest_asyncio.fixture(scope='session', loop_scope="session")  # Changed from module to session
-async def event_app(surreal):
-    from events.run import app
-    from events.src.connectors import EventsDB
+async def media_app(surreal):
+    from media.run import app
+    from media.src.connectors import MediaDB
+    load_dotenv()
+
+    # with patch('google.cloud.video.live_stream_v1.LivestreamServiceAsyncClient') as mock_client:
+    #     # Create a mock async client
+    #     mock_async_client = AsyncMock()
+    #     mock_client.return_value = mock_async_client
+        
+    #     # Configure the mock client with predefined responses
+    #     mock_async_client.create_stream.return_value = MagicMock()
+    #     mock_async_client.get_stream.return_value = MagicMock()
+        
     app.config.update(
         TESTING=True,
         SECRET_KEY="test-secret-key",
@@ -59,14 +79,14 @@ async def event_app(surreal):
             pass
 
     app.redis = AsyncRedisMock()
-    app.db = EventsDB(surreal)
+    app.db = MediaDB(surreal)
     try:
         async with app.app_context():
             await app.get_shared_secret()
             app.register_routes()
             yield app
     except Exception as e:
-        logger.error(f"Error in event_app fixture: {str(e)}")
+        logger.error(f"Error in media_app fixture: {str(e)}")
         raise
     finally:
         # Clean up resources
@@ -74,19 +94,29 @@ async def event_app(surreal):
             await app.redis.close()
 
 @pytest_asyncio.fixture(scope='session')  # Changed from module to session
-async def event_client(event_app, bearer):
+async def media_client(media_app, bearer):
     """Create an async HTTP client for testing."""
     try:
-        async with event_app.test_client() as test_client:
+        async with media_app.test_client() as test_client:
             test_client.headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {bearer}"
             }
-            async with event_app.app_context():
+            async with media_app.app_context():
                 yield test_client
     except Exception as e:
-        logger.error(f"Error in event_client fixture: {str(e)}")
+        logger.error(f"Error in media_client fixture: {str(e)}")
         raise
+
+# @pytest.fixture(scope="session")
+# def mock_livestream():
+    
+#     with patch("livestream.src.views.base.LiveStream") as mock_livestream:
+#         instance = mock_livestream.return_value
+#         instance.start_stream = AsyncMock(return_value=True)
+#         instance.get_stream = AsyncMock(return_value={"ingest_url": "test", "playback_url": "test", "id": "okPok"})
+#         yield instance
+
 # @pytest.fixture(scope='session')
 # def environment(request):
 #     """Determine the test environment."""

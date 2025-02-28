@@ -1,5 +1,4 @@
-from src import LiveStreamMicroservice
+from livestream.src import LiveStreamMicroservice
 
+# Create app instance
 app = LiveStreamMicroservice(__name__)
-
-app.run()

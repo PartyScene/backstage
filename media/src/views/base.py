@@ -6,6 +6,7 @@ import werkzeug.datastructures
 
 from classful import route, QuartClassful
 from ..connectors import MediaDB
+from http import HTTPStatus
 
 import os
 import io
@@ -39,5 +40,5 @@ class BaseView(QuartClassful):
 
         # uncomment this line 
         # blob.make_public() # Permissions are really messed up idk -- error : google.api_core.exceptions.BadRequest: 400 GET https://storage.googleapis.com/storage/v1/b/partyscene/o/file/acl?prettyPrint=false: Cannot get legacy ACL for an object when uniform bucket-level access is enabled. Read more at https://cloud.google.com/storage/docs/uniform-bucket-level-acces
-        result = await self.__media_handler.upload_media(data)
-        return jsonify(result), 201
+        result = await self.__media_handler.create_media_metadata(data)
+        return jsonify(result), HTTPStatus.OK

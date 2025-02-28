@@ -4,7 +4,7 @@ import os
 from typing import Optional
 
 
-class Users:
+class UsersDB:
     def __init__(self, db: AsyncSurreal) -> None:
         self.db : AsyncSurreal = db
 
@@ -133,7 +133,9 @@ class Users:
             """,
             {"id": id},
         )
-        return result[0]["result"][0] if result[0]["result"] else None
+        if not isinstance(result, dict):
+            return None
+        return result[0]
 
     async def delete(self, id: str) -> Optional[dict]:
         """
@@ -146,7 +148,7 @@ class Users:
             Optional[dict]: Deleted user data or None if not found
         """
         result = await self.db.delete(RecordID('users', id))
-        return result[0]["result"][0]
+        return result
 
     async def update(self, data: dict) -> dict:
         """
@@ -162,13 +164,7 @@ class Users:
             "UPDATE type::thing('users', $record_id) MERGE $content",
             {"content": data, "record_id": data["id"]},
         )
-        return result[0]["result"][0]
-
-
-class UsersDB:
-    def __init__(self, db: AsyncSurreal) -> None:
-        self.db = db
-        self.users = Users(db)
+        return result[0]
 
 
 async def init_db(app: Quart) -> UsersDB:
@@ -181,7 +177,7 @@ async def init_db(app: Quart) -> UsersDB:
     Returns:
         UsersDB: Database connection manager
     """
-    db = AsyncSurreal(app.config["SURREAL_URI"])
+    db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
 
     await db.signin(

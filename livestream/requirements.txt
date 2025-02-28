@@ -1,9 +1,1 @@
-hypercorn>=0.15.0
-quart>=0.19.4
-quart-schema>=0.19.1
-quart-redis>=0.1.0
-quart-jwt-extended>=0.1.0
-surrealdb>=0.3.1
-python-dotenv>=1.0.0
 google-cloud-video-live-stream>=1.3.1
-typing-extensions>=4.7.1

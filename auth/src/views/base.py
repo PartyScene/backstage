@@ -6,10 +6,6 @@ from quart import make_response, render_template, current_app as app, request, j
 from quart_schema import validate_request, validate_response, document_querystring
 
 from ..connectors import AuthDB
-
-import sys
-sys.path.append('/auth/shared')
-
 from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import create_access_token

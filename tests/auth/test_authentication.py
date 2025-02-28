@@ -11,6 +11,7 @@ class TestAuthentication(TestAuthBase):
         data = await response.get_json()
         assert 'id' in data
         assert data['email'] == mock_user['email']
+        mock_user['id'] = data['id']
 
     # @pytest.mark.asyncio
     async def test_user_login(self, auth_client, mock_user):

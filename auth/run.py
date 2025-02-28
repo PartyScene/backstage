@@ -3,7 +3,7 @@ import pprint
 from hypercorn.config import Config
 from hypercorn.asyncio import serve
 
-from .src import AuthMicroService
+from auth.src import AuthMicroService
 
 # Create app instance
 app = AuthMicroService(__name__)

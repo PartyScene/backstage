@@ -8,7 +8,6 @@ from quart import Quart, app, request
 from .connectors import init_db
 from .views.base import BaseView
 
-from quart_redis import RedisHandler, get_redis
 from quart_jwt_extended import JWTManager
 # Configure logging
 dictConfig({
@@ -39,8 +38,7 @@ class PostsMicroservice(Quart):
     def __init__(self, *args):
         super(PostsMicroservice, self).__init__(*args)
         self.db = None
-        self.config.from_pyfile("/app/shared/settings.py")
-        self.redis_handler = RedisHandler(self)
+        self.redis = None
         
         # These functions are preprocessing methods.
     
@@ -61,16 +59,30 @@ class PostsMicroservice(Quart):
             logger.info(f"Response sent: {response.status_code}")
             return response
 
+    async def init_redis(self):
+        """Initialize Redis connection"""
+        try:
+            logger.info("Initializing Redis connection...")
+            self.redis = Redis.from_url(
+                os.environ["REDIS_URI"],
+                decode_responses=True,
+                encoding="utf-8"
+            )
+            # Test connection
+            await self.redis.ping()
+            logger.info("Redis connection established")
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis: {str(e)}")
+            raise
+
     async def services(self):
         """Initialize db before app is being served."""
-        logging.info("Initializing SurrealDB Database Connection...")
-        self.db = await init_db(self)
 
-        logging.info("Registering Application Routes.")
-        BaseView.register(self)
+        await self.init_redis()
 
-        logging.info("Printing Application Routes...")
-        logging.info(self.url_map)
+        if not self.DEBUG:
+            logging.info("Initializing SurrealDB Database Connection...")
+            self.db = await init_db(self)
 
         logging.info("Retrieving Secret...")
         await self.get_shared_secret()
@@ -79,8 +91,7 @@ class PostsMicroservice(Quart):
     async def get_shared_secret(self):
         """Get JWT secret from Redis"""
         try:
-            redis = await get_redis()
-            secret = await redis.get("SECRET_KEY")
+            secret = await self.redis.get("SECRET_KEY")
             if not secret:
                 raise ValueError("JWT secret not found in Redis")
                 
@@ -91,3 +102,11 @@ class PostsMicroservice(Quart):
         except Exception as e:
             logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
             raise
+        
+    def register_routes(self):
+        # Register routes
+        logger.info("Registering application routes...")
+        BaseView.register(self)
+        
+        logger.info("Printing Application Routes...")
+        logger.info(self.url_map)

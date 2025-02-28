@@ -3,7 +3,7 @@ import os
 from hypercorn.config import Config
 from hypercorn.asyncio import serve
 
-from .src import EventsMicroService
+from events.src import EventsMicroService
 
 # Create app instance
 app = EventsMicroService(__name__)

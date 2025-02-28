@@ -22,28 +22,28 @@ class MediaDB:
         Args:
             data (__dict__): Must contain media ID.
         """
-        result = await self.db.delete(RecordID(**data['id']))
+        result = await self.db.delete(RecordID('media', data['id']))
 
-        return result[0]["result"][0]
+        return result
 
-    async def upload_media(self, data: dict) -> dict:
+    async def create_media_metadata(self, data: dict) -> dict:
         """Uploads media metadata to the database
 
         Args:
             data (dict): _description_
         """
         query = """
-        CREATE media SET type = $type, url = $url, creator = type::thing('users', $creator), event = type::thing('events', $event);
+        CREATE media SET type = $type, url = $url, creator = type::thing('users', $creator), event = type::thing('events', $event) RETURN AFTER;
         """
         result = await self.db.query(query, data)
-        if result[0]['status'] == 'ERR':
-            raise Exception(f"Error creating media record: {result[0]['result']}")  # Handle error case
+        if 'ERR' in result[0]:
+            raise Exception(f"Error creating media record: {result}")  # Handle error case
         
-        return result[0]["result"][0]
+        return result
 
 
 async def init_db(app: Quart) -> MediaDB:
-    db = AsyncSurreal(app.config["SURREAL_URI"])
+    db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")

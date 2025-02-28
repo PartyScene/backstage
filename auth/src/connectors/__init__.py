@@ -1,5 +1,6 @@
 from surrealdb import AsyncSurreal
 import os
+import logging
 
 class AuthDB:
     def __init__(self, db) -> None:
@@ -28,6 +29,7 @@ class AuthDB:
                 "pwd": form['password'],
             },
         ))[0]
+        logging.info(result)
 
         result['id'] = result['id'].id
         return result
@@ -46,7 +48,7 @@ class AuthDB:
 async def init_db(app) -> AuthDB:
     SCHEMA_FILE = os.getenv("SCHEMA_FILE")
 
-    db = AsyncSurreal(app.config["SURREAL_URI"])
+    db = AsyncSurreal(os.getenv("SURREAL_URI"))
     await db.connect()
     
     DB_USER = os.getenv("DB_USER")

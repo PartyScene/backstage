@@ -11,13 +11,14 @@ services:
     build:
       context: .
       dockerfile: auth/Dockerfile
+      target: test
     networks:
       partyscene_network:
         ipv4_address: 11.0.0.14
     restart: always
-    # depends_on:
-    #   - redis
-    #   - surrealdb
+    depends_on:
+      - redis
+      - surrealdb
     env_file:
       - .env
     volumes:
@@ -153,7 +154,7 @@ services:
       - $DB_USER
       - --pass
       - $DB_PASSWORD
-      - rocksdb:./database.db
+      - memory
 
     image: surrealdb/surrealdb:v2.0-dev
     ports:
