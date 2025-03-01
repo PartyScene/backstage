@@ -3,16 +3,17 @@ from faker import Faker
 from httpx import AsyncClient
 from test_posts_base import TestPostsBase
 from datetime import datetime
+from quart.datastructures import FileStorage
 import io
 
 fake = Faker()
 
 @pytest.mark.asyncio
 class TestPostOperations(TestPostsBase):
-    async def test_create_post(self, posts_client, mock_event):
+    async def test_create_post(self, posts_client, mock_event, bearer):
         """Test creating a new post."""
         files = {
-            'file': ('test_image.jpg', io.BytesIO(b'fake image content'), 'image/jpeg')
+            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
         }
         post_data = {
             "title": fake.sentence(),
@@ -21,7 +22,7 @@ class TestPostOperations(TestPostsBase):
             'type': 'image'
         }
         
-        response = await self.create_post(posts_client, files, post_data)
+        response = await self.create_post(posts_client, files, post_data, bearer)
         assert response.status_code == 201
         created_post = await response.get_json()
         
@@ -29,11 +30,11 @@ class TestPostOperations(TestPostsBase):
         assert 'id' in created_post
         assert created_post['author_id'] == post_data['author_id']
 
-    async def test_fetch_event_posts(self, posts_client, mock_event):
+    async def test_fetch_event_posts(self, posts_client, mock_event, bearer):
         """Test retrieving a post."""
         # First create a post
         files = {
-            'file': ('test_image.jpg', io.BytesIO(b'fake image content'), 'image/jpeg')
+            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
         }
         post_data = {
             "title": fake.sentence(),
@@ -41,10 +42,12 @@ class TestPostOperations(TestPostsBase):
             'event': mock_event['id'],
             'type': 'image'
         }
-        create_response = await self.create_post(posts_client, files, post_data)
-        post_id = await create_response.get_json()['id']
-        
-        response = await posts_client.get(f"/event/{mock_event['id']}/posts")
+        create_response = await self.create_post(posts_client, files, post_data, bearer)
+        post_data = await create_response.get_json()
+        assert response.status_code == 201
+        post_id = post_data['id']
+
+        response = await self.fetch_event_posts(posts_client, mock_event['id'], bearer)
         assert response.status_code == 200
         posts = await response.get_json()
         
@@ -76,11 +79,11 @@ class TestPostOperations(TestPostsBase):
     #     assert updated_post['title'] == update_data['title']
     #     assert updated_post['content'] == update_data['content']
 
-    async def test_delete_post(self, posts_client, mock_event):
+    async def test_delete_post(self, posts_client, mock_event, bearer):
         """Test deleting a post."""
         # First create a post
         files = {
-            'file': ('test_image.jpg', io.BytesIO(b'fake image content'), 'image/jpeg')
+            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
         }
         post_data = {
             "title": fake.sentence(),
@@ -88,21 +91,23 @@ class TestPostOperations(TestPostsBase):
             'event': mock_event['id'],
             'type': 'image'
         }
-        create_response = await self.create_post(posts_client, files, post_data)
-        post_id = await create_response.get_json()['id']
+        create_response = await self.create_post(posts_client, files, post_data, bearer)
+        post_data = await create_response.get_json()
+        assert create_response.status_code == 201
+        post_id = post_data['id']
         
-        response = await self.fetch_post(posts_client, post_id)
+        response = await self.fetch_post(posts_client, post_id, bearer)
         assert response.status_code == 200
         posts = await response.get_json()
         
         assert len(posts) >= 1
         
         # Delete the post
-        response = await self.delete_post(posts_client, post_id)
+        response = await self.delete_post(posts_client, post_id, bearer)
         assert response.status_code == 204
         
         # Verify post is deleted
-        get_response = await self.fetch_post(posts_client, post_id)
+        get_response = await self.fetch_post(posts_client, post_id, bearer)
         assert get_response.status_code == 404
 
     # async def test_like_post(self, async_client):
@@ -146,9 +151,12 @@ class TestPostOperations(TestPostsBase):
         {"content": ""},  # Empty content
         {"visibility": "invalid"}  # Invalid visibility option
     ])
-    async def test_create_invalid_post(self, posts_client, invalid_data):
+    async def test_create_invalid_post(self, posts_client, invalid_data, bearer):
         """Test post creation with invalid data."""
-        response = await self.create_post(posts_client, invalid_data)
+        files = {
+            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
+        }
+        response = await self.create_post(posts_client, files, invalid_data, bearer)
         assert response.status_code == 400
 
     # @pytest.mark.performance

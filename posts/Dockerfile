@@ -7,14 +7,16 @@ WORKDIR /posts
 ENV PYTHONPATH="/"
 
 # Copy requirements files
-COPY posts /posts
-COPY shared /shared
+COPY posts ./
+COPY shared /shared/
+COPY auth /auth/
+
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
 COPY tests/requirements-test.txt /tests/requirements-test.txt
 COPY tests/posts /tests/posts
-COPY tests/.env /tests/.env
+COPY tests/pytest.ini /tests/pytest.ini
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -26,7 +28,7 @@ RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt
 
 # Run tests
-CMD ["pytest", "--disable-warnings", "/tests", "-v"]
+RUN pytest --disable-warnings /tests -v
 
 # Main stage
 FROM python:3.11-slim as prod

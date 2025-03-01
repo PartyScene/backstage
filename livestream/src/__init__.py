@@ -6,6 +6,8 @@ from quart_schema import QuartSchema
 from quart import Quart, request
 from quart_jwt_extended import JWTManager
 
+from redis.asyncio import Redis
+
 from .connectors import init_db
 from .views.base import BaseView
 

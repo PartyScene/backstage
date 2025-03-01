@@ -42,7 +42,7 @@ fake = Faker()
 @pytest_asyncio.fixture(scope='session', loop_scope="session")  # Changed from module to session
 async def users_app(surreal):
     from users.run import app
-    from users.src.connectors import usersDB
+    from users.src.connectors import UsersDB
     load_dotenv()
 
     # with patch('google.cloud.video.live_stream_v1.LivestreamServiceAsyncClient') as mock_client:
@@ -79,7 +79,7 @@ async def users_app(surreal):
             pass
 
     app.redis = AsyncRedisMock()
-    app.db = LiveStreamDB(surreal)
+    app.db = UsersDB(surreal)
     try:
         async with app.app_context():
             await app.get_shared_secret()

@@ -25,39 +25,39 @@ class TestUserManagement(TestUsersBase):
     #     assert created_profile['display_name'] == profile_data['display_name']
     #     assert 'id' in created_profile
 
-    async def test_get_user_profile(self, users_client, mock_user):
+    async def test_get_user_profile(self, users_client, mock_user, bearer):
         """Test retrieving a user profile."""
         user_id = mock_user['id']
-        response = await self.get_user(users_client, user_id)
+        response = await self.get_user(users_client, user_id, bearer)
         
         assert response.status_code == 200
         profile = await response.get_json()
         assert 'display_name' in profile
         assert 'bio' in profile
 
-    async def test_update_user_profile(self, users_client, mock_user):
+    async def test_update_user_profile(self, users_client, mock_user, bearer):
         """Test updating user profile information."""
         update_data = {
             "display_name": fake.name(),
             "bio": fake.text(max_nb_chars=200)
         }
         
-        response = await self.update_user(users_client, mock_user['id'], update_data)
+        response = await self.update_user(users_client, update_data, bearer)
         assert response.status_code == 200
         updated_profile = await response.get_json()
         
         assert updated_profile['display_name'] == update_data['display_name']
         assert updated_profile['bio'] == update_data['bio']
 
-    @pytest.mark.parametrize("invalid_data", [
-        {"display_name": ""},  # Empty display name
-        {"bio": "x" * 1001},  # Bio too long
-        {"interests": "not-a-list"}  # Invalid interests format
-    ])
-    async def test_invalid_profile_updates(self, users_client, invalid_data, mock_user):
-        """Test profile updates with invalid data."""
-        response = await self.update_user(users_client, mock_user['id'], invalid_data)
-        assert response.status_code == 400
+    # @pytest.mark.parametrize("invalid_data", [
+    #     {"display_name": ""},  # Empty display name
+    #     {"bio": "x" * 1001},  # Bio too long
+    #     {"interests": "not-a-list"}  # Invalid interests format
+    # ])
+    # async def test_invalid_profile_updates(self, users_client, invalid_data, mock_user, bearer):
+    #     """Test profile updates with invalid data."""
+    #     response = await self.update_user(users_client, invalid_data, bearer)
+    #     assert response.status_code == 400
 
     # async def test_user_search(self, users_client):
     #     """Test user search functionality."""

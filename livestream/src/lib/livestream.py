@@ -10,7 +10,7 @@ from google.cloud.video import live_stream_v1 as ls1
 from google.cloud.video.live_stream_v1 import LivestreamServiceAsyncClient
 from google.cloud.video.live_stream_v1.types import Manifest, AudioStream, VideoStream, MuxStream, ElementaryStream, Input, InputAttachment, Channel, ChannelOperationResponse
 
-from ..connectors import LiveStreamDB
+from connectors import LiveStreamDB
 
 
 class LiveStream:

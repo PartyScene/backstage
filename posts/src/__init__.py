@@ -2,11 +2,15 @@ from pprint import pprint
 import secrets
 
 import logging
+import os
+
 from logging.config import dictConfig
 
 from quart import Quart, app, request
 from .connectors import init_db
 from .views.base import BaseView
+from redis.asyncio import Redis
+
 
 from quart_jwt_extended import JWTManager
 # Configure logging

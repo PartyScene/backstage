@@ -10,6 +10,7 @@ from shared.lib import create_media_client
 from ..connectors import UsersDB
 from shared.notifications import NotificationManager
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 

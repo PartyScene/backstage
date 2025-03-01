@@ -12,11 +12,7 @@ class TestEventUpdates(TestEventsBase):
             "title": fake.catch_phrase(),
             "description": fake.text()
         }
-        response = await self.create_event(event_client, mock_event, bearer)
-        data = await response.get_json()
-        assert response.status_code == 201
-
-        response = await self.update_event(event_client, data['id'], update_data, bearer)
+        response = await self.update_event(event_client, mock_event['id'], update_data, bearer)
         assert response.status_code == 200
         
         updated_event = await response.get_json()
@@ -26,11 +22,7 @@ class TestEventUpdates(TestEventsBase):
         """Test changing event status."""
         status_update = {"status": "cancelled"}
         
-        response = await self.create_event(event_client, mock_event, bearer)
-        data = await response.get_json()
-        assert response.status_code == 201
-        
-        response = await self.update_event_status(event_client, data['id'], status_update, bearer)
+        response = await self.update_event_status(event_client, mock_event['id'], status_update, bearer)
         # response = await client.patch(f"/events/{data['id']}/status", json=status_update)
         assert response.status_code == 200
         

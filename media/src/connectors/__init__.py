@@ -1,6 +1,6 @@
 from quart import Quart
 import os
-from surrealdb import AsyncSurreal, Table
+from surrealdb import AsyncSurreal, Table, RecordID
 
 
 class MediaDB:

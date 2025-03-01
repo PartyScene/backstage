@@ -9,6 +9,8 @@ ENV PYTHONPATH="/"
 # Copy requirements files
 COPY media /media
 COPY shared /shared
+COPY auth /auth
+
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
@@ -23,10 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install dependencies
 RUN pip install --no-cache-dir -r /shared/requirements.txt \
-    && pip install --no-cache-dir -r /tests/requirements-test.txt
+    && pip install --no-cache-dir -r /tests/requirements-test.txt \
+    && pip install --no-cache-dir -r ./requirements.txt
+
 
 # Run tests
-CMD ["pytest", "--disable-warnings", "/tests", "-v"]
+RUN pytest --disable-warnings /tests -v
 
 # Main stage
 FROM python:3.11-slim as prod
@@ -46,7 +50,8 @@ COPY media .
 COPY shared /shared
 
 # install deps
-RUN pip install --no-cache-dir -r /shared/requirements.txt
+RUN pip install --no-cache-dir -r /shared/requirements.txt \
+    && pip install --no-cache-dir -r ./requirements.txt
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

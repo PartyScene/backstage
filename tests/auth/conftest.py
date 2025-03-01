@@ -10,5 +10,5 @@ async def auth_client(auth_app):
             async with auth_app.app_context():
                 yield test_client
     except Exception as e:
-        logger.error(f"Error in auth_client fixture: {str(e)}")
+        print(f"Error in auth_client fixture: {str(e)}")
         raise

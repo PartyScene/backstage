@@ -3,6 +3,7 @@ import pytest
 import urllib
 from quart.testing import QuartClient
 
+
 class TestMediaBase:
     async def upload_media(self, client: QuartClient, files, metadata, bearer):
         """Helper method to upload media"""

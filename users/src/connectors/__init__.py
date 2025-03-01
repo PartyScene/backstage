@@ -128,8 +128,7 @@ class UsersDB:
                 *,
                 ->attends->events[WHERE true] AS scenes,
                 ->friends->users[WHERE true] AS friends
-            FROM users 
-            WHERE id = type::thing('users', $id);
+            FROM type::thing('users', $id);
             """,
             {"id": id},
         )
@@ -164,6 +163,7 @@ class UsersDB:
             "UPDATE type::thing('users', $record_id) MERGE $content",
             {"content": data, "record_id": data["id"]},
         )
+        result['id'] = result['id'].id
         return result[0]
 
 

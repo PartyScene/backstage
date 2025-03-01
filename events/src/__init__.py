@@ -9,6 +9,8 @@ from quart_schema import QuartSchema
 from quart import Quart, request, websocket
 from quart_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 
+from redis.asyncio import Redis
+
 from .connectors import EventsDB, init_db
 from .views.base import BaseView
 

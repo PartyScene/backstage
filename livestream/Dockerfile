@@ -4,20 +4,22 @@
 # Test stage
 FROM python:3.11-slim as test
 
-WORKDIR /
+WORKDIR /livestream
 
 # Set PYTHONPATH for shared libraries
 ENV PYTHONPATH="/"
 
 # Copy requirements files
-COPY livestream /livestream/
+COPY livestream ./
 COPY shared /shared/
+COPY auth /auth/
+
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
 COPY tests/requirements-test.txt /tests/requirements-test.txt
 COPY tests/livestream /tests/livestream
-COPY tests/.env /tests/.env
+COPY tests/pytest.ini /tests/pytest.ini
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,7 +31,7 @@ RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt
 
 # Run tests
-CMD ["pytest", "--disable-warnings", "/tests", "-v"]
+RUN pytest --disable-warnings /tests -v
 
 # Main stage
 FROM python:3.11-slim as prod

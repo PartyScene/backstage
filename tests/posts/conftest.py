@@ -79,7 +79,7 @@ async def posts_app(surreal):
             pass
 
     app.redis = AsyncRedisMock()
-    app.db = LiveStreamDB(surreal)
+    app.db = PostsDB(surreal)
     try:
         async with app.app_context():
             await app.get_shared_secret()

@@ -1,5 +1,6 @@
 from pprint import pprint
 import secrets
+import os
 
 from quart_schema import QuartSchema
 import uvloop
@@ -11,7 +12,7 @@ from .connectors import init_db
 from .views.base import BaseView
 
 from quart_jwt_extended import JWTManager
-
+from redis.asyncio import Redis
 # Configure logging
 dictConfig({
     'version': 1,

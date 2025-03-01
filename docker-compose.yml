@@ -28,7 +28,10 @@ services:
 
   microservices.media:
     container_name: microservices.media
-    build: media
+    build:
+      target: test
+      context: .
+      dockerfile: media/Dockerfile
     restart: always
     networks:
       partyscene_network:
@@ -37,79 +40,73 @@ services:
       - microservices.auth
     env_file:
       - .env
-    environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
-      GOOGLE_CLOUD_PROJECT: partyscene-441317
-      LOCATION: us-central1
     volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro 
-      # Change this if not windows 
-      - ./shared:/app/shared/
+      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
 
   microservices.livestream:
     container_name: microservices.livestream
-    build: livestream
+    build:
+      target: test
+      context: .
+      dockerfile: livestream/Dockerfile
     restart: always
     networks:
       partyscene_network:
         ipv4_address: 11.0.0.13
     env_file:
       - .env
-    environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
-      GOOGLE_CLOUD_PROJECT: partyscene-441317
-      LOCATION: us-central1
-      STREAM_TYPE: HLS
-      OUTPUT_URI: gs://partyscene-scenes/output
     volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro 
-      - ./shared:/app/shared/
+      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     depends_on:
       - microservices.auth
 
   microservices.events:
     container_name: microservices.events
-    build: events
+    build:
+      target: test
+      context: .
+      dockerfile: events/Dockerfile
     restart: always
     networks:
       partyscene_network:
         ipv4_address: 11.0.0.12
     env_file:
       - .env
-    volumes:
-      - ./shared:/app/shared/
     depends_on:
       - microservices.auth
 
   microservices.posts:
     container_name: microservices.posts
-    build: posts
+    build:
+      target: test
+      context: .
+      dockerfile: posts/Dockerfile
     restart: always
     networks:
       partyscene_network:
         ipv4_address: 11.0.0.11
     env_file:
       - .env
-    environment:
-      - MEDIA_MICROSERVICE_URL=http://microservices.media:5510/upload
     volumes:
-      - ./shared:/app/shared/
+      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     depends_on:
+      - microservices.media
       - microservices.auth
-
   microservices.users:
     container_name: microservices.users
-    build: users
+    build: 
+      target: test
+      context: .
+      dockerfile: users/Dockerfile
     restart: always
     networks:
       partyscene_network:
         ipv4_address: 11.0.0.10
     env_file:
       - .env
-    volumes:
-      - ./shared:/app/shared/
     depends_on:
       - microservices.auth
+      - microservices.media
 
   kong:
     image: kong/kong-gateway:3.8.0.0
@@ -145,6 +142,7 @@ services:
         ipv4_address: 11.0.0.18
 
   surrealdb:
+    container_name: surrealdb
     env_file:
       - .env
     entrypoint:

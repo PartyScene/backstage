@@ -1,0 +1,27 @@
+name: Scenes CI/CD
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Git Checkout
+      uses: actions/checkout@v4
+    # - name: Start SurrealDB
+    #   uses: surrealdb/setup-surreal@v2
+    #   with:
+    #     surrealdb_version: latest
+    #     surrealdb_port: 8000
+    #     surrealdb_username: root
+    #     surrealdb_password: root
+    #     surrealdb_auth: true
+    #     surrealdb_strict: false
+    #     surrealdb_log: debug
+
+    - name: Build & Test Microservices
+      run:  |
+        docker-compose up --abort-on-container-exit --build
+      
+    - name: Cleanup the tests.
+      run: |
+        docker-compose down

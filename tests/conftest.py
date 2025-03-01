@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 # Global Faker instance for generating test data
 fake = Faker()
 
-@pytest.fixture(scope='session')
-def load_dotenv():
+@pytest.fixture(scope='session', autouse=True)
+def load_envvars():
     load_dotenv()
 
 # the custom event_loop fixture and update the async fixtures
@@ -45,6 +45,7 @@ def event_loop():
 @pytest_asyncio.fixture(scope='session', loop_scope="session")
 async def surreal():
     """Create a session-scoped database connection"""
+    logger.debug(os.environ)
     db = AsyncSurreal(os.environ['SURREAL_URI'])
     await db.connect(os.environ['SURREAL_URI'])
     await db.signin(

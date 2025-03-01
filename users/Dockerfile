@@ -9,12 +9,13 @@ ENV PYTHONPATH="/"
 # Copy requirements files
 COPY users /users
 COPY shared /shared
+COPY auth /auth
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
 COPY tests/requirements-test.txt /tests/requirements-test.txt
 COPY tests/users /tests/users
-COPY tests/.env /tests/.env
+COPY tests/pytest.ini /tests/pytest.ini
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

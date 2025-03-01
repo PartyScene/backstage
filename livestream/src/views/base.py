@@ -20,7 +20,7 @@ class BaseView(QuartClassful):
     async def get_livestream(self, event_id):
         try:
             stream_info = await self.livestream.get_stream(event_id)
-            return jsonify(stream_info), HTTPStatus.OKW
+            return jsonify(stream_info), HTTPStatus.OK
         except:
             return jsonify({"error": "Failed to get livestream"}), HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -35,6 +35,6 @@ class BaseView(QuartClassful):
             stream_create_resp = await self.livestream.start_stream(event_id)
             if stream_create_resp:
                 stream_info = await self.livestream.get_stream(event_id)
-                return jsonify(stream_info), HTTPStatus.OK
+                return jsonify(stream_info), HTTPStatus.CREATED
         except:
             return jsonify({"error": "Failed to create livestream"}), HTTPStatus.INTERNAL_SERVER_ERROR

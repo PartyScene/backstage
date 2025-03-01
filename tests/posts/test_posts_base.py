@@ -6,7 +6,7 @@ from quart.testing import QuartClient
 class TestPostsBase:
     async def create_post(self, client: QuartClient, files, metadata, bearer):
         """Helper method to upload media"""
-        return await client.post(f'/', files=files, json=metadata, headers={"Authorization": f"Bearer {bearer}"})
+        return await client.post(f'/', files=files, form=metadata, headers={"Authorization": f"Bearer {bearer}"})
 
     async def fetch_event_posts(self, client: QuartClient, event_id, bearer):
         """Helper method to get all events"""

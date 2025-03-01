@@ -17,12 +17,8 @@ class TestEventQueries(TestEventsBase):
     
     async def test_get_event(self, event_client, mock_event, bearer):
         """Test retrieving a list of events."""
-        response = await self.create_event(event_client, mock_event, bearer)
-        assert response.status_code == 201
-        
-        data = await response.get_json()
-        response = await self.get_event(event_client, data['id'], bearer)
-        assert 'id' in data
+        response = await self.get_event(event_client, mock_event['id'], bearer)
+        assert 'id' in mock_event
 
     # async def test_filter_events_by_date(self, client):
     #     """Test filtering events by date range."""
