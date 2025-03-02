@@ -1,7 +1,7 @@
 from quart import Quart
 import os
 from surrealdb import AsyncSurreal, RecordID
-
+from shared.utils import record_id_to_json
 
 class PostsDB:
     def __init__(self, db) -> None:
@@ -16,12 +16,12 @@ class PostsDB:
                 dict: A dictionary containing the result of the post fetch query.
         """
         query = """
-                SELECT ->posts(WHERE event = type::thing('events', $id)
+                SELECT ->posts[WHERE event = type::thing('events', $id)]
                 FROM users;
             """
         params = {"id": id}
         result = await self.db.query(query, params)
-        return result[0]
+        return record_id_to_json(result)
 
     async def create_comment(self, data):
         """
@@ -81,17 +81,17 @@ class PostsDB:
                 dict: A dictionary containing the result of the post creation query.
         """
         await self.db.let("users", RecordID("users", author))
-        await self.db.let("media", [RecordID(media["id"]) for media in media_links])
+        await self.db.let("media", [RecordID("media", media["id"]) for media in media_links])
         query = """
         RELATE $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
         """
         params = {
             "content": data["content"],
             "media_links": media_links,
-            "event": data["event"],
+            "event": RecordID("events", data["event"]),
         }
         result = await self.db.query(query, params)
-        return result[0]["result"][0]
+        return record_id_to_json(result[0])
 
     async def delete_post(self, id: str):
         """
@@ -105,7 +105,7 @@ class PostsDB:
         """
 
         result = await self.db.delete(RecordID("posts", id))
-        return result
+        return record_id_to_json(result)
 
     async def fetch_post(self, id: str) -> dict:
         """
@@ -119,7 +119,9 @@ class PostsDB:
         """
 
         result = await self.db.select(RecordID("posts", id))
-        return result
+        if not result:
+            return None
+        return record_id_to_json(result)
 
 
 async def init_db(app: Quart) -> PostsDB:

@@ -55,7 +55,7 @@ class BaseView(QuartClassful):
         for file_key in files:
             try:
                 req = await self.__media_client.upload_media(request, files[file_key])
-                media_links.append(req["url"])
+                media_links.append(req)
             except:
                 return jsonify({"error": "Error uploading files"}), 400
         result = await self.__posts_handler.create_post(
@@ -72,7 +72,9 @@ class BaseView(QuartClassful):
             Response: A JSON response containing a success message and a status code of 200 if successful.
                       If ID is missing, returns a JSON error message and a status code of 400.
         """
-        return jsonify(await self.__posts_handler.fetch_post(id), HTTPStatus.OK)
+        if (result := await self.__posts_handler.fetch_post(id)):
+            return jsonify(result), HTTPStatus.OK
+        return jsonify({"error": "Post not found"}), HTTPStatus.NOT_FOUND
 
     @route("/<id>", methods=["DELETE"])
     @jwt_required
@@ -89,4 +91,4 @@ class BaseView(QuartClassful):
                       If ID is missing, returns a JSON error message and a status code of 400.
         """
         await self.__posts_handler.delete_post(id)
-        return jsonify("Deleted"), HTTPStatus.OK
+        return jsonify("Deleted"), HTTPStatus.NO_CONTENT

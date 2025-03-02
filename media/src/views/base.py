@@ -29,6 +29,7 @@ class BaseView(QuartClassful):
 
         # Get the data and attach fields
         data = await request.form
+        data = data.to_dict()
         data["creator"] = get_jwt_identity()
 
         # upload to GCP

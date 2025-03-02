@@ -2,6 +2,7 @@ from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
 import os
 from typing import Optional
+import logging
 
 
 class UsersDB:
@@ -116,19 +117,18 @@ class UsersDB:
 
         Returns:
             Optional[dict]: User data including attended events, or None if not found
-        """
+        """  # ->attends->events[WHERE true] AS scenes,
+        # ->friends
         result = await self.db.query(
             """
             SELECT 
-                *,
-                ->attends->events[WHERE true] AS scenes,
-                ->friends->users[WHERE true] AS friends
+                *
             FROM type::thing('users', $id);
             """,
             {"id": id},
         )
-        if not isinstance(result, dict):
-            return None
+        if isinstance(result[0], dict) and "id" in result[0]:
+            result[0]["id"] = result[0]["id"].id
         return result[0]
 
     async def delete(self, id: str) -> Optional[dict]:
@@ -158,7 +158,8 @@ class UsersDB:
             "UPDATE type::thing('users', $record_id) MERGE $content RETURN AFTER;",
             {"content": data, "record_id": data["id"]},
         )
-        result["id"] = result["id"].id
+        if isinstance(result[0], dict) and "id" in result[0]:
+            result[0]["id"] = result[0]["id"].id
         return result[0]
 
 

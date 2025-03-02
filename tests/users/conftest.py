@@ -40,14 +40,20 @@ fake = Faker()
 #         }
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_media_client():
     """Mock the MediaClient for users tests"""
     with patch("shared.utils.create_media_client") as mock_create_client:
         mock_client = AsyncMock()
-        mock_client.upload_media.return_value = {"type": "image/jpeg", "url": 'https://storage.googleapis.com/fake-bucket/test-image.jpg', "creator": "xxxxx", "event": "xxxxxxx"}
+        mock_client.upload_media.return_value = {
+            "type": "image/jpeg",
+            "url": "https://storage.googleapis.com/fake-bucket/test-image.jpg",
+            "creator": "xxxxx",
+            "event": "xxxxxxx",
+        }
         mock_create_client.return_value = mock_client
         yield mock_client
+
 
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"

@@ -29,16 +29,18 @@ logger = logging.getLogger(__name__)
 # Global Faker instance for generating test data
 fake = Faker()
 
+
 @pytest.fixture(scope="session")
 def mock_livestream():
 
-    with patch("livestream.src.lib.livestream.LiveStream") as mock_livestream:
+    with patch("shared.workers.create_livestream_client") as mock_livestream:
         instance = mock_livestream.return_value
         instance.start_stream = AsyncMock(return_value=True)
         instance.get_stream = AsyncMock(
             return_value={"ingest_url": "test", "playback_url": "test", "id": "okPok"}
         )
         yield instance
+
 
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
@@ -110,8 +112,6 @@ async def livestream_client(livestream_app, bearer):
     except Exception as e:
         logger.error(f"Error in livestream_client fixture: {str(e)}")
         raise
-
-
 
 
 # @pytest.fixture(scope='session')

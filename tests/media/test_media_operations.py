@@ -3,7 +3,7 @@ from faker import Faker
 from httpx import AsyncClient
 from datetime import datetime
 import io
-
+from quart.datastructures import FileStorage
 from test_media_base import TestMediaBase
 
 fake = Faker()
@@ -14,15 +14,20 @@ class TestMediaOperations(TestMediaBase):
     async def test_upload_image(self, media_client, mock_event, bearer):
         """Test uploading an image file."""
         # Create a mock image file
-        image_content = b"fake image content"
-        files = {"file": ("test_image.jpg", io.BytesIO(image_content), "image/jpeg")}
+        files = {
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
+        }
         metadata = {
             "title": fake.sentence(),
             "description": fake.text(max_nb_chars=200),
-            "tags": [fake.word() for _ in range(3)],
             "event": mock_event["id"],
             "type": "image",
         }
+        
 
         response = await self.upload_media(media_client, files, metadata, bearer)
         assert response.status_code == 201

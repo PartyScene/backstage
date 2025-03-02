@@ -1,6 +1,7 @@
 from quart import Quart
 import os
 from surrealdb import AsyncSurreal, Table, RecordID
+from shared.utils import record_id_to_json
 
 
 class MediaDB:
@@ -13,8 +14,7 @@ class MediaDB:
         Fetch media record from the database by its unique ID.
         """
         result = await self.db.select(RecordID("media", data["id"]))
-        result["id"] = result["id"].id
-        return result
+        return record_id_to_json(result)
 
     async def delete_media(self, data: dict):
         """This function deletes media data.
@@ -23,7 +23,6 @@ class MediaDB:
             data (__dict__): Must contain media ID.
         """
         result = await self.db.delete(RecordID("media", data["id"]))
-
         return result
 
     async def create_media_metadata(self, data: dict) -> dict:
@@ -40,9 +39,7 @@ class MediaDB:
             raise Exception(
                 f"Error creating media record: {result}"
             )  # Handle error case
-
-        return result
-
+        return record_id_to_json(result[0])
 
 async def init_db(app: Quart) -> MediaDB:
     db = AsyncSurreal(os.environ["SURREAL_URI"])

@@ -10,7 +10,7 @@ class TestMediaBase:
         return await client.post(
             f"/upload",
             files=files,
-            data=metadata,
+            form=metadata,
             headers={"Authorization": f"Bearer {bearer}"},
         )
 

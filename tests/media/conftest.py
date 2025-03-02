@@ -46,9 +46,7 @@ fake = Faker()
 async def media_app(surreal):
     from media.run import app
     from media.src.connectors import MediaDB
-
-    load_dotenv()
-
+    
     # with patch('google.cloud.video.live_stream_v1.LivestreamServiceAsyncClient') as mock_client:
     #     # Create a mock async client
     #     mock_async_client = AsyncMock()

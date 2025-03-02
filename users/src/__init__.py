@@ -58,10 +58,13 @@ class UsersMicroService(Quart):
 
         @self.before_request
         async def log_request():
-            logger.info(
-                f"Request received: {request.method} {request.path} {request.body}"
-            )
+            logger.info(f"Request received: {request.method} {request.path}")
             logger.debug(f"Request headers: {request.headers}")
+            logger.debug(f"Request body as Raw: {await request.get_data()}")
+            logger.debug(
+                f"Request body as Form: {await request.get_data(parse_form_data=True)}"
+            )
+            logger.debug(f"Request files: {await request.files}")
             logger.debug(f"KEYS: {self.config['SECRET_KEY']}")
 
         @self.after_request

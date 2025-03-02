@@ -1,20 +1,17 @@
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
 from quart.datastructures import FileStorage
-
-from ..lib.livestream import LiveStream
+from shared.workers import create_livestream_client
 
 from http import HTTPStatus
-from classful import route, QuartClassful
+from shared.classful import route, QuartClassful
 
 
 class BaseView(QuartClassful):
 
-    route_base = "/livestream/"  # Add namespace for routes
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.livestream = LiveStream(app.db, app.logger)
+        self.livestream = create_livestream_client(app.db, app.logger)
 
     @route("/<event_id>", methods=["GET"])
     async def get_livestream(self, event_id):

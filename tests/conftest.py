@@ -139,6 +139,7 @@ def mock_user():
         "email": "oyinxdoubx@gmail.com",
         "password": "testingTs",
         "confirm_password": "testingTs",
+        "avatar_url": f"https://picsum.photos/id/{fake.random_int(min=1, max=1000, step=1)}/200/200",
     }
 
 
