@@ -9,20 +9,23 @@ from classful import route, QuartClassful
 
 
 class BaseView(QuartClassful):
-    
+
     route_base = "/livestream/"  # Add namespace for routes
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.livestream = LiveStream(app.db, app.logger)
-    
+
     @route("/<event_id>", methods=["GET"])
     async def get_livestream(self, event_id):
         try:
             stream_info = await self.livestream.get_stream(event_id)
             return jsonify(stream_info), HTTPStatus.OK
         except:
-            return jsonify({"error": "Failed to get livestream"}), HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify({"error": "Failed to get livestream"}),
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
 
     @route("/<event_id>", methods=["POST"])
     async def create_livestream(self, event_id):  # Renamed from index to manage_stream
@@ -30,11 +33,14 @@ class BaseView(QuartClassful):
         Flow: Create a Stream -> Create Input -> Record Input -> Store Output -> Connect to Output
         API Endpoint to create a livestream input using GCP Livestream API.
         """
-        
+
         try:
             stream_create_resp = await self.livestream.start_stream(event_id)
             if stream_create_resp:
                 stream_info = await self.livestream.get_stream(event_id)
                 return jsonify(stream_info), HTTPStatus.CREATED
         except:
-            return jsonify({"error": "Failed to create livestream"}), HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify({"error": "Failed to create livestream"}),
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )

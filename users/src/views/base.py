@@ -5,7 +5,7 @@ from http import HTTPStatus
 from typing import Tuple, Dict, Any
 
 from classful import route, QuartClassful
-from shared.lib import create_media_client
+from shared.utils import create_media_client
 
 from ..connectors import UsersDB
 from shared.notifications import NotificationManager
@@ -14,10 +14,11 @@ import os
 
 logger = logging.getLogger(__name__)
 
+
 class BaseView(QuartClassful):
     def __init__(self):
         self.db: UsersDB = app.db
-        self.__media_client = create_media_client(os.environ['MEDIA_MICROSERVICE_URL'])
+        self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
         self.__notification_manager = NotificationManager()
 
     @route("/user", methods=["GET"])
@@ -53,7 +54,7 @@ class BaseView(QuartClassful):
         try:
             user_id = get_jwt_identity()
             data = await request.get_json()
-            data['id'] = user_id
+            data["id"] = user_id
             result = await self.db.update(data)
             return result, HTTPStatus.OK
         except Exception as e:
@@ -67,11 +68,11 @@ class BaseView(QuartClassful):
     #         user_id = get_jwt_identity()
     #         degree = request.args.get('degree', type=int, default=1)
     #         target_id = request.args.get('target')
-            
+
     #         data = {"origin": user_id}
     #         if target_id:
     #             data["target"] = target_id
-                
+
     #         result = await self.db.find_friend_relationship(data, degree)
     #         return {"friends": result}, HTTPStatus.OK
     #     except Exception as e:
@@ -95,17 +96,19 @@ class BaseView(QuartClassful):
     async def get_connections_at_degree(self) -> Tuple[Dict[str, Any], int]:
         """
         Get all connections up to N degrees of separation
-        
+
         Query Parameters:
             max_degree (int): Maximum degree of separation (1-6, default: 3)
         """
         try:
             user_id = get_jwt_identity()
-            max_degree = request.args.get('max_degree', type=int, default=3)
-            
+            max_degree = request.args.get("max_degree", type=int, default=3)
+
             if max_degree < 1 or max_degree > 6:
-                return {"error": "max_degree must be between 1 and 6"}, HTTPStatus.BAD_REQUEST
-                
+                return {
+                    "error": "max_degree must be between 1 and 6"
+                }, HTTPStatus.BAD_REQUEST
+
             result = await self.db.find_connections_at_degree(user_id, max_degree)
             return {"connections": result}, HTTPStatus.OK
         except Exception as e:
@@ -116,17 +119,19 @@ class BaseView(QuartClassful):
     async def update_connection(self) -> Tuple[Dict[str, Any], int]:
         """
         Update the connection status between two users
-        
+
         Query Parameters:
             id (str): The ID of the target relationship
             status (str): The new connection status (either "friend", "unfriend", or "blocked")
         """
         try:
             data = await request.get_json()
-            
-            if 'id' not in data:
-                return {"error": "Target relationship ID is required"}, HTTPStatus.BAD_REQUEST
-                
+
+            if "id" not in data:
+                return {
+                    "error": "Target relationship ID is required"
+                }, HTTPStatus.BAD_REQUEST
+
             result = await self.db.update_friend_relationship(data)
             return result, HTTPStatus.OK
         except Exception as e:
@@ -139,16 +144,15 @@ class BaseView(QuartClassful):
         try:
             user_id = get_jwt_identity()
             data = await request.get_json()
-            data['origin'] = user_id
-            
-            if 'target' not in data:
+            data["origin"] = user_id
+
+            if "target" not in data:
                 return {"error": "Target user ID is required"}, HTTPStatus.BAD_REQUEST
-                
+
             result = await self.db.create_friend_relationship(data)
-            
+
             await self.__notification_manager.send_friend_request_notification(
-                sender=result['relationship']['in']['id'],
-                recipient_id=data['target']
+                sender=result["relationship"]["in"]["id"], recipient_id=data["target"]
             )
             return result, HTTPStatus.CREATED
         except Exception as e:
@@ -159,28 +163,30 @@ class BaseView(QuartClassful):
     async def upload_media(self):
         """
         Uploads a file to the Media Microservice and updates the user's avatar URL.
-        
+
         Request Body:
             file (file): The file to upload
-        
+
         Returns:
             dict: Updated user data
         """
         try:
             user_id = get_jwt_identity()
-            data = {'id': user_id}  # Changed from 'user' to 'id' to match update method
-            
-            file = (await request.files).get('file')
+            data = {"id": user_id}  # Changed from 'user' to 'id' to match update method
+
+            file = (await request.files).get("file")
             if not file:
                 return {"error": "No file provided"}, HTTPStatus.BAD_REQUEST
 
             # Relay file to the Media Microservice
             media_data = await self.__media_client.upload_media(request, file)
-            media_link = media_data.get('url')
+            media_link = media_data.get("url")
             if not media_link:
-                return {"error": "Invalid response from Media Microservice"}, HTTPStatus.BAD_GATEWAY
-            
-            data['avatar_url'] = media_link
+                return {
+                    "error": "Invalid response from Media Microservice"
+                }, HTTPStatus.BAD_GATEWAY
+
+            data["avatar_url"] = media_link
             response = await self.db.update(data)
             return response, HTTPStatus.OK
         except Exception as e:
@@ -192,18 +198,15 @@ class BaseView(QuartClassful):
         """
         try:
             # Assuming create_friend_relationship is an existing method in Users connector
-            friend_request = await self.db.create_friend_relationship({
-                'origin': sender_id,
-                'target': recipient_id,
-                'status': 'pending'
-            })
-            
+            friend_request = await self.db.create_friend_relationship(
+                {"origin": sender_id, "target": recipient_id, "status": "pending"}
+            )
+
             # Send notification to the recipient
             self.notification_manager.send_friend_request_notification(
-                sender_id=sender_id, 
-                recipient_id=recipient_id
+                sender_id=sender_id, recipient_id=recipient_id
             )
-            
+
             return friend_request
         except Exception as e:
             # Log the error and handle appropriately

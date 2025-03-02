@@ -3,35 +3,45 @@ from faker import Faker
 from httpx import AsyncClient
 from datetime import datetime, timedelta
 from test_livestream_base import TestLiveStreamBase
+
 fake = Faker()
+
 
 @pytest.mark.asyncio
 class TestLiveStreamManagement(TestLiveStreamBase):
-    async def test_create_stream(self, livestream_client, mock_event, mock_livestream, bearer):
+    async def test_create_stream(
+        self, livestream_client, mock_event, mock_livestream, bearer
+    ):
         """Test creating a new livestream session."""
-        response = await self.create_live_stream(livestream_client, mock_event['id'], bearer)
+        response = await self.create_live_stream(
+            livestream_client, mock_event["id"], bearer
+        )
         assert response.status_code == 201
         created_stream = await response.get_json()
-        
+
         mock_livestream.start_stream.assert_called_once()
 
         # assert created_stream['title'] == mock_event['title']
-        assert 'ingest_url' in created_stream
-        assert 'playback_url' in created_stream
+        assert "ingest_url" in created_stream
+        assert "playback_url" in created_stream
 
-    async def test_get_stream_info(self, livestream_client, mock_event, mock_livestream, bearer):
+    async def test_get_stream_info(
+        self, livestream_client, mock_event, mock_livestream, bearer
+    ):
         """Test retrieving stream information."""
         # First create a stream
         # create_response = await self.create_live_stream(livestream_client, mock_stream)
         # stream_id = await create_response.get_json()['id']
-        
-        response = await self.get_live_stream(livestream_client, mock_event['id'], bearer)
+
+        response = await self.get_live_stream(
+            livestream_client, mock_event["id"], bearer
+        )
         assert response.status_code == 200
         stream_info = await response.get_json()
-    
+
         mock_livestream.get_stream.assert_called_once()
 
-        assert 'playback_url' in stream_info
+        assert "playback_url" in stream_info
 
         # assert 'viewer_count' in stream_info
         # assert 'status' in stream_info
@@ -45,7 +55,7 @@ class TestLiveStreamManagement(TestLiveStreamBase):
     #     }
     #     create_response = await livestream_client.post("/livestream/create", json=stream_data)
     #     stream_id = create_response.json()['id']
-        
+
     #     # Update settings
     #     update_data = {
     #         "title": fake.catch_phrase(),
@@ -53,11 +63,11 @@ class TestLiveStreamManagement(TestLiveStreamBase):
     #         "category": "education",
     #         "tags": [fake.word() for _ in range(3)]
     #     }
-        
+
     #     response = await livestream_client.put(f"/livestream/{stream_id}/settings", json=update_data)
     #     assert response.status_code == 200
     #     updated_stream = response.json()
-        
+
     #     assert updated_stream['title'] == update_data['title']
     #     assert updated_stream['category'] == update_data['category']
 
@@ -67,7 +77,7 @@ class TestLiveStreamManagement(TestLiveStreamBase):
     #     stream_data = {"title": fake.catch_phrase()}
     #     create_response = await async_client.post("/livestream/create", json=stream_data)
     #     stream_id = create_response.json()['id']
-        
+
     #     # Send chat message
     #     chat_message = {
     #         "content": fake.sentence(),
@@ -75,12 +85,12 @@ class TestLiveStreamManagement(TestLiveStreamBase):
     #     }
     #     response = await async_client.post(f"/livestream/{stream_id}/chat", json=chat_message)
     #     assert response.status_code == 201
-        
+
     #     # Get chat history
     #     history_response = await async_client.get(f"/livestream/{stream_id}/chat/history")
     #     assert history_response.status_code == 200
     #     chat_history = history_response.json()
-        
+
     #     assert isinstance(chat_history, list)
     #     assert len(chat_history) > 0
 
@@ -101,6 +111,6 @@ class TestLiveStreamManagement(TestLiveStreamBase):
     #     stream_data = {"title": fake.catch_phrase()}
     #     create_response = async_client.post("/livestream/create", json=stream_data)
     #     stream_id = create_response.json()['id']
-        
+
     #     result = benchmark(async_client.get, f"/livestream/{stream_id}")
     #     assert result.status_code == 200

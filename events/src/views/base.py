@@ -7,7 +7,14 @@ from http import HTTPStatus
 
 from dataclasses import dataclass
 from pprint import pprint
-from quart import make_response, render_template, current_app as app, request, jsonify, websocket
+from quart import (
+    make_response,
+    render_template,
+    current_app as app,
+    request,
+    jsonify,
+    websocket,
+)
 from quart_schema import validate_request, DataSource
 
 from ..connectors import EventsDB
@@ -18,6 +25,7 @@ from quart_jwt_extended import jwt_required, get_jwt_identity
 from logging import getLogger
 
 logger = getLogger(__name__)
+
 
 class BaseView(QuartClassful):
 
@@ -44,13 +52,13 @@ class BaseView(QuartClassful):
     @route("/events", methods=["GET"])
     @route("/events/<event_id>", methods=["GET"])
     @jwt_required
-    async def fetch_events(self, event_id = None):
+    async def fetch_events(self, event_id=None):
         """This endpoints returns all the events"""
-        page = int(request.args.get('page', 1))
-        limit = int(request.args.get('limit', 20))
-        
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 20))
+
         if event_id:
-            if (result := await self.db.fetch(event_id)):
+            if result := await self.db.fetch(event_id):
                 return result, HTTPStatus.OK
             return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
@@ -59,11 +67,11 @@ class BaseView(QuartClassful):
 
     @route("/events/<event_id>", methods=["PATCH"])
     @jwt_required
-    async def update_event(self, event_id = None):
+    async def update_event(self, event_id=None):
         """This endpoints returns all the events"""
         data = await request.get_json()
         if event_id:
-            if (result := await self.db.update_event_data(event_id, data)):
+            if result := await self.db.update_event_data(event_id, data):
                 return result, HTTPStatus.OK
             return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
@@ -74,14 +82,16 @@ class BaseView(QuartClassful):
         try:
             data = await request.get_json()  # Get raw JSON data
             # You can add your own validation here if needed
-            data['host'] = data.get('host', get_jwt_identity())
-            if (result := await self.db.create_event(data)):  # Pass the raw data to the database method
+            data["host"] = data.get("host", get_jwt_identity())
+            if result := await self.db.create_event(
+                data
+            ):  # Pass the raw data to the database method
                 return jsonify(result), HTTPStatus.CREATED
             return {"error": "Bad params"}, HTTPStatus.BAD_REQUEST
         except Exception as e:
             self.logger.error(f"Error creating event: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.BAD_REQUEST
-    
+
     @route("/events/<event_id>/delete", methods=["DELETE"])
     @jwt_required
     async def delete_event(self, event_id: str):
@@ -97,11 +107,11 @@ class BaseView(QuartClassful):
     @jwt_required
     async def fetch_public_events(self):
         """This endpoints returns all the public events"""
-        page = int(request.args.get('page', 1))
-        limit = int(request.args.get('limit', 20))
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 20))
         result = await self.db.fetch_all_public(page, limit)
         return result, 200
-    
+
     @route("/events/distance", methods=["GET"])
     @jwt_required
     async def fetch_by_distance(self):
@@ -111,10 +121,10 @@ class BaseView(QuartClassful):
             array : List of events
         """
         location = (
-            float(request.args.get('lat', 0)),
-            float(request.args.get('lng', 0))
+            float(request.args.get("lat", 0)),
+            float(request.args.get("lng", 0)),
         )
-        distance = int(request.args.get('distance', 1000))
+        distance = int(request.args.get("distance", 1000))
         result = await self.db.fetch_by_distance(location, distance)
         return result, HTTPStatus.OK
 
@@ -125,26 +135,28 @@ class BaseView(QuartClassful):
         try:
             user_id = get_jwt_identity()
             data = await request.get_json()
-            
+
             # Verify user has permission to update this event
             event = await self.db.fetch(event_id)
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
-            
-            if event['host'] != user_id:
-                self.logger.warning(f"Unauthorized access attempt to event {event_id} by user {user_id}")
+
+            if event["host"] != user_id:
+                self.logger.warning(
+                    f"Unauthorized access attempt to event {event_id} by user {user_id}"
+                )
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
-            
+
             result = await self.db.update_event_status(
-                event_id,
-                status=data['status'],
-                metadata=data.get('metadata')
+                event_id, status=data["status"], metadata=data.get("metadata")
             )
             self.logger.info(f"Successfully updated status for event {event_id}")
             return result, HTTPStatus.OK
         except Exception as e:
-            self.logger.error(f"Error updating event status for {event_id}: {str(e)}", exc_info=True)
+            self.logger.error(
+                f"Error updating event status for {event_id}: {str(e)}", exc_info=True
+            )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/<event_id>/live", methods=["GET"])
@@ -153,16 +165,17 @@ class BaseView(QuartClassful):
         """Start live updates for an event"""
         try:
             user_id = get_jwt_identity()
-            
+
             # Verify user has access to this event
             event = await self.db.fetch(event_id)
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
-            if (event['host'].id != user_id and 
-                user_id not in [a['id'] for a in event.get('attendees', [])]):
-                self.logger.warning(f"Unauthorized live updates access attempt for event {event_id} by user {user_id}")
+            if event["host"] != user_id:
+                self.logger.warning(
+                    f"Unauthorized live updates access attempt for event {event_id} by user {user_id}"
+                )
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
 
             # Check if live query already exists
@@ -173,15 +186,18 @@ class BaseView(QuartClassful):
 
             # Start the live query and get its ID
             live_id = await self.db.live_query(event_id)
-            
+
             # Store in Redis
             await self._store_live_query(event_id, live_id)
-            
+
             self.logger.info(f"Started new live query for event {event_id}")
             return {"live_query_id": live_id}, HTTPStatus.OK
 
         except Exception as e:
-            self.logger.error(f"Failed to start live query for event {event_id}: {str(e)}", exc_info=True)
+            self.logger.error(
+                f"Failed to start live query for event {event_id}: {str(e)}",
+                exc_info=True,
+            )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/<event_id>/live", methods=["DELETE"])
@@ -190,15 +206,17 @@ class BaseView(QuartClassful):
         """Stop live updates for an event"""
         try:
             user_id = get_jwt_identity()
-            
+
             # Verify user has access to this event
             event = await self.db.fetch(event_id)
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
-            if event['host'].id != user_id:
-                self.logger.warning(f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}")
+            if event["host"].id != user_id:
+                self.logger.warning(
+                    f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}"
+                )
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
 
             # Get live query ID from Redis
@@ -206,14 +224,19 @@ class BaseView(QuartClassful):
             if live_id:
                 await self.db.kill_live_query(live_id)
                 await self._remove_live_query(event_id)
-                self.logger.info(f"Successfully stopped live updates for event {event_id}")
+                self.logger.info(
+                    f"Successfully stopped live updates for event {event_id}"
+                )
                 return {"message": "Live updates stopped"}, HTTPStatus.OK
-            
+
             self.logger.info(f"No live updates running for event {event_id}")
             return {"message": "No live updates running"}, HTTPStatus.OK
 
         except Exception as e:
-            self.logger.error(f"Failed to stop live query for event {event_id}: {str(e)}", exc_info=True)
+            self.logger.error(
+                f"Failed to stop live query for event {event_id}: {str(e)}",
+                exc_info=True,
+            )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/<event_id>/buy_ticket", methods=["POST"])
@@ -222,24 +245,26 @@ class BaseView(QuartClassful):
         """Buy a ticket for an event"""
         try:
             user_id = get_jwt_identity()
-            
+
             # Verify the event exists
             event = await self.db.fetch(event_id)
             if not event:
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
-            
+
             # Create the attendance relationship
             attendance_data = {
                 "user": user_id,
                 "event": event_id,
-                "status": "confirmed"  # You can add more fields as needed
+                "status": "confirmed",  # You can add more fields as needed
             }
-            
+
             # Assuming you have a method to create the relationship in your database
             await self.db.create_attendance(attendance_data)
-            
+
             return {"message": "Ticket purchased successfully"}, HTTPStatus.CREATED
-        
+
         except Exception as e:
-            self.logger.error(f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True)
+            self.logger.error(
+                f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
+            )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR

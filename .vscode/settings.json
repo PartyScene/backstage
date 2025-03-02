@@ -4,7 +4,9 @@
     ],
     "discord.enabled": true,
     "python.testing.pytestArgs": [
-        "auth"
+        ".",
+        "-c",
+        "tests/pytest.ini"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true

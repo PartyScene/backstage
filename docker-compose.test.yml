@@ -23,6 +23,7 @@ services:
       - .env
     volumes:
       - ./init/schema.surql:/home/schema.surql
+      - ./state:/tmp/state
     environment:
       - SCHEMA_FILE=/home/schema.surql
 
@@ -37,7 +38,8 @@ services:
       partyscene_network:
         ipv4_address: 11.0.0.15
     depends_on:
-      - microservices.auth
+      microservices.events:
+        condition: service_completed_successfully
     env_file:
       - .env
     volumes:
@@ -58,7 +60,8 @@ services:
     volumes:
       - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     depends_on:
-      - microservices.auth
+      microservices.events:
+        condition: service_completed_successfully
 
   microservices.events:
     container_name: microservices.events
@@ -73,7 +76,8 @@ services:
     env_file:
       - .env
     depends_on:
-      - microservices.auth
+      microservices.auth:
+        condition: service_completed_successfully
 
   microservices.posts:
     container_name: microservices.posts
@@ -90,8 +94,8 @@ services:
     volumes:
       - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     depends_on:
-      - microservices.media
-      - microservices.auth
+      microservices.media:
+        condition: service_completed_successfully
   microservices.users:
     container_name: microservices.users
     build: 
@@ -105,31 +109,31 @@ services:
     env_file:
       - .env
     depends_on:
-      - microservices.auth
-      - microservices.media
+      microservices.auth:
+        condition: service_completed_successfully
 
-  kong:
-    image: kong/kong-gateway:3.8.0.0
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.19
-    ports:
-      - 8002:8000
-      - 8443:8443
-      - 8001:8001
-      - 8444:8444
-      - 8005:8002
-    volumes:
-      - ./kong/declarative:/kong/declarative/
-    environment:
-      KONG_DATABASE: off
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_GUI_URL: http://localhost:8005
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_DECLARATIVE_CONFIG: ./kong/declarative/kong.yml
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
+  # kong:
+  #   image: kong/kong-gateway:3.8.0.0
+  #   networks:
+  #     partyscene_network:
+  #       ipv4_address: 11.0.0.19
+  #   ports:
+  #     - 8002:8000
+  #     - 8443:8443
+  #     - 8001:8001
+  #     - 8444:8444
+  #     - 8005:8002
+  #   volumes:
+  #     - ./kong/declarative:/kong/declarative/
+  #   environment:
+  #     KONG_DATABASE: off
+  #     KONG_PROXY_ACCESS_LOG: /dev/stdout
+  #     KONG_ADMIN_ACCESS_LOG: /dev/stdout
+  #     KONG_PROXY_ERROR_LOG: /dev/stderr
+  #     KONG_ADMIN_GUI_URL: http://localhost:8005
+  #     KONG_ADMIN_ERROR_LOG: /dev/stderr
+  #     KONG_DECLARATIVE_CONFIG: ./kong/declarative/kong.yml
+  #     KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
 
   redis:
     image: redis
@@ -142,7 +146,7 @@ services:
     container_name: surrealdb
     env_file:
       - .env
-    CMD:
+    entrypoint:
       - /surreal
       - start
       - --user

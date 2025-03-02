@@ -2,6 +2,7 @@ from pydantic import BaseModel, PositiveFloat
 from typing import Optional, List, Tuple, Dict, Any
 from datetime import datetime
 
+
 class Events(BaseModel):
     id: Optional[str] = None
     title: str

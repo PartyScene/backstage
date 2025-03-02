@@ -6,16 +6,16 @@ from typing import Optional
 
 class UsersDB:
     def __init__(self, db: AsyncSurreal) -> None:
-        self.db : AsyncSurreal = db
+        self.db: AsyncSurreal = db
 
     async def find_connections_at_degree(self, origin_id: str, max_degree: int = 3):
         """
         Find all connections up to N degrees of separation
-        
+
         Args:
             origin_id (str): The ID of the origin user
             max_degree (int): Maximum degree of separation (default: 3)
-        
+
         Returns:
             dict: Contains connections at different degrees
         """
@@ -28,20 +28,20 @@ class UsersDB:
             path = "->friends->users" * i
             select_fields.append(f"{path}.first_name AS degree_{i}")
 
-        await self.db.let('origin', RecordID('users', origin_id))
+        await self.db.let("origin", RecordID("users", origin_id))
         query = f"""
         SELECT 
             {', '.join(select_fields)}
         FROM $origin;
         """
-        
+
         result = await self.db.query(query)
         return result[0]["result"][0] if result[0]["result"] else {}
 
     async def create_friend_relationship(self, data: dict):
         """
         Create a bidirectional friend relationship between two users.
-        
+
         Args:
             data (dict, required): The friend relationship data containing:
                 - origin: The ID of the first user
@@ -77,21 +77,21 @@ class UsersDB:
                 is_new: array::len($existing) == 0
             };
         """
-        
+
         result = await self.db.query(
             query,
             {
                 "origin": data["origin"],
                 "target": data["target"],
-                "status": data.get("status", "pending")
-            }
+                "status": data.get("status", "pending"),
+            },
         )
         return result[0]["result"][0]
-    
+
     async def update_friend_relationship(self, data: dict):
         """
         Update the connection status between two users
-        
+
         Args:
             data (dict, required): The friend relationship data containing:
                 - origin: The ID of the first user
@@ -100,25 +100,20 @@ class UsersDB:
         Returns:
             dict: The updated relationship details
         """
-        await self.db.let('edge', RecordID('friends', data["id"]))
+        await self.db.let("edge", RecordID("friends", data["id"]))
         query = """
             UPDATE $edge SET status = $status
         """
-        result = await self.db.query(
-            query,
-            {
-                "status": data.get("status", "pending")
-            }
-        )
+        result = await self.db.query(query, {"status": data.get("status", "pending")})
         return result[0]["result"][0]
 
     async def fetch(self, id: str) -> Optional[dict]:
         """
         Fetch one user by ID
-        
+
         Args:
             id (str): The user ID to fetch
-            
+
         Returns:
             Optional[dict]: User data including attended events, or None if not found
         """
@@ -139,41 +134,41 @@ class UsersDB:
     async def delete(self, id: str) -> Optional[dict]:
         """
         Delete a user by ID
-        
+
         Args:
             id (str): The user ID to delete
-            
+
         Returns:
             Optional[dict]: Deleted user data or None if not found
         """
-        result = await self.db.delete(RecordID('users', id))
+        result = await self.db.delete(RecordID("users", id))
         return result
 
     async def update(self, data: dict) -> dict:
         """
         Update user data
-        
+
         Args:
             data (dict): User data to update, must include 'id' field
-            
+
         Returns:
             dict: Updated user data
         """
         result = await self.db.query(
-            "UPDATE type::thing('users', $record_id) MERGE $content",
+            "UPDATE type::thing('users', $record_id) MERGE $content RETURN AFTER;",
             {"content": data, "record_id": data["id"]},
         )
-        result['id'] = result['id'].id
+        result["id"] = result["id"].id
         return result[0]
 
 
 async def init_db(app: Quart) -> UsersDB:
     """
     Initialize database connection
-    
+
     Args:
         app (Quart): Quart application instance
-        
+
     Returns:
         UsersDB: Database connection manager
     """
@@ -181,10 +176,7 @@ async def init_db(app: Quart) -> UsersDB:
     await db.connect()
 
     await db.signin(
-        {
-            "username": os.getenv("DB_USER"),
-            "password": os.getenv("DB_PASSWORD")
-        }
+        {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
     )
     await db.use("partyscene", "partyscene")
     return UsersDB(db)

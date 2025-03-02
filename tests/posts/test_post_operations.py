@@ -8,50 +8,69 @@ import io
 
 fake = Faker()
 
+
 @pytest.mark.asyncio
 class TestPostOperations(TestPostsBase):
-    async def test_create_post(self, posts_client, mock_event, bearer):
+    async def test_create_post(
+        self, posts_client, mock_event, bearer, mock_media_client
+    ):
         """Test creating a new post."""
         files = {
-            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
         }
         post_data = {
             "title": fake.sentence(),
             "content": fake.text(),
-            'event': mock_event['id'],
-            'type': 'image'
+            "event": mock_event["id"],
+            "type": "image",
         }
-        
+
+        mock_media_client.upload_media.return_value = {
+            "type": "image/jpeg",
+            "url": "https://storage.googleapis.com/fake-bucket/test-image.jpg",
+            "creator": "xxxxx",
+            "event": "xxxxxxx",
+        }
+
         response = await self.create_post(posts_client, files, post_data, bearer)
         assert response.status_code == 201
         created_post = await response.get_json()
-        
-        assert created_post['title'] == post_data['title']
-        assert 'id' in created_post
-        assert created_post['author_id'] == post_data['author_id']
+
+        assert created_post["title"] == post_data["title"]
+        assert "id" in created_post
+        assert created_post["author_id"] == post_data["author_id"]
 
     async def test_fetch_event_posts(self, posts_client, mock_event, bearer):
         """Test retrieving a post."""
         # First create a post
         files = {
-            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
         }
         post_data = {
             "title": fake.sentence(),
             "content": fake.text(),
-            'event': mock_event['id'],
-            'type': 'image'
+            "event": mock_event["id"],
+            "type": "image",
         }
         create_response = await self.create_post(posts_client, files, post_data, bearer)
         post_data = await create_response.get_json()
-        assert response.status_code == 201
-        post_id = post_data['id']
+        assert create_response.status_code == 201
+        post_id = post_data["id"]
 
-        response = await self.fetch_event_posts(posts_client, mock_event['id'], bearer)
+        response = await self.fetch_event_posts(posts_client, mock_event["id"], bearer)
         assert response.status_code == 200
         posts = await response.get_json()
-        
+
         assert len(posts) >= 1
+
     #     assert post['title'] == post_data['title']
     #     assert post_data['content'] == post_data['content']
 
@@ -64,18 +83,18 @@ class TestPostOperations(TestPostsBase):
     #     }
     #     create_response = await async_client.post("/posts", json=post_data)
     #     post_id = create_response.json()['id']
-        
+
     #     # Update post
     #     update_data = {
     #         "title": fake.sentence(),
     #         "content": fake.text(),
     #         "tags": [fake.word() for _ in range(3)]
     #     }
-        
+
     #     response = await async_client.put(f"/posts/{post_id}", json=update_data)
     #     assert response.status_code == 200
     #     updated_post = response.json()
-        
+
     #     assert updated_post['title'] == update_data['title']
     #     assert updated_post['content'] == update_data['content']
 
@@ -83,29 +102,33 @@ class TestPostOperations(TestPostsBase):
         """Test deleting a post."""
         # First create a post
         files = {
-            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
         }
         post_data = {
             "title": fake.sentence(),
             "content": fake.text(),
-            'event': mock_event['id'],
-            'type': 'image'
+            "event": mock_event["id"],
+            "type": "image",
         }
         create_response = await self.create_post(posts_client, files, post_data, bearer)
         post_data = await create_response.get_json()
         assert create_response.status_code == 201
-        post_id = post_data['id']
-        
+        post_id = post_data["id"]
+
         response = await self.fetch_post(posts_client, post_id, bearer)
         assert response.status_code == 200
         posts = await response.get_json()
-        
+
         assert len(posts) >= 1
-        
+
         # Delete the post
         response = await self.delete_post(posts_client, post_id, bearer)
         assert response.status_code == 204
-        
+
         # Verify post is deleted
         get_response = await self.fetch_post(posts_client, post_id, bearer)
         assert get_response.status_code == 404
@@ -116,11 +139,11 @@ class TestPostOperations(TestPostsBase):
     #     post_data = {"title": fake.sentence(), "content": fake.text()}
     #     create_response = await async_client.post("/posts", json=post_data)
     #     post_id = create_response.json()['id']
-        
+
     #     response = await async_client.post(f"/posts/{post_id}/like")
     #     assert response.status_code == 200
     #     like_response = response.json()
-        
+
     #     assert like_response['likes_count'] > 0
 
     # async def test_comment_on_post(self, async_client):
@@ -129,7 +152,7 @@ class TestPostOperations(TestPostsBase):
     #     post_data = {"title": fake.sentence(), "content": fake.text()}
     #     create_response = await async_client.post("/posts", json=post_data)
     #     post_id = create_response.json()['id']
-        
+
     #     # Add comment
     #     comment_data = {
     #         "content": fake.text(),
@@ -137,24 +160,31 @@ class TestPostOperations(TestPostsBase):
     #     }
     #     response = await async_client.post(f"/posts/{post_id}/comments", json=comment_data)
     #     assert response.status_code == 201
-        
+
     #     # Get comments
     #     comments_response = await async_client.get(f"/posts/{post_id}/comments")
     #     assert comments_response.status_code == 200
     #     comments = comments_response.json()
-        
+
     #     assert isinstance(comments, list)
     #     assert len(comments) > 0
 
-    @pytest.mark.parametrize("invalid_data", [
-        {"title": ""},  # Empty title
-        {"content": ""},  # Empty content
-        {"visibility": "invalid"}  # Invalid visibility option
-    ])
+    @pytest.mark.parametrize(
+        "invalid_data",
+        [
+            {"title": ""},  # Empty title
+            {"content": ""},  # Empty content
+            {"visibility": "invalid"},  # Invalid visibility option
+        ],
+    )
     async def test_create_invalid_post(self, posts_client, invalid_data, bearer):
         """Test post creation with invalid data."""
         files = {
-            'file': FileStorage(io.BytesIO(b'fake image content'), filename='test_image.jpg', content_type='image/jpeg')
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
         }
         response = await self.create_post(posts_client, files, invalid_data, bearer)
         assert response.status_code == 400
@@ -166,6 +196,6 @@ class TestPostOperations(TestPostsBase):
     #     post_data = {"title": fake.sentence(), "content": fake.text()}
     #     create_response = async_client.post("/posts", json=post_data)
     #     post_id = create_response.json()['id']
-        
+
     #     result = benchmark(async_client.get, f"/posts/{post_id}")
     #     assert result.status_code == 200

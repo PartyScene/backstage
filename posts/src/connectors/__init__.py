@@ -6,7 +6,7 @@ from surrealdb import AsyncSurreal, RecordID
 class PostsDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
-    
+
     async def fetch_event_posts(self, id: str) -> dict:
         """
         Asynchronously fetches all posts associated with the given event.
@@ -31,19 +31,15 @@ class PostsDB:
             Returns:
                 dict: A dictionary containing the result of the comment creation query.
         """
-        await self.db.let('user', RecordID('users', data['author']))
-        await self.db.let('post', RecordID('posts', data['post']))
+        await self.db.let("user", RecordID("users", data["author"]))
+        await self.db.let("post", RecordID("posts", data["post"]))
         query = """
         RELATE $user -> comments -> $post SET content = $content
         """
-        params = {
-            "content": data['content']
-        }
-        result = await self.db.query(
-           query, params
-        )
+        params = {"content": data["content"]}
+        result = await self.db.query(query, params)
         return result[0]
-    
+
     async def fetch_comments(self, post_id: str) -> dict:
         """
         Asynchronously fetches all comments associated with the given post.
@@ -60,7 +56,6 @@ class PostsDB:
         result = await self.db.query(query, params)
         return result[0]
 
-    
     async def delete_comment(self, data):
         """
         Asynchronously deletes a post associated with the given data.
@@ -71,8 +66,8 @@ class PostsDB:
         Raises:
             Exception: If the deletion operation fails.
         """
-        
-        result = await self.db.delete(RecordID('comments', data['id']))
+
+        result = await self.db.delete(RecordID("comments", data["id"]))
         return result[0]["result"][0]
 
     async def create_post(self, data, media_links, author) -> dict:
@@ -85,19 +80,17 @@ class PostsDB:
             Returns:
                 dict: A dictionary containing the result of the post creation query.
         """
-        await self.db.let('users', RecordID('users', author))
-        await self.db.let('media', [RecordID(media['id']) for media in media_links])
+        await self.db.let("users", RecordID("users", author))
+        await self.db.let("media", [RecordID(media["id"]) for media in media_links])
         query = """
         RELATE $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
         """
         params = {
-            "content": data['content'],
+            "content": data["content"],
             "media_links": media_links,
-            "event": data['event']
+            "event": data["event"],
         }
-        result = await self.db.query(
-           query, params
-        )
+        result = await self.db.query(query, params)
         return result[0]["result"][0]
 
     async def delete_post(self, id: str):
@@ -110,8 +103,8 @@ class PostsDB:
         Raises:
             Exception: If the deletion operation fails.
         """
-        
-        result = await self.db.delete(RecordID('posts', id))
+
+        result = await self.db.delete(RecordID("posts", id))
         return result
 
     async def fetch_post(self, id: str) -> dict:
@@ -124,18 +117,18 @@ class PostsDB:
         Raises:
             Exception: If the deletion operation fails.
         """
-        
-        result = await self.db.select(RecordID('posts', id))
+
+        result = await self.db.select(RecordID("posts", id))
         return result
+
 
 async def init_db(app: Quart) -> PostsDB:
     db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
-    await db.signin({
-            "username": os.getenv("DB_USER"),
-            "password": os.getenv("DB_PASSWORD")
-        })
+    await db.signin(
+        {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
+    )
     await db.use("partyscene", "partyscene")
     return PostsDB(db)

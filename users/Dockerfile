@@ -1,5 +1,5 @@
 # Test stage
-FROM python:3.11-slim as test
+FROM python:3.11-slim AS test
 
 WORKDIR /users
 
@@ -7,14 +7,14 @@ WORKDIR /users
 ENV PYTHONPATH="/"
 
 # Copy requirements files
-COPY users /users
-COPY shared /shared
-COPY auth /auth
+COPY users/ ./
+COPY shared/ /shared/
+COPY auth/ /auth/
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
 COPY tests/requirements-test.txt /tests/requirements-test.txt
-COPY tests/users /tests/users
+COPY tests/users/ /tests/users/
 COPY tests/pytest.ini /tests/pytest.ini
 
 # Install system dependencies
@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir -r /shared/requirements.txt \
 CMD ["pytest", "--disable-warnings", "/tests", "-v"]
 
 # Main stage
-FROM python:3.11-slim as prod
+FROM python:3.11-slim AS prod
 
 WORKDIR /users
 
@@ -43,8 +43,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
-COPY users .
-COPY shared /shared
+COPY users/ ./
+COPY shared/ /shared/
 
 # install deps
 RUN pip install --no-cache-dir -r /shared/requirements.txt

@@ -12,28 +12,31 @@ from .connectors import init_db
 from .views.base import BaseView
 
 # Configure logging
-dictConfig({
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'default': {
-            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        }
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'default',
-            'level': 'INFO',
-        }
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+dictConfig(
+    {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            }
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "level": "INFO",
+            }
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
     }
-})
+)
 
 logger = logging.getLogger(__name__)
+
 
 class LiveStreamMicroservice(Quart):
     def __init__(self, *args):
@@ -48,7 +51,7 @@ class LiveStreamMicroservice(Quart):
             self.config["DEBUG"] = True
             self.config["TESTING"] = True
             self.DEBUG = True
-            
+
         # Initialize Redis with decode_responses=True
         self.config["REDIS_DECODE_RESPONSES"] = True
 
@@ -78,9 +81,7 @@ class LiveStreamMicroservice(Quart):
         try:
             logger.info("Initializing Redis connection...")
             self.redis = Redis.from_url(
-                os.environ["REDIS_URI"],
-                decode_responses=True,
-                encoding="utf-8"
+                os.environ["REDIS_URI"], decode_responses=True, encoding="utf-8"
             )
             # Test connection
             await self.redis.ping()
@@ -97,13 +98,13 @@ class LiveStreamMicroservice(Quart):
             if not self.DEBUG:
                 logger.info("Initializing SurrealDB connection...")
                 self.db = await init_db(self)
-            
+
             # Get JWT secret
             logger.info("Retrieving JWT secret...")
             await self.get_shared_secret()
 
             logger.info("All services initialized successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
             raise
@@ -114,20 +115,20 @@ class LiveStreamMicroservice(Quart):
             secret = await self.redis.get("SECRET_KEY")
             if not secret:
                 raise ValueError("JWT secret not found in Redis")
-                
+
             self.config["SECRET_KEY"] = secret
             self.config["JWT_SECRET_KEY"] = self.config["SECRET_KEY"]
             self.jwt = JWTManager(self)
             logger.info("JWT secret retrieved and manager initialized")
-            
+
         except Exception as e:
             logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
             raise
-    
+
     def register_routes(self):
         # Register routes
         logger.info("Registering application routes...")
         BaseView.register(self)
-        
+
         logger.info("Printing Application Routes...")
         logger.info(self.url_map)

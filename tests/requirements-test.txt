@@ -24,3 +24,6 @@ python-dotenv
 google-cloud-video-live-stream>=1.3.1
 google-cloud-storage
 pytest-env
+surrealdb
+flake8
+novu-py

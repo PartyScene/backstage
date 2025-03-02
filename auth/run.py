@@ -18,11 +18,13 @@ config.accesslog = "-"
 config.errorlog = "-"
 config.keepalive_timeout = 120
 
+
 def main():
     """Run the application with uvloop"""
     # Register routes before startup
     pprint.pp(app.url_map)
     asyncio.run(serve(app, config))
+
 
 if __name__ == "__main__":
     main()

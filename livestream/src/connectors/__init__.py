@@ -2,25 +2,26 @@ from quart import Quart
 from surrealdb import AsyncSurreal
 import os
 
+
 class LiveStreamDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
-    
+
     async def fetch_livestream(self, event_id: str):
         """
         Get the current livestream data attached to an event
         """
         try:
             result = await self.db.query(
-            """
+                """
             SELECT * FROM livestreams WHERE event = type::thing("events", $event_id)
             """,
-            {"event_id": event_id}
-        )
+                {"event_id": event_id},
+            )
             return result[0]
         except IndexError:
-            return {'error': 'None found.'}
-    
+            return {"error": "None found."}
+
     async def store_livestream(self, channel_response, input_response, event_id: str):
         """
         Store the ingest url / playback url / from GCP and attach it to the event.
@@ -33,7 +34,14 @@ class LiveStreamDB:
             INSERT INTO livestreams 
                 (channel_id, input_id, ingest_url, playback_url, manifests, event) VALUES ($channel_id, $input_id, $ingest_url, $playback_url, $manifests, type::thing("events", $event_id))
             """,
-            {"channel_id": channel_response.name, "input_id": input_response.name, "ingest_url": input_response.uri, "playback_url": channel_response.output.uri, "manifests": [x.file_name for x in channel_response.manifests], "event_id": event_id},
+            {
+                "channel_id": channel_response.name,
+                "input_id": input_response.name,
+                "ingest_url": input_response.uri,
+                "playback_url": channel_response.output.uri,
+                "manifests": [x.file_name for x in channel_response.manifests],
+                "event_id": event_id,
+            },
         )
         return result[0]
 
@@ -70,11 +78,8 @@ class LiveStreamDB:
 async def init_db(app: Quart) -> LiveStreamDB:
     db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
-    DB_USER = os.getenv("DB_USER")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
-    await db.signin({
-            "username": os.getenv("DB_USER"),
-            "password": os.getenv("DB_PASSWORD")
-        })
+    await db.signin(
+        {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
+    )
     await db.use("partyscene", "partyscene")
     return LiveStreamDB(db)

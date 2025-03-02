@@ -15,28 +15,31 @@ from .connectors import EventsDB, init_db
 from .views.base import BaseView
 
 # Configure logging
-dictConfig({
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'default': {
-            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        }
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'default',
-            'level': 'INFO',
-        }
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
+dictConfig(
+    {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            }
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "level": "INFO",
+            }
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
     }
-})
+)
 
 logger = logging.getLogger(__name__)
+
 
 class EventsMicroService(Quart):
     def __init__(self, *args):
@@ -53,7 +56,7 @@ class EventsMicroService(Quart):
             self.DEBUG = True
 
         logger.info(self.config)
-        
+
         # Initialize Redis with decode_responses=True
         # self.config["REDIS_URL"] = self.config.get("REDIS_URI", "redis://redis")
         self.config["REDIS_DECODE_RESPONSES"] = True
@@ -80,9 +83,7 @@ class EventsMicroService(Quart):
         try:
             logger.info("Initializing Redis connection...")
             self.redis = Redis.from_url(
-                os.environ["REDIS_URI"],
-                decode_responses=True,
-                encoding="utf-8"
+                os.environ["REDIS_URI"], decode_responses=True, encoding="utf-8"
             )
             # Test connection
             await self.redis.ping()
@@ -95,44 +96,47 @@ class EventsMicroService(Quart):
         """Initialize all required services"""
         try:
             # Initialize DB
-            
+
             if not self.DEBUG:
                 logger.info("Initializing SurrealDB connection...")
                 self.db = await init_db(self)
-            
+
             # Get JWT secret
             logger.info("Retrieving JWT secret...")
             await self.get_shared_secret()
-            
+
             logger.info("All services initialized successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
             raise
-    
+
     def register_routes(self):
         # Register routes
         logger.info("Registering application routes...")
         BaseView.register(self)
-            
+
         # Register WebSocket routes
         self.register_websocket_routes()
 
     def register_websocket_routes(self):
         """Register WebSocket routes"""
+
         @self.websocket("/events/<event_id>/live/ws")
         @jwt_required
         async def event_live_updates(event_id: str):
             try:
                 user_id = await get_jwt_identity()
-                
+
                 # Verify user has access to this event
                 event = await self.db.fetch(event_id)
                 if not event or (
-                    event['host']['id'] != user_id and 
-                    user_id not in [a['id'] for a in event.get('attendees', [])]
+                    event["host"]["id"] != user_id
+                    and user_id not in [a["id"] for a in event.get("attendees", [])]
                 ):
-                    logger.warning(f"Unauthorized WebSocket connection attempt for event {event_id}")
+                    logger.warning(
+                        f"Unauthorized WebSocket connection attempt for event {event_id}"
+                    )
                     return
 
                 # Get live query ID from Redis using get_redis()
@@ -143,21 +147,23 @@ class EventsMicroService(Quart):
 
                 await websocket.accept()
                 logger.info(f"WebSocket connection accepted for event {event_id}")
-                
+
                 try:
-                    notifications : asyncio.Queue = await self.db.get_live_notifications(live_id)
+                    notifications: asyncio.Queue = await self.db.get_live_notifications(
+                        live_id
+                    )
                     while True:
                         try:
                             if not websocket.connected:
                                 break
-                                
+
                             notification = await notifications.get()
                             if notification:
                                 await websocket.send(json.dumps(notification))
-                                
+
                         except asyncio.QueueEmpty:
                             break
-                            
+
                 except Exception as e:
                     logger.error(f"WebSocket error: {str(e)}", exc_info=True)
                 finally:
@@ -167,7 +173,7 @@ class EventsMicroService(Quart):
                         logger.info(f"Cleaned up resources for event {event_id}")
                     except Exception as e:
                         logger.error(f"Cleanup error: {str(e)}", exc_info=True)
-                        
+
             except Exception as e:
                 logger.error(f"Live updates error: {str(e)}", exc_info=True)
 
@@ -177,15 +183,11 @@ class EventsMicroService(Quart):
             secret = await self.redis.get("SECRET_KEY")
             if not secret:
                 raise ValueError("JWT secret not found in Redis")
-                
+
             self.config["SECRET_KEY"] = secret
             self.jwt = JWTManager(self)
             logger.info("JWT secret retrieved and manager initialized")
-            
+
         except Exception as e:
             logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
             raise
-
-
-
-

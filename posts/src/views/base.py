@@ -1,4 +1,3 @@
-
 import httpx
 
 from pprint import pprint
@@ -7,16 +6,19 @@ from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from ..connectors import PostsDB
-from shared.lib import create_media_client, MediaClient
+from shared.utils import create_media_client, MediaClient
 from classful import route, QuartClassful
 from http import HTTPStatus
 import os
 
+
 class BaseView(QuartClassful):
 
     def __init__(self) -> None:
-        self.__media_client : MediaClient = create_media_client(os.environ['MEDIA_MICROSERVICE_URL'])
-        self.__posts_handler : PostsDB = app.db
+        self.__media_client: MediaClient = create_media_client(
+            os.environ["MEDIA_MICROSERVICE_URL"]
+        )
+        self.__posts_handler: PostsDB = app.db
 
     @route("/event/<id>", methods=["GET", "POST"])
     async def fetch_event_posts(self, id: str):
@@ -42,23 +44,23 @@ class BaseView(QuartClassful):
         """"""
         data = await request.form
         data = dict(data)
-        content = data.get('content')
+        content = data.get("content")
 
         if not content:
             return jsonify({"error": "Content is required"}), 400
-        
+
         files = await request.files
         media_links = []
 
         for file_key in files:
             try:
                 req = await self.__media_client.upload_media(request, files[file_key])
-                media_links.append(
-                    req['url']
-                )
+                media_links.append(req["url"])
             except:
                 return jsonify({"error": "Error uploading files"}), 400
-        result = await self.__posts_handler.create_post(data=data, media_links=media_links, author = get_jwt_identity())
+        result = await self.__posts_handler.create_post(
+            data=data, media_links=media_links, author=get_jwt_identity()
+        )
         return result, HTTPStatus.CREATED
 
     @route("/<id>", methods=["GET"])

@@ -1,4 +1,3 @@
-
 import os
 import pprint
 import sys
@@ -6,7 +5,9 @@ import sys
 
 # Add project root and shared directories to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'shared'))
+sys.path.append(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shared")
+)
 
 import pytest
 import pytest_asyncio
@@ -21,8 +22,7 @@ from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -30,10 +30,14 @@ load_dotenv()
 # Global Faker instance for generating test data
 fake = Faker()
 
-@pytest_asyncio.fixture(scope='session', loop_scope="session")  # Changed from module to session
+
+@pytest_asyncio.fixture(
+    scope="session", loop_scope="session"
+)  # Changed from module to session
 async def event_app(surreal):
     from events.run import app
     from events.src.connectors import EventsDB
+
     app.config.update(
         TESTING=True,
         SECRET_KEY="test-secret-key",
@@ -45,16 +49,16 @@ async def event_app(surreal):
         def __init__(self):
             self._data = {}
             self._data["SECRET_KEY"] = "test-secret-key"
-        
+
         async def get(self, key):
             return self._data.get(key)
-            
+
         async def set(self, key, value, ex=None):
             self._data[key] = value
-            
+
         async def ping(self):
             return True
-            
+
         async def close(self):
             pass
 
@@ -70,32 +74,37 @@ async def event_app(surreal):
         raise
     finally:
         # Clean up resources
-        if hasattr(app, 'redis'):
+        if hasattr(app, "redis"):
             await app.redis.close()
 
-@pytest_asyncio.fixture(scope='session')  # Changed from module to session
+
+@pytest_asyncio.fixture(scope="session")  # Changed from module to session
 async def event_client(event_app, bearer):
     """Create an async HTTP client for testing."""
     try:
         async with event_app.test_client() as test_client:
             test_client.headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {bearer}"
+                "Authorization": f"Bearer {bearer}",
             }
             async with event_app.app_context():
                 yield test_client
     except Exception as e:
         logger.error(f"Error in event_client fixture: {str(e)}")
         raise
+
+
 # @pytest.fixture(scope='session')
 # def environment(request):
 #     """Determine the test environment."""
 #     return request.config.getoption("--env")
 
-@pytest.fixture(scope='session')
+
+@pytest.fixture(scope="session")
 def performance_profiling(request):
     """Enable performance profiling if requested."""
     return request.config.getoption("--profile")
+
 
 # def pytest_configure(config):
 #     """Configure pytest markers and settings."""
@@ -108,12 +117,13 @@ def performance_profiling(request):
 #         "performance: mark test for performance evaluation"
 #     )
 
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Custom terminal summary for test run."""
-    passed = len(terminalreporter.stats.get('passed', []))
-    failed = len(terminalreporter.stats.get('failed', []))
-    skipped = len(terminalreporter.stats.get('skipped', []))
-    
+    passed = len(terminalreporter.stats.get("passed", []))
+    failed = len(terminalreporter.stats.get("failed", []))
+    skipped = len(terminalreporter.stats.get("skipped", []))
+
     logger.info(f"\nTest Summary:")
     logger.info(f"Passed: {passed}")
     logger.info(f"Failed: {failed}")

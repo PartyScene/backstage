@@ -1,4 +1,3 @@
-
 import os
 import pprint
 import sys
@@ -6,7 +5,9 @@ import sys
 
 # Add project root and shared directories to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'shared'))
+sys.path.append(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shared")
+)
 
 import pytest
 import pytest_asyncio
@@ -22,48 +23,49 @@ from surrealdb import AsyncSurreal
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 # Global Faker instance for generating test data
 fake = Faker()
 
-@pytest.fixture(scope='session', autouse=True)
+
+@pytest.fixture(scope="session", autouse=True)
 def load_envvars():
     load_dotenv()
 
+
 # the custom event_loop fixture and update the async fixtures
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def event_loop():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
-@pytest_asyncio.fixture(scope='session', loop_scope="session")
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def surreal():
     """Create a session-scoped database connection"""
     logger.debug(os.environ)
-    db = AsyncSurreal(os.environ['SURREAL_URI'])
-    await db.connect(os.environ['SURREAL_URI'])
+    db = AsyncSurreal(os.environ["SURREAL_URI"])
+    await db.connect(os.environ["SURREAL_URI"])
     await db.signin(
-        {
-            'username': os.environ['SURREAL_USER'],
-            'password': os.environ['SURREAL_PASS']
-        }
+        {"username": os.environ["SURREAL_USER"], "password": os.environ["SURREAL_PASS"]}
     )
-    await db.use('partyscene', 'partyscene')
+    await db.use("partyscene", "partyscene")
     yield db
     await db.close()
 
-@pytest_asyncio.fixture(scope='session', loop_scope="session")
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def auth_app(surreal):
     """Create a session-scoped auth app"""
 
     from auth.run import app
     from auth.src.connectors import AuthDB
+
     try:
 
         app.config.update(
@@ -76,16 +78,16 @@ async def auth_app(surreal):
             def __init__(self):
                 self._data = {}
                 self._data["SECRET_KEY"] = "test-secret-key"
-            
+
             async def get(self, key):
                 return self._data.get(key)
-                
+
             async def set(self, key, value, ex=None):
                 self._data[key] = value
-                
+
             async def ping(self):
                 return True
-                
+
             async def close(self):
                 pass
 
@@ -100,10 +102,11 @@ async def auth_app(surreal):
         logger.error(f"Error in auth_app fixture: {str(e)}")
         raise
     finally:
-        if hasattr(app, 'redis'):
+        if hasattr(app, "redis"):
             await app.redis.close()
 
-@pytest_asyncio.fixture(scope='session')
+
+@pytest_asyncio.fixture(scope="session")
 async def auth_client(auth_app):
     """Create a test client"""
     try:
@@ -114,30 +117,30 @@ async def auth_client(auth_app):
         logger.error(f"Error in auth_client fixture: {str(e)}")
         raise
 
-@pytest_asyncio.fixture(scope='session')
+
+@pytest_asyncio.fixture(scope="session")
 async def bearer(auth_client, mock_user):
     """Create a test bearer token"""
     try:
-        response = await auth_client.post(
-            "/login",
-            json=mock_user
-        )
+        response = await auth_client.post("/login", json=mock_user)
         assert response.status_code == 200
         data = await response.get_json()
-        return data['access_token']
+        return data["access_token"]
     except Exception as e:
         logger.error(f"Error generating bearer token: {str(e)}")
         raise
 
-@pytest.fixture(scope='session')
+
+@pytest.fixture(scope="session")
 def mock_user():
     return {
         "first_name": "John",
         "last_name": "Doe",
         "email": "oyinxdoubx@gmail.com",
         "password": "testingTs",
-        "confirm_password": "testingTs"
+        "confirm_password": "testingTs",
     }
+
 
 @pytest.fixture(scope="session")
 def mock_event():
@@ -147,51 +150,49 @@ def mock_event():
         "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
         "coordinates": fake.latlng(),
         "location": fake.address(),
-        "price": fake.numerify('##'),
-        }
-        
+        "price": fake.numerify("##"),
+    }
+
+
 def pytest_addoption(parser):
     """Add custom command-line options for testing."""
     parser.addoption(
-        "--env",
-        action="store",
-        default="test",
-        help="Specify the test environment"
+        "--env", action="store", default="test", help="Specify the test environment"
     )
     parser.addoption(
         "--profile",
         action="store_true",
         default=False,
-        help="Enable performance profiling"
+        help="Enable performance profiling",
     )
 
-@pytest.fixture(scope='session')
+
+@pytest.fixture(scope="session")
 def environment(request):
     """Determine the test environment."""
     return request.config.getoption("--env")
 
-@pytest.fixture(scope='session')
+
+@pytest.fixture(scope="session")
 def performance_profiling(request):
     """Enable performance profiling if requested."""
     return request.config.getoption("--profile")
 
+
 def pytest_configure(config):
     """Configure pytest markers and settings."""
+    config.addinivalue_line("markers", "integration: mark test as an integration test")
     config.addinivalue_line(
-        "markers",
-        "integration: mark test as an integration test"
+        "markers", "performance: mark test for performance evaluation"
     )
-    config.addinivalue_line(
-        "markers",
-        "performance: mark test for performance evaluation"
-    )
+
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Custom terminal summary for test run."""
-    passed = len(terminalreporter.stats.get('passed', []))
-    failed = len(terminalreporter.stats.get('failed', []))
-    skipped = len(terminalreporter.stats.get('skipped', []))
-    
+    passed = len(terminalreporter.stats.get("passed", []))
+    failed = len(terminalreporter.stats.get("failed", []))
+    skipped = len(terminalreporter.stats.get("skipped", []))
+
     logger.info(f"\nTest Summary:")
     logger.info(f"Passed: {passed}")
     logger.info(f"Failed: {failed}")

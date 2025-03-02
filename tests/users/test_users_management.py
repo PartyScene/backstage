@@ -6,6 +6,7 @@ from test_users_base import TestUsersBase
 
 fake = Faker()
 
+
 @pytest.mark.asyncio
 class TestUserManagement(TestUsersBase):
     # async def test_create_user_profile(self, users_client, test_config):
@@ -17,37 +18,34 @@ class TestUserManagement(TestUsersBase):
     #         "avatar_url": fake.image_url(),
     #         "interests": [fake.word() for _ in range(3)]
     #     }
-        
+
     #     response = await users_client.post("/users/profile", json=profile_data)
     #     assert response.status_code == 201
     #     created_profile = response.json()
-        
+
     #     assert created_profile['display_name'] == profile_data['display_name']
     #     assert 'id' in created_profile
 
     async def test_get_user_profile(self, users_client, mock_user, bearer):
         """Test retrieving a user profile."""
-        user_id = mock_user['id']
+        user_id = mock_user["id"]
         response = await self.get_user(users_client, user_id, bearer)
-        
+
         assert response.status_code == 200
         profile = await response.get_json()
-        assert 'display_name' in profile
-        assert 'bio' in profile
+        assert "display_name" in profile
+        assert "bio" in profile
 
     async def test_update_user_profile(self, users_client, mock_user, bearer):
         """Test updating user profile information."""
-        update_data = {
-            "display_name": fake.name(),
-            "bio": fake.text(max_nb_chars=200)
-        }
-        
+        update_data = {"display_name": fake.name(), "bio": fake.text(max_nb_chars=200)}
+
         response = await self.update_user(users_client, update_data, bearer)
         assert response.status_code == 200
         updated_profile = await response.get_json()
-        
-        assert updated_profile['display_name'] == update_data['display_name']
-        assert updated_profile['bio'] == update_data['bio']
+
+        assert updated_profile["display_name"] == update_data["display_name"]
+        assert updated_profile["bio"] == update_data["bio"]
 
     # @pytest.mark.parametrize("invalid_data", [
     #     {"display_name": ""},  # Empty display name
@@ -65,11 +63,11 @@ class TestUserManagement(TestUsersBase):
     #         "query": fake.word(),
     #         "limit": 10
     #     }
-        
+
     #     response = await users_client.get("/users/search", params=search_query)
     #     assert response.status_code == 200
     #     results = response.json()
-        
+
     #     assert isinstance(results, list)
     #     assert len(results) <= search_query['limit']
 
@@ -77,6 +75,6 @@ class TestUserManagement(TestUsersBase):
     # def test_profile_retrieval_performance(self, benchmark, users_client, test_config):
     #     """Benchmark profile retrieval performance."""
     #     user_id = test_config['test_user']['id']
-        
+
     #     result = benchmark(users_client.get, f"/users/{user_id}/profile")
     #     assert result.status_code == 200
