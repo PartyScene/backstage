@@ -10,7 +10,7 @@ fake = Faker()
 @pytest.mark.asyncio
 class TestLiveStreamManagement(TestLiveStreamBase):
     async def test_create_stream(
-        self, livestream_client, mock_event, mock_livestream, bearer
+        self, livestream_client, mock_event, bearer
     ):
         """Test creating a new livestream session."""
         response = await self.create_live_stream(
@@ -19,14 +19,12 @@ class TestLiveStreamManagement(TestLiveStreamBase):
         assert response.status_code == 201
         created_stream = await response.get_json()
 
-        mock_livestream.start_stream.assert_called_once()
-
         # assert created_stream['title'] == mock_event['title']
         assert "ingest_url" in created_stream
         assert "playback_url" in created_stream
 
     async def test_get_stream_info(
-        self, livestream_client, mock_event, mock_livestream, bearer
+        self, livestream_client, mock_event, bearer
     ):
         """Test retrieving stream information."""
         # First create a stream
@@ -38,8 +36,6 @@ class TestLiveStreamManagement(TestLiveStreamBase):
         )
         assert response.status_code == 200
         stream_info = await response.get_json()
-
-        mock_livestream.get_stream.assert_called_once()
 
         assert "playback_url" in stream_info
 

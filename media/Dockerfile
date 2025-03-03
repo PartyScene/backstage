@@ -6,27 +6,30 @@ WORKDIR /media
 # Set PYTHONPATH for shared libraries
 ENV PYTHONPATH="/"
 
-# Copy requirements files
-COPY media ./
-COPY shared /shared/
-COPY auth /auth/
-
-
-# Copy application code and tests
-COPY tests/conftest.py /tests/conftest.py
-COPY tests/requirements-test.txt /tests/requirements-test.txt
-COPY tests/media/ /tests/media/
-COPY tests/pytest.ini /tests/pytest.ini
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+
+# Copy requirements files
+COPY media ./
+COPY shared /shared/
+COPY tests/requirements-test.txt /tests/requirements-test.txt
+
+
 # Install dependencies
 RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt \
     && pip install --no-cache-dir -r ./requirements.txt
+
+COPY auth /auth/
+
+
+# Copy application code and tests
+COPY tests/conftest.py /tests/conftest.py
+COPY tests/media/ /tests/media/
+COPY tests/pytest.ini /tests/pytest.ini
 
 
 # Run tests

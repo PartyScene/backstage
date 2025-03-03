@@ -6,26 +6,26 @@ WORKDIR /posts
 # Set PYTHONPATH for shared libraries
 ENV PYTHONPATH="/"
 
-# Copy requirements files
-COPY posts ./
-COPY shared /shared/
-COPY auth /auth/
-
-
-# Copy application code and tests
-COPY tests/conftest.py /tests/conftest.py
-COPY tests/requirements-test.txt /tests/requirements-test.txt
-COPY tests/posts/ /tests/posts/
-COPY tests/pytest.ini /tests/pytest.ini
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+COPY shared /shared/
+COPY tests/requirements-test.txt /tests/requirements-test.txt
+
 # Install dependencies
 RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt
+
+# Copy requirements files
+COPY posts ./
+COPY auth /auth/
+
+# Copy application code and tests
+COPY tests/conftest.py /tests/conftest.py
+COPY tests/posts/ /tests/posts/
+COPY tests/pytest.ini /tests/pytest.ini
 
 # Run tests
 CMD ["pytest", "--disable-warnings", "/tests", "-v"]

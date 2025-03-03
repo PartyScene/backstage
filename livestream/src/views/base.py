@@ -1,7 +1,7 @@
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
 from quart.datastructures import FileStorage
-from shared.workers import create_livestream_client
+from livestream.src.lib import create_livestream_client
 
 from http import HTTPStatus
 from shared.classful import route, QuartClassful

@@ -2,6 +2,8 @@ from surrealdb import AsyncSurreal
 import os
 import logging
 
+from shared.utils import record_id_to_json
+
 
 class AuthDB:
     def __init__(self, db) -> None:
@@ -17,27 +19,13 @@ class AuthDB:
             )[0]
         except IndexError:
             return False
-        print(result)
-        assert result["email"] == data["email"]
-        result["id"] = result["id"].id
-        return result
+        return record_id_to_json(result)
 
     async def _create_user(self, form):
-        result = (
-            await self.db.query(
-                "INSERT INTO users (first_name, last_name, email, password) VALUES ($fname, $lname, $email, crypto::bcrypt::generate($pwd)) RETURN AFTER;",
-                {
-                    "fname": form["first_name"],
-                    "lname": form["last_name"],
-                    "email": form["email"],
-                    "pwd": form["password"],
-                },
-            )
-        )[0]
+        result = await self.db.create("users", form)
         logging.info(result)
 
-        result["id"] = result["id"].id
-        return result
+        return record_id_to_json(result)
         # Assign the variable on the connection
 
 

@@ -12,13 +12,13 @@ sys.path.append(
 import pytest
 import pytest_asyncio
 from faker import Faker
-from dotenv import load_dotenv
 import asyncio
 import logging
 import httpx
 from datetime import datetime, timedelta
 import io
 from unittest.mock import MagicMock
+import uvloop
 from surrealdb import AsyncSurreal
 
 # Configure logging
@@ -31,16 +31,12 @@ logger = logging.getLogger(__name__)
 fake = Faker()
 
 
-@pytest.fixture(scope="session", autouse=True)
-def load_envvars():
-    load_dotenv()
-
 
 # the custom event_loop fixture and update the async fixtures
 @pytest.fixture(scope="session", autouse=True)
 def event_loop():
+    uvloop.install()
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
@@ -64,7 +60,7 @@ async def auth_app(surreal):
     """Create a session-scoped auth app"""
 
     from auth.run import app
-    from auth.src.connectors import AuthDB
+    from auth.src.connectors import init_db
 
     try:
 
@@ -92,7 +88,7 @@ async def auth_app(surreal):
                 pass
 
         app.redis = AsyncRedisMock()
-        app.db = AuthDB(surreal)
+        app.db = await init_db(app)
 
         async with app.app_context():
             await app.set_shared_secret()
@@ -140,6 +136,7 @@ def mock_user():
         "password": "testingTs",
         "confirm_password": "testingTs",
         "avatar_url": f"https://picsum.photos/id/{fake.random_int(min=1, max=1000, step=1)}/200/200",
+        "id": "test",
     }
 
 
@@ -152,6 +149,7 @@ def mock_event():
         "coordinates": fake.latlng(),
         "location": fake.address(),
         "price": fake.numerify("##"),
+        "id": "test"
     }
 
 

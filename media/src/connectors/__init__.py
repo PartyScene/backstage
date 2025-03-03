@@ -32,14 +32,14 @@ class MediaDB:
             data (dict): _description_
         """
         query = """
-        CREATE media SET type = $type, url = $url, creator = type::thing('users', $creator), event = type::thing('events', $event) RETURN AFTER;
+        CREATE ONLY media SET type = $type, url = $url, creator = type::thing('users', $creator), event = type::thing('events', $event) RETURN AFTER;
         """
         result = await self.db.query(query, data)
-        if "ERR" in result[0]:
+        if "ERR" in result:
             raise Exception(
                 f"Error creating media record: {result}"
             )  # Handle error case
-        return record_id_to_json(result[0])
+        return record_id_to_json(result)
 
 async def init_db(app: Quart) -> MediaDB:
     db = AsyncSurreal(os.environ["SURREAL_URI"])

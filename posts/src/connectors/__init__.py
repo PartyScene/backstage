@@ -3,6 +3,8 @@ import os
 from surrealdb import AsyncSurreal, RecordID
 from shared.utils import record_id_to_json
 
+import logging
+
 class PostsDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
@@ -91,7 +93,8 @@ class PostsDB:
             "event": RecordID("events", data["event"]),
         }
         result = await self.db.query(query, params)
-        return record_id_to_json(result[0])
+        logging.info(result)
+        return record_id_to_json(result)
 
     async def delete_post(self, id: str):
         """

@@ -2,6 +2,8 @@ from quart import Quart
 from surrealdb import AsyncSurreal
 import os
 
+from shared.utils import record_id_to_json
+
 
 class LiveStreamDB:
     def __init__(self, db) -> None:
@@ -11,16 +13,13 @@ class LiveStreamDB:
         """
         Get the current livestream data attached to an event
         """
-        try:
-            result = await self.db.query(
-                """
-            SELECT * FROM livestreams WHERE event = type::thing("events", $event_id)
-            """,
-                {"event_id": event_id},
-            )
-            return result[0]
-        except IndexError:
-            return {"error": "None found."}
+        result = await self.db.query(
+            """
+        SELECT * FROM ONLY livestreams WHERE event = type::thing("events", $event_id)
+        """,
+            {"event_id": event_id},
+        )
+        return record_id_to_json(result)
 
     async def store_livestream(self, channel_response, input_response, event_id: str):
         """

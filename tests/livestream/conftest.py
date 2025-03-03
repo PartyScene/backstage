@@ -29,23 +29,10 @@ logger = logging.getLogger(__name__)
 # Global Faker instance for generating test data
 fake = Faker()
 
-
-@pytest.fixture(scope="session")
-def mock_livestream():
-
-    with patch("shared.workers.create_livestream_client") as mock_livestream:
-        instance = mock_livestream.return_value
-        instance.start_stream = AsyncMock(return_value=True)
-        instance.get_stream = AsyncMock(
-            return_value={"ingest_url": "test", "playback_url": "test", "id": "okPok"}
-        )
-        yield instance
-
-
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session
-async def livestream_app(surreal, mock_livestream):
+async def livestream_app(surreal):
     from livestream.run import app
     from livestream.src.connectors import LiveStreamDB
 

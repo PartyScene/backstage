@@ -4,6 +4,7 @@ from surrealdb.data import GeometryPoint, RecordID, Table
 import os
 from typing import Optional, List, Dict, Any
 import logging
+from shared.utils import record_id_to_json
 
 
 class EventsDB:
@@ -16,12 +17,9 @@ class EventsDB:
         try:
             # data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
             data["host"] = RecordID("users", data["host"])
-            # data['coordinates'] = GeometryPoint(*data['coordinates'])
-            data["price"] = float(data["price"])
-
             data["location"] = {
                 "address": data.get("location"),
-                "coordinates": data["coordinates"],
+                "coordinates": data.pop("coordinates"),
             }
 
             # result = await self.db.create(Table("events"), data)
@@ -55,14 +53,10 @@ class EventsDB:
             #     }
             # )
             logging.info(f"Query result: {result}")
-            result["id"] = result["id"].id
-            result["host"] = result["host"].id
             if "ERR" in result:
                 raise Exception(f"Error creating event: {result}")  # Handle error case
+            return record_id_to_json(result)
 
-            created_event = result
-            logging.info(f"Created event: {created_event}")
-            return created_event
         except KeyError:
             logging.error(f"Invalid Params: {data}")
             return
@@ -78,11 +72,11 @@ class EventsDB:
             event_id (str): The ID of the event to delete
         """
         result = await self.db.delete(RecordID("events", event_id))
-        if "ERR" in result[0]:
+        if "ERR" in result:
             raise Exception(
                 f"Error deleting event: {result[0]['result']}"
             )  # Handle error case
-        return result[0]
+        return record_id_to_json(result)
 
     async def fetch_by_distance(
         self, coordinates: tuple[float, float], distance: int, *, live: bool = False
@@ -114,11 +108,8 @@ class EventsDB:
                 """,
                 {"live": live, "distance": distance, "coordinates": coordinates},
             )
-            result = [
-                {"id": entry.pop("id").id, "host": entry.pop("host"), **entry}
-                for entry in result
-            ]
-            return result
+            return record_id_to_json(result)
+
         except Exception as e:
             logging.error(f"Failed to fetch events by distance: {str(e)}")
             raise
@@ -141,11 +132,8 @@ class EventsDB:
                 {"page": page, "limit": limit},
             )
             logging.info(f"Query result: {result}")
-            result = [
-                {"id": entry.pop("id").id, "host": entry.pop("host").id, **entry}
-                for entry in result
-            ]
-            return result
+            return record_id_to_json(result)
+
         except Exception as e:
             logging.error(f"Failed to fetch all events: {str(e)}")
             raise
@@ -173,7 +161,7 @@ class EventsDB:
                 """,
                 {"page": page, "limit": limit},
             )
-            return result[0]["result"]
+            return record_id_to_json(result)
         except Exception as e:
             logging.error(f"Failed to fetch all public events: {str(e)}")
             raise
@@ -195,19 +183,11 @@ class EventsDB:
                     *,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
-                FROM type::thing('events', $event_id);
+                FROM ONLY type::thing('events', $event_id);
                 """,
                 {"event_id": event_id},
             )
-            if isinstance(result[0], dict):
-                result = [
-                    {"id": entry.pop("id").id, "host": entry.pop("host").id, **entry}
-                    for entry in result
-                ]
-                return result[0]
-            else:
-                logging.error(f"No Events Found")
-                return
+            return record_id_to_json(result)
         except Exception as e:
             logging.error(f"Failed to fetch event: {str(e)}")
             raise
@@ -291,7 +271,7 @@ class EventsDB:
 
             result = await self.db.query(
                 """
-                UPDATE type::thing('events', $event_id) MERGE $update_data
+                UPDATE ONLY type::thing('events', $event_id) MERGE $update_data
                 RETURN 
                     *,
                     <-attends<-users AS attendees,
@@ -299,11 +279,7 @@ class EventsDB:
                 """,
                 {"event_id": event_id, "update_data": update_data},
             )
-            result = [
-                {"id": entry.pop("id").id, "host": entry.pop("host").id, **entry}
-                for entry in result
-            ][0]
-            return result
+            return record_id_to_json(result)
 
         except Exception as e:
             logging.error(f"Failed to update event status: {str(e)}")

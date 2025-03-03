@@ -17,8 +17,6 @@ class TestAuthentication(TestAuthBase):
     # @pytest.mark.asyncio
     async def test_user_login(self, auth_client, mock_user):
         """Test user login"""
-        # First register the user
-        await self.register_user(auth_client, mock_user)
 
         # Then try to login
         response = await self.login_user(
