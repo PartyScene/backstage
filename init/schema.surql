@@ -50,10 +50,10 @@ DEFINE FIELD OVERWRITE event on TABLE posts TYPE record<events>;
 
 -- A table for comments
 DEFINE TABLE IF NOT EXISTS comments TYPE RELATION IN users TO posts;
-DEFINE FIELD OVERWRITE out ON TABLE posts TYPE record<posts>;
-DEFINE FIELD OVERWRITE in ON TABLE posts TYPE record<users>;
-DEFINE FIELD OVERWRITE content on TABLE posts TYPE string;
-DEFINE FIELD OVERWRITE created_at on TABLE posts TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE out ON TABLE comments TYPE record<posts>;
+DEFINE FIELD OVERWRITE in ON TABLE comments TYPE record<users>;
+DEFINE FIELD OVERWRITE content on TABLE comments TYPE string;
+DEFINE FIELD OVERWRITE created_at on TABLE comments TYPE datetime DEFAULT time::now();
 
 -- A table for friends
 DEFINE TABLE IF NOT EXISTS friends TYPE RELATION IN users to users;
@@ -69,12 +69,10 @@ DEFINE FIELD OVERWRITE type ON media TYPE "image" | "video" | "vod";
 DEFINE FIELD OVERWRITE url ON media TYPE string 
   ASSERT string::len($value) > 0;
   
-DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object
-  VALUE $value OR {};
+DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
 
 -- Metadata fields
-DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime 
-  VALUE $value OR time::now();
+DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();
 
 -- Relations
 DEFINE FIELD OVERWRITE creator ON media TYPE record<users>;

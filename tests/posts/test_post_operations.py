@@ -34,7 +34,7 @@ class TestPostOperations(TestPostsBase):
             "url": "https://storage.googleapis.com/fake-bucket/test-image.jpg",
             "creator": "xxxxx",
             "event": "xxxxxxx",
-            "id": "xxxxxxx",
+            "id": "test",
         }
         response = await self.create_post(posts_client, files, post_data, bearer)
         assert response.status_code == 201

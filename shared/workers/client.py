@@ -99,7 +99,7 @@ class LSClient:
 
         # Create input via LivestreamServiceClient
         operation = await self.client.create_input(parent=self.get_parent(), input=input_config, input_id=input_id)
-        response = await operation.result()  # Wait for the operation to complete (900 seconds)
+        response = (await operation).result()  # Wait for the operation to complete (900 seconds)
         return response
     
     async def _create_channel(self, input_name: str) -> Channel:
@@ -164,7 +164,7 @@ class LSClient:
 
         print("Waiting for operation to complete...")
 
-        response = await operation.result()
+        response = (await operation).result()
 
         # Handle the response
         return response

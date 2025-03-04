@@ -186,13 +186,13 @@ def pytest_configure(config):
     )
 
 
-def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    """Custom terminal summary for test run."""
-    passed = len(terminalreporter.stats.get("passed", []))
-    failed = len(terminalreporter.stats.get("failed", []))
-    skipped = len(terminalreporter.stats.get("skipped", []))
+# def pytest_terminal_summary(terminalreporter, exitstatus, config):
+#     """Custom terminal summary for test run."""
+#     passed = len(terminalreporter.stats.get("passed", []))
+#     failed = len(terminalreporter.stats.get("failed", []))
+#     skipped = len(terminalreporter.stats.get("skipped", []))
 
-    logger.info(f"\nTest Summary:")
-    logger.info(f"Passed: {passed}")
-    logger.info(f"Failed: {failed}")
-    logger.info(f"Skipped: {skipped}")
+#     logger.info(f"\nTest Summary:")
+#     logger.info(f"Passed: {passed}")
+#     logger.info(f"Failed: {failed}")
+#     logger.info(f"Skipped: {skipped}")

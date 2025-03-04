@@ -61,6 +61,8 @@ class BaseView(QuartClassful):
         result = await self.__posts_handler.create_post(
             data=data, media_links=media_links, author=get_jwt_identity()
         )
+        if isinstance(result, str):
+            return result, HTTPStatus.BAD_REQUEST
         return result, HTTPStatus.CREATED
 
     @route("/<id>", methods=["GET"])

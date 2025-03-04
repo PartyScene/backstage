@@ -50,6 +50,7 @@ def mock_media_client():
             "url": "https://storage.googleapis.com/fake-bucket/test-image.jpg",
             "creator": "xxxxx",
             "event": "xxxxxxx",
+            "id": "test"
         }
         mock_create_client.return_value = mock_client
         yield mock_client

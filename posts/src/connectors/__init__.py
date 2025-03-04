@@ -85,7 +85,7 @@ class PostsDB:
         await self.db.let("users", RecordID("users", author))
         await self.db.let("media", [RecordID("media", media["id"]) for media in media_links])
         query = """
-        RELATE $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
+        RELATE ONLY $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
         """
         params = {
             "content": data["content"],
