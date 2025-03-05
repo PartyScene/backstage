@@ -2,7 +2,12 @@ from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
 import os
 from typing import Optional
+from shared.utils import record_id_to_json
+
+import json
 import logging
+# Get the logger
+logger = logging.getLogger(__name__)
 
 
 class UsersDB:
@@ -103,11 +108,12 @@ class UsersDB:
         """
         await self.db.let("edge", RecordID("friends", data["id"]))
         query = """
-            UPDATE $edge SET status = $status
+            UPDATE ONLY $edge SET status = $status
         """
         result = await self.db.query(query, {"status": data.get("status", "pending")})
-        return result[0]["result"][0]
+        return record_id_to_json(result)
 
+    
     async def fetch(self, id: str) -> Optional[dict]:
         """
         Fetch one user by ID
@@ -121,15 +127,14 @@ class UsersDB:
         # ->friends
         result = await self.db.query(
             """
-            SELECT 
+            SELECT
                 *
-            FROM type::thing('users', $id);
+            FROM ONLY type::thing('users', $id);
             """,
             {"id": id},
         )
-        if isinstance(result[0], dict) and "id" in result[0]:
-            result[0]["id"] = result[0]["id"].id
-        return result[0]
+        logger.info(json.dumps(result, indent=4, default=str))
+        return record_id_to_json(result)
 
     async def delete(self, id: str) -> Optional[dict]:
         """
@@ -155,12 +160,11 @@ class UsersDB:
             dict: Updated user data
         """
         result = await self.db.query(
-            "UPDATE type::thing('users', $record_id) MERGE $content RETURN AFTER;",
+            "UPDATE ONLY type::thing('users', $record_id) MERGE $content RETURN AFTER;",
             {"content": data, "record_id": data["id"]},
         )
-        if isinstance(result[0], dict) and "id" in result[0]:
-            result[0]["id"] = result[0]["id"].id
-        return result[0]
+        logger.info(json.dumps(result, indent=4, default=str))
+        return record_id_to_json(result)
 
 
 async def init_db(app: Quart) -> UsersDB:

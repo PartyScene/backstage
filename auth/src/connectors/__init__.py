@@ -1,8 +1,12 @@
-from surrealdb import AsyncSurreal
 import os
-import logging
 
+from surrealdb import AsyncSurreal
 from shared.utils import record_id_to_json
+
+import json
+import logging
+# Get the logger
+logger = logging.getLogger(__name__)
 
 
 class AuthDB:
@@ -20,11 +24,11 @@ class AuthDB:
         except IndexError:
             return False
         return record_id_to_json(result)
-
+    
+    
     async def _create_user(self, form):
         result = await self.db.create("users", form)
-        logging.info(result)
-
+        logger.info(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
         # Assign the variable on the connection
 

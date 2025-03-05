@@ -1,14 +1,18 @@
 from quart import Quart
 import os
+import json
+
 from surrealdb import AsyncSurreal, RecordID
 from shared.utils import record_id_to_json
 
 import logging
+logger = logging.getLogger(__name__)
 
 class PostsDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
-
+    
+    
     async def fetch_event_posts(self, id: str) -> dict:
         """
         Asynchronously fetches all posts associated with the given event.
@@ -22,7 +26,8 @@ class PostsDB:
                 FROM users;
             """
         params = {"id": id}
-        result = await self.db.query(query, params)
+        result = (await self.db.query(query, params))[0]
+        logger.info(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
 
     async def create_comment(self, data):
@@ -72,6 +77,7 @@ class PostsDB:
         result = await self.db.delete(RecordID("comments", data["id"]))
         return result[0]["result"][0]
 
+    
     async def create_post(self, data, media_links, author) -> dict:
         """
         Asynchronously creates a new post in the database.
@@ -93,7 +99,7 @@ class PostsDB:
             "event": RecordID("events", data["event"]),
         }
         result = await self.db.query(query, params)
-        logging.info(result)
+        logger.info(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
 
     async def delete_post(self, id: str):
@@ -109,7 +115,8 @@ class PostsDB:
 
         result = await self.db.delete(RecordID("posts", id))
         return record_id_to_json(result)
-
+    
+    
     async def fetch_post(self, id: str) -> dict:
         """
         Asynchronously fetches a post associated with the given ID.
@@ -124,6 +131,7 @@ class PostsDB:
         result = await self.db.select(RecordID("posts", id))
         if not result:
             return None
+        logger.debug(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
 
 

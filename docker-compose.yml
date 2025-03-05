@@ -11,7 +11,7 @@ services:
     build:
       context: .
       dockerfile: auth/Dockerfile
-      target: test
+      target: prod
     networks:
       partyscene_network:
         ipv4_address: 11.0.0.14
@@ -29,7 +29,7 @@ services:
   microservices.media:
     container_name: microservices.media
     build:
-      target: test
+      target: prod
       context: .
       dockerfile: media/Dockerfile
     restart: always
@@ -46,7 +46,7 @@ services:
   microservices.livestream:
     container_name: microservices.livestream
     build:
-      target: test
+      target: prod
       context: .
       dockerfile: livestream/Dockerfile
     restart: always
@@ -63,7 +63,7 @@ services:
   microservices.events:
     container_name: microservices.events
     build:
-      target: test
+      target: prod
       context: .
       dockerfile: events/Dockerfile
     restart: always
@@ -78,7 +78,7 @@ services:
   microservices.posts:
     container_name: microservices.posts
     build:
-      target: test
+      target: prod
       context: .
       dockerfile: posts/Dockerfile
     restart: always
@@ -95,7 +95,7 @@ services:
   microservices.users:
     container_name: microservices.users
     build: 
-      target: test
+      target: prod
       context: .
       dockerfile: users/Dockerfile
     restart: always
@@ -142,7 +142,7 @@ services:
     container_name: surrealdb
     env_file:
       - .env
-    CMD:
+    entrypoint:
       - /surreal
       - start
       - --user

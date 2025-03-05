@@ -59,9 +59,9 @@ def mock_media_client():
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session
-async def users_app(surreal, mock_media_client):
+async def users_app(mock_media_client):
     from users.run import app
-    from users.src.connectors import UsersDB
+    from users.src.connectors import init_db
 
     # with patch('google.cloud.video.live_stream_v1.LivestreamServiceAsyncClient') as mock_client:
     #     # Create a mock async client
@@ -97,7 +97,7 @@ async def users_app(surreal, mock_media_client):
             pass
 
     app.redis = AsyncRedisMock()
-    app.db = UsersDB(surreal)
+    app.db = await init_db(app)
     try:
         async with app.app_context():
             await app.get_shared_secret()

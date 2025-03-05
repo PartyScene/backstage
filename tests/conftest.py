@@ -41,22 +41,22 @@ def event_loop():
     loop.close()
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def surreal():
-    """Create a session-scoped database connection"""
-    logger.debug(os.environ)
-    db = AsyncSurreal(os.environ["SURREAL_URI"])
-    await db.connect(os.environ["SURREAL_URI"])
-    await db.signin(
-        {"username": os.environ["SURREAL_USER"], "password": os.environ["SURREAL_PASS"]}
-    )
-    await db.use("partyscene", "partyscene")
-    yield db
-    await db.close()
+# @pytest_asyncio.fixture(scope="session", loop_scope="session")
+# async def surreal():
+#     """Create a session-scoped database connection"""
+#     logger.debug(os.environ)
+#     db = AsyncSurreal(os.environ["SURREAL_URI"])
+#     await db.connect(os.environ["SURREAL_URI"])
+#     await db.signin(
+#         {"username": os.environ["SURREAL_USER"], "password": os.environ["SURREAL_PASS"]}
+#     )
+#     await db.use("partyscene", "partyscene")
+#     yield db
+#     await db.close()
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def auth_app(surreal):
+async def auth_app():
     """Create a session-scoped auth app"""
 
     from auth.run import app

@@ -10,3 +10,4 @@ novu-py
 surrealdb
 python-dotenv
 hypercorn[uvloop]
+indented_logger

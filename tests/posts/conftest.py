@@ -59,9 +59,9 @@ def mock_media_client():
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session
-async def posts_app(surreal, mock_media_client):
+async def posts_app(mock_media_client):
     from posts.run import app
-    from posts.src.connectors import PostsDB
+    from posts.src.connectors import init_db
 
     app.config.update(
         TESTING=True,
@@ -88,7 +88,7 @@ async def posts_app(surreal, mock_media_client):
             pass
 
     app.redis = AsyncRedisMock()
-    app.db = PostsDB(surreal)
+    app.db = await init_db(app)
     try:
         async with app.app_context():
             await app.get_shared_secret()

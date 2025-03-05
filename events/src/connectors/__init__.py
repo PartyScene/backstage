@@ -4,7 +4,9 @@ from surrealdb.data import GeometryPoint, RecordID, Table
 import os
 from typing import Optional, List, Dict, Any
 import logging
+
 from shared.utils import record_id_to_json
+import json
 
 
 class EventsDB:
@@ -13,7 +15,6 @@ class EventsDB:
 
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
-        logging.info(f"Creating event: {data}")
         try:
             # data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
             data["host"] = RecordID("users", data["host"])
@@ -22,8 +23,6 @@ class EventsDB:
                 "coordinates": data.pop("coordinates"),
             }
 
-            # result = await self.db.create(Table("events"), data)
-            logging.info(f"Creating event: {data}")
             result = await self.db.create("events", data)
             # result = await self.db.query(
             # """
@@ -52,7 +51,7 @@ class EventsDB:
             #         "host": data.get("host")
             #     }
             # )
-            logging.info(f"Query result: {result}")
+            logging.info(json.dumps(result, indent=4, default=str))
             if "ERR" in result:
                 raise Exception(f"Error creating event: {result}")  # Handle error case
             return record_id_to_json(result)
@@ -131,7 +130,7 @@ class EventsDB:
                 """,
                 {"page": page, "limit": limit},
             )
-            logging.info(f"Query result: {result}")
+            logging.debug(json.dumps(result, indent=4, default=str))
             return record_id_to_json(result)
 
         except Exception as e:
@@ -235,7 +234,7 @@ class EventsDB:
         result = await self.db.merge(RecordID("events", event_id), data)
         if "ERR" in result:
             raise Exception(f"Error updating event: {result}")  # Handle error case
-        logging.info(f"Updated event: {result}")
+        logging.debug(json.dumps(result, indent=4, default=str))
         result = {"id": result.pop("id").id, "host": result.pop("host").id, **result}
         return result
 

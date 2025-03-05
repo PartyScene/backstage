@@ -105,8 +105,8 @@ gcloud config set project partyscene-441317
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/scenes/partyscene.git
-cd partyscene
+git clone https://github.com/scenes/backstage.git
+cd backstage
 ```
 
 ### 2. Environment Configuration
@@ -122,6 +122,7 @@ DB_PASSWORD=your_secure_password
 GCP_PROJECT_ID=partyscene-441317
 GCP_BUCKET_NAME=partyscene-scenes
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/credentials.json
+GCLOUD_AUTH_DIR=C:/Users/YourUsername/.config/gcloud
 
 # JWT and Security
 JWT_SECRET_KEY=your_very_secure_random_key
@@ -158,20 +159,8 @@ docker-compose up -d
 | Kong Gateway   | 8002 | API Gateway                     |
 | SurrealDB      | 8000 | Database                        |
 
-## Verification Steps
-
-1. **Check Service Health**:
-```bash
-# Verify each microservice
-curl http://localhost:5500/health
-curl http://localhost:5510/health
-curl http://localhost:5520/health
-curl http://localhost:5530/health
-curl http://localhost:5540/health
-curl http://localhost:5550/health
-```
-
-2. **Database Connection**:
+## Verify Services
+**Database Connection**:
 ```bash
 # Test SurrealDB connection
 curl http://localhost:8000/sql -d "INFO FOR DB;"
@@ -182,8 +171,7 @@ curl http://localhost:8000/sql -d "INFO FOR DB;"
 ### Running Tests
 ```bash
 # Run tests for a specific service
-cd users && python -m pytest
-cd media && python -m pytest
+sudo docker compose -f docker-compose.test.yml up -d
 ```
 
 ### Adding New Features
@@ -196,10 +184,10 @@ cd media && python -m pytest
 
 ```bash
 # View real-time logs
-docker-compose logs -f
+docker compose logs -f
 
 # Check service status
-docker-compose ps
+docker compose ps
 
 # Monitor specific service
 docker logs microservices.users

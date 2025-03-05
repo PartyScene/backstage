@@ -34,9 +34,9 @@ fake = Faker()
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session
-async def event_app(surreal):
+async def event_app():
     from events.run import app
-    from events.src.connectors import EventsDB
+    from events.src.connectors import init_db
 
     app.config.update(
         TESTING=True,
@@ -63,7 +63,7 @@ async def event_app(surreal):
             pass
 
     app.redis = AsyncRedisMock()
-    app.db = EventsDB(surreal)
+    app.db = await init_db(app)
     try:
         async with app.app_context():
             await app.get_shared_secret()

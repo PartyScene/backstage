@@ -17,6 +17,8 @@ class BaseView(QuartClassful):
     async def get_livestream(self, event_id):
         try:
             stream_info = await self.livestream.get_stream(event_id)
+            if not isinstance(stream_info, dict):
+                return jsonify(stream_info), HTTPStatus.NOT_FOUND
             return jsonify(stream_info), HTTPStatus.OK
         except:
             return (
