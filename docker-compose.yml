@@ -26,7 +26,7 @@ services:
     environment:
       - SCHEMA_FILE=/home/schema.surql
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,7 +48,7 @@ services:
     volumes:
       - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -70,7 +70,7 @@ services:
     depends_on:
       - microservices.auth
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -90,7 +90,7 @@ services:
     depends_on:
       - microservices.auth
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -128,7 +128,7 @@ services:
       - microservices.auth
       - microservices.media
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
       interval: 10s
       timeout: 5s
       retries: 5

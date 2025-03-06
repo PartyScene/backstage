@@ -51,10 +51,8 @@ async def init_db(app) -> AuthDB:
     db = AsyncSurreal(os.getenv("SURREAL_URI"))
     await db.connect()
 
-    DB_USER = os.getenv("DB_USER")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
     await db.signin(
-        {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
+        {"username": os.getenv("SURREAL_USER"), "password": os.getenv("SURREAL_PASS")}
     )
     await db.use("partyscene", "partyscene")
 

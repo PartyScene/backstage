@@ -1,7 +1,7 @@
 networks:
   default:
     external: true
-    name: backstage_network
+    name: cloudbuild
 
 services:
   microservices.auth:
@@ -12,12 +12,11 @@ services:
       target: test
     # networks: 
     #   - backstage_network
-    restart: always
     depends_on:
       - redis
       - surrealdb
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
@@ -29,16 +28,16 @@ services:
       target: test
       context: .
       dockerfile: media/Dockerfile
-    restart: always
     # networks: 
     #   - backstage_network
     depends_on:
       microservices.events:
         condition: service_completed_successfully
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
+      - ./init/schema.surql:/home/schema.surql
+      # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
 
   microservices.livestream:
     container_name: microservices.livestream
@@ -46,13 +45,13 @@ services:
       target: test
       context: .
       dockerfile: livestream/Dockerfile
-    restart: always
     # networks: 
     #   - backstage_network
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
+      - ./init/schema.surql:/home/schema.surql
+      # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     depends_on:
       microservices.events:
         condition: service_completed_successfully
@@ -63,11 +62,12 @@ services:
       target: test
       context: .
       dockerfile: events/Dockerfile
-    restart: always
     # networks: 
     #   - backstage_network
-    env_file:
-      - .env
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    # env_file:
+    #   - .env
     depends_on:
       microservices.auth:
         condition: service_completed_successfully
@@ -78,27 +78,29 @@ services:
       target: test
       context: .
       dockerfile: posts/Dockerfile
-    restart: always
     # networks: 
     #   - backstage_network
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
+      - ./init/schema.surql:/home/schema.surql
+      # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     depends_on:
       microservices.media:
         condition: service_completed_successfully
+
   microservices.users:
     container_name: microservices.users
     build: 
       target: test
       context: .
       dockerfile: users/Dockerfile
-    restart: always
     # networks: 
     #   - backstage_network
-    env_file:
-      - .env
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    # env_file:
+    #   - .env
     depends_on:
       microservices.auth:
         condition: service_completed_successfully
@@ -134,8 +136,8 @@ services:
 
   surrealdb:
     container_name: surrealdb
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     entrypoint:
       - /surreal
       - start
@@ -144,6 +146,8 @@ services:
       - --pass
       - $DB_PASSWORD
       - memory
+      - --log
+      - debug
 
     image: surrealdb/surrealdb:v2.0-dev
     ports:

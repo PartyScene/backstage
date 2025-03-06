@@ -46,6 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy application code
 COPY auth .
 COPY shared/ /shared/
+COPY init/schema.surql /home/schema.surql
 
 # install deps
 RUN pip install --no-cache-dir -r /shared/requirements.txt

@@ -1,27 +1,30 @@
 steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['network', 'create', 'backstage_network']
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['network', 'create', 'backstage_network']
 
-- name: 'docker/compose:1.19.0'
-  args: ['-f', 'docker-compose.test.yml', 'up', '--abort-on-container-exit']
-
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth:latest', '-f', 'auth/Dockerfile', '.']
-
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events:latest', '-f', 'events/Dockerfile', '.']
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['compose', '-f', 'docker-compose.test.yml', 'up', '--abort-on-container-exit']
+#   env:
+#     - DB_USER=root
+#     - DB_PASSWORD=rootrm
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts:latest', '-f', 'posts/Dockerfile', '.']
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users:latest', '-f', 'users/Dockerfile', '.']
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts', '-f', 'posts/Dockerfile', '.']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users', '-f', 'users/Dockerfile', '.']
 
 substitutions:
   _LOCATION: us-central1 # default value
 
 images:
-- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth:latest'
-- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events:latest'
-- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts:latest'
-- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users:latest'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users'

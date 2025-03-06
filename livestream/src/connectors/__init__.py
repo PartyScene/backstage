@@ -34,11 +34,11 @@ class LiveStreamDB:
         result = await self.db.query(
             """
             INSERT INTO livestreams 
-                (channel_id, input_id, ingest_url, playback_url, manifests, event) VALUES ($channel_id, $input_id, $ingest_url, $playback_url, $manifests, type::thing("events", $event_id))
+                (channel_name, input_name, ingest_url, playback_url, manifests, event) VALUES ($channel_name, $input_name, $ingest_url, $playback_url, $manifests, type::thing("events", $event_id))
             """,
             {
-                "channel_id": channel_response.name,
-                "input_id": input_response.name,
+                "channel_name": channel_response.name,
+                "input_name": input_response.name,
                 "ingest_url": input_response.uri,
                 "playback_url": channel_response.output.uri,
                 "manifests": [x.file_name for x in channel_response.manifests],
