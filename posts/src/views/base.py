@@ -10,6 +10,7 @@ from shared.utils import create_media_client, MediaClient
 from classful import route, QuartClassful
 from http import HTTPStatus
 import os
+from datetime import datetime
 
 
 class BaseView(QuartClassful):
@@ -18,7 +19,47 @@ class BaseView(QuartClassful):
         self.__media_client: MediaClient = create_media_client(
             os.environ["MEDIA_MICROSERVICE_URL"]
         )
-        self.__posts_handler: PostsDB = app.db
+        self.__posts_handler: PostsDB = app.conn
+
+    @route("/health", methods=["GET"])
+    async def healthcheck(self):
+        """
+        Simple health check endpoint that verifies service and dependency status.
+        Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
+        """
+        health_status = {
+            "service": "auth",
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "dependencies": {
+                "database": "unknown",
+                "redis": "unknown"
+            }
+        }
+        
+        # Check database connection
+        try:
+            db_info = await self.__posts_handler.db.info()
+            health_status["dependencies"]["database"] = "healthy"
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            health_status["dependencies"]["database"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        # Check Redis connection
+        try:
+            redis_ping = await self.redis.ping()
+            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            if not redis_ping:
+                health_status["status"] = "degraded"
+        except Exception as e:
+            logger.error(f"Redis health check failed: {e}")
+            health_status["dependencies"]["redis"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
+        
+        return jsonify(health_status), status_code
 
     @route("/event/<id>", methods=["GET", "POST"])
     async def fetch_event_posts(self, id: str):

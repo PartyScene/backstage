@@ -12,6 +12,8 @@ class PostsDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
     
+    async def close(self):
+        self.db.close()
     
     async def fetch_event_posts(self, id: str) -> dict:
         """

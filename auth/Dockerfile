@@ -28,7 +28,7 @@ COPY tests/auth/ /tests/auth/
 COPY tests/pytest.ini /tests/pytest.ini
 
 # Run tests
-CMD ["pytest", "--disable-warnings", "/tests", "-v"]
+ENTRYPOINT ["pytest", "--disable-warnings", "/tests", "-v"]
 
 # Main stage
 FROM python:3.11-slim as prod
@@ -45,7 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy application code
 COPY auth .
-COPY shared /shared
+COPY shared/ /shared/
 
 # install deps
 RUN pip install --no-cache-dir -r /shared/requirements.txt

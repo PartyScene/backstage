@@ -1,9 +1,7 @@
 networks:
-  partyscene_network:
+  default:
     external: true
-    ipam:
-      config:
-        - subnet: 11.0.0.0/24
+    name: backstage_network
 
 services:
   microservices.auth:
@@ -12,9 +10,8 @@ services:
       context: .
       dockerfile: auth/Dockerfile
       target: test
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.14
+    # networks: 
+    #   - backstage_network
     restart: always
     depends_on:
       - redis
@@ -23,7 +20,6 @@ services:
       - .env
     volumes:
       - ./init/schema.surql:/home/schema.surql
-      - ./state:/tmp/state
     environment:
       - SCHEMA_FILE=/home/schema.surql
 
@@ -34,9 +30,8 @@ services:
       context: .
       dockerfile: media/Dockerfile
     restart: always
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.15
+    # networks: 
+    #   - backstage_network
     depends_on:
       microservices.events:
         condition: service_completed_successfully
@@ -52,9 +47,8 @@ services:
       context: .
       dockerfile: livestream/Dockerfile
     restart: always
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.13
+    # networks: 
+    #   - backstage_network
     env_file:
       - .env
     volumes:
@@ -70,9 +64,8 @@ services:
       context: .
       dockerfile: events/Dockerfile
     restart: always
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.12
+    # networks: 
+    #   - backstage_network
     env_file:
       - .env
     depends_on:
@@ -86,9 +79,8 @@ services:
       context: .
       dockerfile: posts/Dockerfile
     restart: always
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.11
+    # networks: 
+    #   - backstage_network
     env_file:
       - .env
     volumes:
@@ -103,9 +95,8 @@ services:
       context: .
       dockerfile: users/Dockerfile
     restart: always
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.10
+    # networks: 
+    #   - backstage_network
     env_file:
       - .env
     depends_on:
@@ -115,7 +106,7 @@ services:
   # kong:
   #   image: kong/kong-gateway:3.8.0.0
   #   networks:
-  #     partyscene_network:
+  #     backstage_network:
   #       ipv4_address: 11.0.0.19
   #   ports:
   #     - 8002:8000
@@ -138,9 +129,8 @@ services:
   redis:
     image: redis
     
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.18
+    # networks: 
+    #   - backstage_network
 
   surrealdb:
     container_name: surrealdb
@@ -158,6 +148,5 @@ services:
     image: surrealdb/surrealdb:v2.0-dev
     ports:
       - 8000:8000
-    networks:
-      partyscene_network:
-        ipv4_address: 11.0.0.20
+    # networks: 
+    #   - backstage_network

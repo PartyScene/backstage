@@ -1,8 +1,10 @@
 import os
 import novu_py
+import logging
 from novu_py import Novu, TriggerEventRequestDto, To
 from typing import Dict, List, Union, Optional
 
+logger = logging.getLogger(__name__)
 
 class NotificationManager:
     def __init__(self):
@@ -41,11 +43,11 @@ class NotificationManager:
                 request={"email": email}
             ):
                 if len(exists.result.data) >= 1:
-                    print("Found a Novu Subscriber with %s " % email)
-                    print(exists.result)
-                    return await self.novu_client.subscribers.update_async(
+                    logger.info("Found a Novu Subscriber with %s " % email)
+                    logger.info(exists.result)
+                    return await self.novu_client.subscribers.patch_async(
                         subscriber_id=exists.result.data[0].subscriber_id,
-                        update_subscriber_request_dto={
+                        patch_subscriber_request_dto={
                             "email": subscriber_data["email"]
                         },
                     )
@@ -53,7 +55,7 @@ class NotificationManager:
                 create_subscriber_request_dto=subscriber_data
             )
         except Exception as e:
-            print(f"Subscriber creation error: {e}")
+            logger.info(f"Subscriber creation error: {e}")
             raise
 
     async def send_otp_notification(
@@ -79,7 +81,7 @@ class NotificationManager:
                 )
             )
         except Exception as e:
-            print(f"OTP notification error: {e}")
+            logger.info(f"OTP notification error: {e}")
             raise
 
     async def recent_login_notification(
@@ -105,7 +107,7 @@ class NotificationManager:
                 )
             )
         except Exception as e:
-            print(f"Recent Login notification error: {e}")
+            logger.info(f"Recent Login notification error: {e}")
             raise
 
     async def send_friend_request_notification(
@@ -131,7 +133,7 @@ class NotificationManager:
                 )
             )
         except Exception as e:
-            print(f"Friend request notification error: {e}")
+            logger.info(f"Friend request notification error: {e}")
             raise
 
     async def send_event_invitation(
@@ -165,7 +167,7 @@ class NotificationManager:
             )
 
         except Exception as e:
-            print(f"Event invitation notification error: {e}")
+            logger.info(f"Event invitation notification error: {e}")
             raise
 
     async def send_livestream_notification(
@@ -194,7 +196,7 @@ class NotificationManager:
                 )
             )
         except Exception as e:
-            print(f"Livestream notification error: {e}")
+            logger.info(f"Livestream notification error: {e}")
             raise
 
     def send_post_interaction_notification(
@@ -231,5 +233,5 @@ class NotificationManager:
                 )
             )
         except Exception as e:
-            print(f"Post interaction notification error: {e}")
+            logger.info(f"Post interaction notification error: {e}")
             raise

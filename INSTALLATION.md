@@ -133,7 +133,7 @@ JWT_SECRET_KEY=your_very_secure_random_key
 ```bash
 docker network create \
   --subnet=11.0.0.0/24 \
-  partyscene_network
+  backstage_network
 ```
 
 ### 4. Build and Start Services

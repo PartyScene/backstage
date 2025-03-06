@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import random
 import json
 import asyncio
@@ -30,7 +30,7 @@ logger = getLogger(__name__)
 class BaseView(QuartClassful):
 
     def __init__(self):
-        self.db: EventsDB = app.db
+        self.conn: EventsDB = app.conn
         self.redis = app.redis
         self.logger = logger
 
@@ -49,6 +49,47 @@ class BaseView(QuartClassful):
         key = f"live_query:{event_id}"
         await self.redis.delete(key)
 
+    @route("/health", methods=["GET"])
+    async def healthcheck(self):
+        """
+        Simple health check endpoint that verifies service and dependency status.
+        Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
+        """
+        health_status = {
+            "service": "auth",
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "dependencies": {
+                "database": "unknown",
+                "redis": "unknown"
+            }
+        }
+        
+        # Check database connection
+        try:
+            db_info = await self.conn.db.info()
+            health_status["dependencies"]["database"] = "healthy"
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            health_status["dependencies"]["database"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        # Check Redis connection
+        try:
+            redis_ping = await self.redis.ping()
+            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            if not redis_ping:
+                health_status["status"] = "degraded"
+        except Exception as e:
+            logger.error(f"Redis health check failed: {e}")
+            health_status["dependencies"]["redis"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
+        
+        return jsonify(health_status), status_code
+
+
     @route("/events", methods=["GET"])
     @route("/events/<event_id>", methods=["GET"])
     @jwt_required
@@ -58,11 +99,11 @@ class BaseView(QuartClassful):
         limit = int(request.args.get("limit", 20))
 
         if event_id:
-            if result := await self.db.fetch(event_id):
+            if result := await self.conn.fetch(event_id):
                 return result, HTTPStatus.OK
             return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
-        result = await self.db.fetch_all(page, limit)
+        result = await self.conn.fetch_all(page, limit)
         return result, HTTPStatus.OK
 
     @route("/events/<event_id>", methods=["PATCH"])
@@ -71,7 +112,7 @@ class BaseView(QuartClassful):
         """This endpoints returns all the events"""
         data = await request.get_json()
         if event_id:
-            if result := await self.db.update_event_data(event_id, data):
+            if result := await self.conn.update_event_data(event_id, data):
                 return result, HTTPStatus.OK
             return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
@@ -83,7 +124,7 @@ class BaseView(QuartClassful):
             data = await request.get_json()  # Get raw JSON data
             # You can add your own validation here if needed
             data["host"] = data.get("host", get_jwt_identity())
-            if result := await self.db.create_event(
+            if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
                 return jsonify(result), HTTPStatus.CREATED
@@ -97,11 +138,11 @@ class BaseView(QuartClassful):
     async def delete_event(self, event_id: str):
         """Delete an event"""
         try:
-            await self.db.delete_event(event_id)
-            return {"message": "Event deleted successfully"}, 200
+            await self.conn.delete_event(event_id)
+            return {"message": "Event deleted successfully"}, HTTPStatus.NO_CONTENT
         except Exception as e:
             self.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
-            return {"error": str(e)}, 500
+            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/public", methods=["GET"])
     @jwt_required
@@ -109,8 +150,8 @@ class BaseView(QuartClassful):
         """This endpoints returns all the public events"""
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 20))
-        result = await self.db.fetch_all_public(page, limit)
-        return result, 200
+        result = await self.conn.fetch_all_public(page, limit)
+        return result, HTTPStatus.OK
 
     @route("/events/distance", methods=["GET"])
     @jwt_required
@@ -125,7 +166,7 @@ class BaseView(QuartClassful):
             float(request.args.get("lng", 0)),
         )
         distance = int(request.args.get("distance", 1000))
-        result = await self.db.fetch_by_distance(location, distance)
+        result = await self.conn.fetch_by_distance(location, distance)
         return result, HTTPStatus.OK
 
     @route("/events/<event_id>/status", methods=["PATCH"])
@@ -137,7 +178,7 @@ class BaseView(QuartClassful):
             data = await request.get_json()
 
             # Verify user has permission to update this event
-            event = await self.db.fetch(event_id)
+            event = await self.conn.fetch(event_id)
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
@@ -148,7 +189,7 @@ class BaseView(QuartClassful):
                 )
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
 
-            result = await self.db.update_event_status(
+            result = await self.conn.update_event_status(
                 event_id, status=data["status"], metadata=data.get("metadata")
             )
             self.logger.info(f"Successfully updated status for event {event_id}")
@@ -167,7 +208,7 @@ class BaseView(QuartClassful):
             user_id = get_jwt_identity()
 
             # Verify user has access to this event
-            event = await self.db.fetch(event_id)
+            event = await self.conn.fetch(event_id)
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
@@ -185,7 +226,7 @@ class BaseView(QuartClassful):
                 return {"live_query_id": existing_live_id}, HTTPStatus.OK
 
             # Start the live query and get its ID
-            live_id = await self.db.live_query(event_id)
+            live_id = await self.conn.live_query(event_id)
 
             # Store in Redis
             await self._store_live_query(event_id, live_id)
@@ -208,7 +249,7 @@ class BaseView(QuartClassful):
             user_id = get_jwt_identity()
 
             # Verify user has access to this event
-            event = await self.db.fetch(event_id)
+            event = await self.conn.fetch(event_id)
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
@@ -222,15 +263,15 @@ class BaseView(QuartClassful):
             # Get live query ID from Redis
             live_id = await self._get_live_query(event_id)
             if live_id:
-                await self.db.kill_live_query(live_id)
+                await self.conn.kill_live_query(live_id)
                 await self._remove_live_query(event_id)
                 self.logger.info(
                     f"Successfully stopped live updates for event {event_id}"
                 )
-                return {"message": "Live updates stopped"}, HTTPStatus.OK
+                return {"message": "Live updates stopped"}, HTTPStatus.NO_CONTENT
 
             self.logger.info(f"No live updates running for event {event_id}")
-            return {"message": "No live updates running"}, HTTPStatus.OK
+            return {"message": "No live updates running"}, HTTPStatus.NO_CONTENT
 
         except Exception as e:
             self.logger.error(
@@ -247,7 +288,7 @@ class BaseView(QuartClassful):
             user_id = get_jwt_identity()
 
             # Verify the event exists
-            event = await self.db.fetch(event_id)
+            event = await self.conn.fetch(event_id)
             if not event:
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
@@ -259,7 +300,7 @@ class BaseView(QuartClassful):
             }
 
             # Assuming you have a method to create the relationship in your database
-            await self.db.create_attendance(attendance_data)
+            await self.conn.create_attendance(attendance_data)
 
             return {"message": "Ticket purchased successfully"}, HTTPStatus.CREATED
 

@@ -45,7 +45,7 @@ class UsersMicroService(Quart):
     def __init__(self, *args):
         super(UsersMicroService, self).__init__(*args)
 
-        self.db = None  # SurrealDB
+        self.conn = None  # SurrealDB
         self.redis = None
 
         # Set dev environment settings
@@ -83,10 +83,43 @@ class UsersMicroService(Quart):
 
         if not self.DEBUG:
             logger.info("Initializing SurrealDB connection...")
-            self.db = await init_db(self)
+            self.conn = await init_db(self)
 
         logger.info("Retrieving Secret...")
         await self.get_shared_secret()
+    
+    async def clean_up(self):
+        """
+        Gracefully shutdown SurrealDB and Redis connections.
+        
+        This method ensures that database connections are closed properly,
+        with detailed logging and error handling to prevent resource leaks.
+        """
+        try:
+            logger.info("Starting service cleanup process...")
+
+            # Close SurrealDB connection
+            if hasattr(self, "conn") and self.conn is not None:
+                try:
+                    logger.info("Closing SurrealDB connection...")
+                    await self.conn.db.close()
+                    logger.info("SurrealDB connection closed successfully")
+                except Exception as db_close_error:
+                    logger.error(f"Error closing SurrealDB connection: {str(db_close_error)}", exc_info=True)
+
+            # Close Redis connection
+            if hasattr(self, "redis") and self.redis is not None:
+                try:
+                    logger.info("Closing Redis connection...")
+                    await self.redis.close()
+                    logger.info("Redis connection closed successfully")
+                except Exception as redis_close_error:
+                    logger.error(f"Error closing Redis connection: {str(redis_close_error)}", exc_info=True)
+
+            logger.info("Service cleanup completed successfully")
+        except Exception as general_error:
+            logger.error(f"Unexpected error during service cleanup: {str(general_error)}", exc_info=True)
+            raise
 
     async def init_redis(self):
         """Initialize Redis connection"""

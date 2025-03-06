@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 class UsersDB:
     def __init__(self, db: AsyncSurreal) -> None:
         self.db: AsyncSurreal = db
-
+    async def close(self):
+        self.db.close()
     async def find_connections_at_degree(self, origin_id: str, max_degree: int = 3):
         """
         Find all connections up to N degrees of separation

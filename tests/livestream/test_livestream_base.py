@@ -18,3 +18,9 @@ class TestLiveStreamBase:
         return await client.get(
             f"/{stream_event_id}", headers={"Authorization": f"Bearer {bearer}"}
         )
+
+    async def delete_live_stream(self, client: QuartClient, stream_event_id: int, bearer):
+        """Helper method to delete a live stream"""
+        return await client.delete(
+            f"/{stream_event_id}", headers={"Authorization": f"Bearer {bearer}"}
+        )

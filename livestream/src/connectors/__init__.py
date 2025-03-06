@@ -8,6 +8,9 @@ from shared.utils import record_id_to_json
 class LiveStreamDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
+        
+    async def close(self):
+        self.db.close()
 
     async def fetch_livestream(self, event_id: str):
         """

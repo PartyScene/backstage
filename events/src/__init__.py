@@ -46,7 +46,7 @@ class EventsMicroService(Quart):
         super(EventsMicroService, self).__init__(*args)
         QuartSchema(self)
 
-        self.db: EventsDB = None
+        self.conn: EventsDB = None
         self.redis: Redis = None
 
         # Set dev environment settings
@@ -99,7 +99,7 @@ class EventsMicroService(Quart):
 
             if not self.DEBUG:
                 logger.info("Initializing SurrealDB connection...")
-                self.db = await init_db(self)
+                self.conn = await init_db(self)
 
             # Get JWT secret
             logger.info("Retrieving JWT secret...")
@@ -129,7 +129,7 @@ class EventsMicroService(Quart):
                 user_id = await get_jwt_identity()
 
                 # Verify user has access to this event
-                event = await self.db.fetch(event_id)
+                event = await self.conn.fetch(event_id)
                 if not event or (
                     event["host"]["id"] != user_id
                     and user_id not in [a["id"] for a in event.get("attendees", [])]
@@ -149,7 +149,7 @@ class EventsMicroService(Quart):
                 logger.info(f"WebSocket connection accepted for event {event_id}")
 
                 try:
-                    notifications: asyncio.Queue = await self.db.get_live_notifications(
+                    notifications: asyncio.Queue = await self.conn.get_live_notifications(
                         live_id
                     )
                     while True:
@@ -168,7 +168,7 @@ class EventsMicroService(Quart):
                     logger.error(f"WebSocket error: {str(e)}", exc_info=True)
                 finally:
                     try:
-                        await self.db.kill_live_query(live_id)
+                        await self.conn.kill_live_query(live_id)
                         await self.redis.delete(f"live_query:{event_id}")
                         logger.info(f"Cleaned up resources for event {event_id}")
                     except Exception as e:
@@ -190,4 +190,37 @@ class EventsMicroService(Quart):
 
         except Exception as e:
             logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
+            raise
+
+    async def clean_up(self):
+        """
+        Gracefully shutdown SurrealDB and Redis connections.
+        
+        This method ensures that database connections are closed properly,
+        with detailed logging and error handling to prevent resource leaks.
+        """
+        try:
+            logger.info("Starting service cleanup process...")
+
+            # Close SurrealDB connection
+            if hasattr(self, "conn") and self.conn is not None:
+                try:
+                    logger.info("Closing SurrealDB connection...")
+                    await self.conn.db.close()
+                    logger.info("SurrealDB connection closed successfully")
+                except Exception as db_close_error:
+                    logger.error(f"Error closing SurrealDB connection: {str(db_close_error)}", exc_info=True)
+
+            # Close Redis connection
+            if hasattr(self, "redis") and self.redis is not None:
+                try:
+                    logger.info("Closing Redis connection...")
+                    await self.redis.close()
+                    logger.info("Redis connection closed successfully")
+                except Exception as redis_close_error:
+                    logger.error(f"Error closing Redis connection: {str(redis_close_error)}", exc_info=True)
+
+            logger.info("Service cleanup completed successfully")
+        except Exception as general_error:
+            logger.error(f"Unexpected error during service cleanup: {str(general_error)}", exc_info=True)
             raise

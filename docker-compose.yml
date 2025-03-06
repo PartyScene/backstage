@@ -1,5 +1,5 @@
 networks:
-  partyscene_network:
+  backstage_network:
     external: true
     ipam:
       config:
@@ -13,7 +13,7 @@ services:
       dockerfile: auth/Dockerfile
       target: prod
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.14
     restart: always
     depends_on:
@@ -25,6 +25,11 @@ services:
       - ./init/schema.surql:/home/schema.surql
     environment:
       - SCHEMA_FILE=/home/schema.surql
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   microservices.media:
     container_name: microservices.media
@@ -34,7 +39,7 @@ services:
       dockerfile: media/Dockerfile
     restart: always
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.15
     depends_on:
       - microservices.auth
@@ -42,6 +47,11 @@ services:
       - .env
     volumes:
       - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   microservices.livestream:
     container_name: microservices.livestream
@@ -51,7 +61,7 @@ services:
       dockerfile: livestream/Dockerfile
     restart: always
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.13
     env_file:
       - .env
@@ -59,6 +69,11 @@ services:
       - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
     depends_on:
       - microservices.auth
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   microservices.events:
     container_name: microservices.events
@@ -68,12 +83,17 @@ services:
       dockerfile: events/Dockerfile
     restart: always
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.12
     env_file:
       - .env
     depends_on:
       - microservices.auth
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   microservices.posts:
     container_name: microservices.posts
@@ -83,7 +103,7 @@ services:
       dockerfile: posts/Dockerfile
     restart: always
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.11
     env_file:
       - .env
@@ -100,18 +120,23 @@ services:
       dockerfile: users/Dockerfile
     restart: always
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.10
     env_file:
       - .env
     depends_on:
       - microservices.auth
       - microservices.media
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5510"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kong:
     image: kong/kong-gateway:3.8.0.0
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.19
     ports:
       - 8002:8000
@@ -135,7 +160,7 @@ services:
     image: redis
     
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.18
 
   surrealdb:
@@ -155,5 +180,5 @@ services:
     ports:
       - 8000:8000
     networks:
-      partyscene_network:
+      backstage_network:
         ipv4_address: 11.0.0.20

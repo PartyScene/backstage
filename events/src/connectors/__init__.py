@@ -13,6 +13,9 @@ class EventsDB:
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
 
+    async def close(self):
+        self.db.close()
+
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
         try:
@@ -305,7 +308,7 @@ class EventsDB:
 async def init_db(app: Quart) -> EventsDB:
     """Initialize database connection"""
     try:
-        db = AsyncSurreal(os.environ["SURREAL_URI"])
+        db = AsyncSurreal(os.getenv("SURREAL_URI"))
         await db.connect()
 
         await db.signin(

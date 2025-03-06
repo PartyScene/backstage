@@ -32,8 +32,8 @@ DEFINE FIELD OVERWRITE metadata on TABLE events FLEXIBLE TYPE object DEFAULT {};
 
 -- Let's define a table for livestreams
 DEFINE TABLE IF NOT EXISTS livestreams schemafull;
-DEFINE FIELD OVERWRITE channel_id on TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE input_id on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE channel_name on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE input_name on TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE ingest_url on TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE playback_url on TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;

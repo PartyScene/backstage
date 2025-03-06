@@ -46,7 +46,7 @@ class AuthMicroService(Quart):
         super(AuthMicroService, self).__init__(*args)
         QuartSchema(self)
 
-        self.db = None
+        self.conn = None
         self.redis = None
 
         # Set dev environment settings
@@ -95,9 +95,9 @@ class AuthMicroService(Quart):
             await self.init_redis()
 
             # Initialize DB
-            if not self.DEBUG:
-                logger.info("Initializing SurrealDB connection...")
-                self.db = await init_db(self)
+            # if not self.DEBUG:
+            logger.info("Initializing SurrealDB connection...")
+            self.conn = await init_db(self)
 
             # Set JWT secret
             logger.info("Setting JWT secret...")
@@ -133,11 +133,38 @@ class AuthMicroService(Quart):
             logger.error(f"Failed to handle JWT secret: {str(e)}", exc_info=True)
             raise
 
-    async def cleanup(self):
-        """Cleanup connections on shutdown"""
-        if self.redis:
-            await self.redis.close()
-            logger.info("Redis connection closed")
+    async def clean_up(self):
+        """
+        Gracefully shutdown SurrealDB and Redis connections.
+        
+        This method ensures that database connections are closed properly,
+        with detailed logging and error handling to prevent resource leaks.
+        """
+        try:
+            logger.info("Starting service cleanup process...")
+
+            # Close SurrealDB connection
+            if hasattr(self, "conn") and self.conn is not None:
+                try:
+                    logger.info("Closing SurrealDB connection...")
+                    await self.conn.db.close()
+                    logger.info("SurrealDB connection closed successfully")
+                except Exception as db_close_error:
+                    logger.error(f"Error closing SurrealDB connection: {str(db_close_error)}", exc_info=True)
+
+            # Close Redis connection
+            if hasattr(self, "redis") and self.redis is not None:
+                try:
+                    logger.info("Closing Redis connection...")
+                    await self.redis.close()
+                    logger.info("Redis connection closed successfully")
+                except Exception as redis_close_error:
+                    logger.error(f"Error closing Redis connection: {str(redis_close_error)}", exc_info=True)
+
+            logger.info("Service cleanup completed successfully")
+        except Exception as general_error:
+            logger.error(f"Unexpected error during service cleanup: {str(general_error)}", exc_info=True)
+            raise
 
     def register_routes(self):
         # Register routes

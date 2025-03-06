@@ -21,9 +21,49 @@ logger = logging.getLogger(__name__)
 class BaseView(QuartClassful):
 
     def __init__(self):
-        self.db: AuthDB = app.db
+        self.conn: AuthDB = app.conn
         self.redis: Redis = app.redis
         self.__notification_manager = NotificationManager()
+    
+    @route("/health", methods=["GET"])
+    async def healthcheck(self):
+        """
+        Simple health check endpoint that verifies service and dependency status.
+        Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
+        """
+        health_status = {
+            "service": "auth",
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "dependencies": {
+                "database": "unknown",
+                "redis": "unknown"
+            }
+        }
+        
+        # Check database connection
+        try:
+            db_info = await self.conn.db.info()
+            health_status["dependencies"]["database"] = "healthy"
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            health_status["dependencies"]["database"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        # Check Redis connection
+        try:
+            redis_ping = await self.redis.ping()
+            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            if not redis_ping:
+                health_status["status"] = "degraded"
+        except Exception as e:
+            logger.error(f"Redis health check failed: {e}")
+            health_status["dependencies"]["redis"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
+        
+        return jsonify(health_status), status_code
 
     @route("/register", methods=["POST"])
     async def register_user(self):
@@ -31,7 +71,9 @@ class BaseView(QuartClassful):
         Register a user account into the SurrealDB.
         """
         data = await request.get_json()
-        created_acct = await self.db._create_user(data)
+        created_acct = await self.conn._create_user(data)
+        if not created_acct:
+            return jsonify({"msg": "User already exists"}), HTTPStatus.CONFLICT
         try:
             await self.__n_register_user(created_acct)
             await self.__n_generate_otp(created_acct["id"], created_acct["email"])
@@ -46,7 +88,7 @@ class BaseView(QuartClassful):
         Verify user credentials
         """
         data = await request.get_json()
-        if result := await self.db._login(data):
+        if result := await self.conn._login(data):
             access_token = create_access_token(
                 identity=result["id"], expires_delta=timedelta(days=1)
             )

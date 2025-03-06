@@ -81,12 +81,16 @@ async def media_app():
             pass
 
     app.redis = AsyncRedisMock()
-    app.db = await init_db(app)
+    app.conn = await init_db(app)
     try:
         async with app.app_context():
             await app.get_shared_secret()
             app.register_routes()
             yield app
+            await app.clean_up()
+
+
+
     except Exception as e:
         logger.error(f"Error in media_app fixture: {str(e)}")
         raise

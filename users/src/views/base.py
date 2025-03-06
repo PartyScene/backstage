@@ -5,6 +5,7 @@ from http import HTTPStatus
 from typing import Tuple, Dict, Any
 
 from classful import route, QuartClassful
+from datetime import datetime
 from shared.utils import create_media_client
 
 from ..connectors import UsersDB
@@ -17,9 +18,49 @@ logger = logging.getLogger(__name__)
 
 class BaseView(QuartClassful):
     def __init__(self):
-        self.db: UsersDB = app.db
+        self.conn: UsersDB = app.conn
         self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
         self.__notification_manager = NotificationManager()
+    
+    @route("/health", methods=["GET"])
+    async def healthcheck(self):
+        """
+        Simple health check endpoint that verifies service and dependency status.
+        Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
+        """
+        health_status = {
+            "service": "auth",
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "dependencies": {
+                "database": "unknown",
+                "redis": "unknown"
+            }
+        }
+        
+        # Check database connection
+        try:
+            db_info = await self.conn.db.info()
+            health_status["dependencies"]["database"] = "healthy"
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            health_status["dependencies"]["database"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        # Check Redis connection
+        try:
+            redis_ping = await self.redis.ping()
+            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            if not redis_ping:
+                health_status["status"] = "degraded"
+        except Exception as e:
+            logger.error(f"Redis health check failed: {e}")
+            health_status["dependencies"]["redis"] = "unhealthy"
+            health_status["status"] = "degraded"
+        
+        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
+        
+        return jsonify(health_status), status_code
 
     @route("/user", methods=["GET"])
     @jwt_required
@@ -27,7 +68,7 @@ class BaseView(QuartClassful):
         """Get current user details including friend connections and attended events"""
         try:
             user_id = get_jwt_identity()
-            user = await self.db.fetch(user_id)
+            user = await self.conn.fetch(user_id)
             if not user:
                 return {"error": "User not found"}, HTTPStatus.NOT_FOUND
             return user, HTTPStatus.OK
@@ -40,10 +81,10 @@ class BaseView(QuartClassful):
         """Delete current user and their relationships"""
         try:
             user_id = get_jwt_identity()
-            result = await self.db.delete(user_id)
+            result = await self.conn.delete(user_id)
             if not result:
                 return {"error": "User not found"}, HTTPStatus.NOT_FOUND
-            return {"message": "User deleted successfully"}, HTTPStatus.OK
+            return {"message": "User deleted successfully"}, HTTPStatus.NO_CONTENT
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -55,7 +96,7 @@ class BaseView(QuartClassful):
             user_id = get_jwt_identity()
             data = await request.get_json()
             data["id"] = user_id
-            result = await self.db.update(data)
+            result = await self.conn.update(data)
             return result, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -73,7 +114,7 @@ class BaseView(QuartClassful):
     #         if target_id:
     #             data["target"] = target_id
 
-    #         result = await self.db.find_friend_relationship(data, degree)
+    #         result = await self.conn.find_friend_relationship(data, degree)
     #         return {"friends": result}, HTTPStatus.OK
     #     except Exception as e:
     #         return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -83,7 +124,7 @@ class BaseView(QuartClassful):
     async def get_user(self, user_id: str) -> Tuple[Dict[str, Any], int]:
         """Get another user's public profile"""
         try:
-            user = await self.db.fetch(user_id)
+            user = await self.conn.fetch(user_id)
             if not user:
                 return {"error": "User not found"}, HTTPStatus.NOT_FOUND
             # Could filter sensitive information here if needed
@@ -109,7 +150,7 @@ class BaseView(QuartClassful):
                     "error": "max_degree must be between 1 and 6"
                 }, HTTPStatus.BAD_REQUEST
 
-            result = await self.db.find_connections_at_degree(user_id, max_degree)
+            result = await self.conn.find_connections_at_degree(user_id, max_degree)
             return {"connections": result}, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -132,7 +173,7 @@ class BaseView(QuartClassful):
                     "error": "Target relationship ID is required"
                 }, HTTPStatus.BAD_REQUEST
 
-            result = await self.db.update_friend_relationship(data)
+            result = await self.conn.update_friend_relationship(data)
             return result, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -149,7 +190,7 @@ class BaseView(QuartClassful):
             if "target" not in data:
                 return {"error": "Target user ID is required"}, HTTPStatus.BAD_REQUEST
 
-            result = await self.db.create_friend_relationship(data)
+            result = await self.conn.create_friend_relationship(data)
 
             await self.__notification_manager.send_friend_request_notification(
                 sender=result["relationship"]["in"]["id"], recipient_id=data["target"]
@@ -187,7 +228,7 @@ class BaseView(QuartClassful):
                 }, HTTPStatus.BAD_GATEWAY
 
             data["avatar_url"] = media_link
-            response = await self.db.update(data)
+            response = await self.conn.update(data)
             return response, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -198,7 +239,7 @@ class BaseView(QuartClassful):
         """
         try:
             # Assuming create_friend_relationship is an existing method in Users connector
-            friend_request = await self.db.create_friend_relationship(
+            friend_request = await self.conn.create_friend_relationship(
                 {"origin": sender_id, "target": recipient_id, "status": "pending"}
             )
 

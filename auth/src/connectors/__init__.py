@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class AuthDB:
-    def __init__(self, db) -> None:
-        self.db: AsyncSurreal = db
+
+    def __init__(self, db: AsyncSurreal) -> None:
+        self.db = db
 
     async def _login(self, data) -> dict:
         try:
@@ -27,7 +28,10 @@ class AuthDB:
     
     
     async def _create_user(self, form):
-        result = await self.db.create("users", form)
+        try:
+            result = await self.db.create("users", form)
+        except:
+            return False
         logger.info(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
         # Assign the variable on the connection
@@ -44,7 +48,6 @@ class AuthDB:
 
 async def init_db(app) -> AuthDB:
     SCHEMA_FILE = os.getenv("SCHEMA_FILE")
-
     db = AsyncSurreal(os.getenv("SURREAL_URI"))
     await db.connect()
 

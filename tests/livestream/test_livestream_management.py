@@ -42,6 +42,27 @@ class TestLiveStreamManagement(TestLiveStreamBase):
         # assert 'viewer_count' in stream_info
         # assert 'status' in stream_info
 
+    async def test_delete_stream_info(
+        self, livestream_client, mock_event, bearer
+    ):
+        """Test deleting stream information."""
+        # First create a stream
+        # create_response = await self.create_live_stream(livestream_client, mock_stream)
+        # stream_id = await create_response.get_json()['id']
+
+        response = await self.get_live_stream(
+            livestream_client, mock_event["id"], bearer
+        )
+        assert response.status_code == 200
+
+        response = await self.delete_live_stream(
+            livestream_client, mock_event["id"], bearer
+        )
+        assert response.status_code == 204
+        stream_info = await response.get_json()
+
+        assert "channel_name" in stream_info
+
     # async def test_update_stream_settings(self, livestream_client):
     #     """Test updating stream settings."""
     #     # First create a stream
