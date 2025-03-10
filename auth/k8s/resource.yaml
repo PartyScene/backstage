@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    autopilot.gke.io/resource-adjustment: '{"input":{"containers":[{"name":"microservices-auth-1"}]},"output":{"containers":[{"limits":{"ephemeral-storage":"1Gi"},"requests":{"cpu":"500m","ephemeral-storage":"1Gi","memory":"2Gi"},"name":"microservices-auth-1"}]},"modified":true}'
+    autopilot.gke.io/warden-version: 31.23.0-gke.9
+    deployment.kubernetes.io/revision: "5"
+  creationTimestamp: "2025-03-06T23:23:47Z"
+  generation: 9
+  labels:
+    app: microserv.auth
+    app.kubernetes.io/managed-by: cloud-console
+  name: microserv.auth
+  namespace: default
+  resourceVersion: "345956"
+  uid: e89a1120-3c8b-4865-aca6-ad051369c312
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: microserv.auth
+      app.kubernetes.io/managed-by: cloud-console
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: microserv.auth
+        app.kubernetes.io/managed-by: cloud-console
+    spec:
+      containers:
+      - env:
+        - name: SURREAL_URI
+          valueFrom:
+            configMapKeyRef:
+              key: SURREAL_URI
+              name: microserv.auth-config-xn0q
+        - name: SURREAL_USER
+          valueFrom:
+            configMapKeyRef:
+              key: SURREAL_USER
+              name: microserv.auth-config-xn0q
+        - name: SURREAL_PASS
+          valueFrom:
+            configMapKeyRef:
+              key: SURREAL_PASS
+              name: microserv.auth-config-xn0q
+        - name: REDIS_URI
+          valueFrom:
+            configMapKeyRef:
+              key: REDIS_URI
+              name: microserv.auth-config-xn0q
+        - name: SCHEMA_FILE
+          valueFrom:
+            configMapKeyRef:
+              key: SCHEMA_FILE
+              name: microserv.auth-config-xn0q
+        image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.auth:latest
+        imagePullPolicy: Always
+        name: microservices-auth-1
+        resources:
+          limits:
+            ephemeral-storage: 1Gi
+          requests:
+            cpu: 500m
+            ephemeral-storage: 1Gi
+            memory: 2Gi
+        securityContext:
+          capabilities:
+            drop:
+            - NET_RAW
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoSchedule
+        key: kubernetes.io/arch
+        operator: Equal
+        value: amd64
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-03-06T23:45:53Z"
+    lastUpdateTime: "2025-03-06T23:45:53Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-03-06T23:23:48Z"
+    lastUpdateTime: "2025-03-07T00:49:47Z"
+    message: ReplicaSet "microserv.auth-6dd5964b4c" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  observedGeneration: 9
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1

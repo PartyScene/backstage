@@ -9,9 +9,7 @@ fake = Faker()
 
 @pytest.mark.asyncio
 class TestLiveStreamManagement(TestLiveStreamBase):
-    async def test_create_stream(
-        self, livestream_client, mock_event, bearer
-    ):
+    async def test_create_stream(self, livestream_client, mock_event, bearer):
         """Test creating a new livestream session."""
         response = await self.create_live_stream(
             livestream_client, mock_event["id"], bearer
@@ -23,9 +21,7 @@ class TestLiveStreamManagement(TestLiveStreamBase):
         assert "ingest_url" in created_stream
         assert "playback_url" in created_stream
 
-    async def test_get_stream_info(
-        self, livestream_client, mock_event, bearer
-    ):
+    async def test_get_stream_info(self, livestream_client, mock_event, bearer):
         """Test retrieving stream information."""
         # First create a stream
         # create_response = await self.create_live_stream(livestream_client, mock_stream)
@@ -42,9 +38,7 @@ class TestLiveStreamManagement(TestLiveStreamBase):
         # assert 'viewer_count' in stream_info
         # assert 'status' in stream_info
 
-    async def test_delete_stream_info(
-        self, livestream_client, mock_event, bearer
-    ):
+    async def test_delete_stream_info(self, livestream_client, mock_event, bearer):
         """Test deleting stream information."""
         # First create a stream
         # create_response = await self.create_live_stream(livestream_client, mock_stream)

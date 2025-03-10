@@ -96,7 +96,6 @@ async def posts_app(mock_media_client):
             yield app
             await app.clean_up()
 
-
     except Exception as e:
         logger.error(f"Error in posts_app fixture: {str(e)}")
         raise

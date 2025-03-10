@@ -27,3 +27,4 @@ pytest-env
 surrealdb
 flake8
 novu-py
+Pillow

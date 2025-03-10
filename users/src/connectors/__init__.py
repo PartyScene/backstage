@@ -6,6 +6,7 @@ from shared.utils import record_id_to_json
 
 import json
 import logging
+
 # Get the logger
 logger = logging.getLogger(__name__)
 
@@ -13,8 +14,10 @@ logger = logging.getLogger(__name__)
 class UsersDB:
     def __init__(self, db: AsyncSurreal) -> None:
         self.db: AsyncSurreal = db
+
     async def close(self):
         self.db.close()
+
     async def find_connections_at_degree(self, origin_id: str, max_degree: int = 3):
         """
         Find all connections up to N degrees of separation
@@ -33,17 +36,17 @@ class UsersDB:
         select_fields = []
         for i in range(1, max_degree + 1):
             path = "->friends->users" * i
-            select_fields.append(f"{path}.first_name AS degree_{i}")
+            select_fields.append(f"{path} AS degree_{i}")
 
         await self.db.let("origin", RecordID("users", origin_id))
         query = f"""
         SELECT 
             {', '.join(select_fields)}
-        FROM $origin;
+        FROM ONLY $origin;
         """
 
         result = await self.db.query(query)
-        return result[0]["result"][0] if result[0]["result"] else {}
+        return record_id_to_json(result)
 
     async def create_friend_relationship(self, data: dict):
         """
@@ -58,22 +61,20 @@ class UsersDB:
             dict: The created relationship details
         """
         # First check if relationship already exists
+        await self.db.let("origin", RecordID("users", data["origin_id"]))
+        await self.db.let("target", RecordID("users", data["target_id"]))
+
         query = """
-            LET $origin = type::thing('users', $origin);
-            LET $target = type::thing('users', $target);
-            
             -- Check existing relationship
             LET $existing = (
-                SELECT * FROM friends 
-                WHERE 
-                    (in = $origin AND out = $target)
-                    OR (in = $target AND out = $origin)
+                SELECT VALUE <->friends.* FROM $origin
+                WHERE <->friends[WHERE out = $target OR in = $target]
             );
             
             -- Create new relationship if none exists
             LET $new = IF(array::len($existing) == 0) THEN (
                 -- Create bidirectional relationship
-                RELATE $origin -> friends -> $target SET
+                RELATE ONLY $origin -> friends -> $target SET
                     status = $status,
                     created_at = time::now()
             ) ELSE $existing
@@ -84,22 +85,28 @@ class UsersDB:
                 is_new: array::len($existing) == 0
             };
         """
-
-        result = await self.db.query(
+        # Execute the query
+        await self.db.query(
             query,
             {
-                "origin": data["origin"],
-                "target": data["target"],
                 "status": data.get("status", "pending"),
             },
         )
-        return result[0]["result"][0]
+        # Get the new relationship
+        result = await self.db.query(
+            """
+        SELECT VALUE <->friends.* FROM $origin
+                WHERE <->friends[WHERE out = $target OR in = $target]
+                """
+        )
+        return record_id_to_json(result)[0]
 
-    async def update_friend_relationship(self, data: dict):
+    async def update_friend_relationship(self, connection_id: str, data: dict):
         """
         Update the connection status between two users
 
         Args:
+            connection_id (str, required): The ID of the connection
             data (dict, required): The friend relationship data containing:
                 - origin: The ID of the first user
                 - target: The ID of the second user
@@ -107,14 +114,29 @@ class UsersDB:
         Returns:
             dict: The updated relationship details
         """
-        await self.db.let("edge", RecordID("friends", data["id"]))
+        await self.db.let("edge", RecordID("friends", connection_id))
         query = """
             UPDATE ONLY $edge SET status = $status
         """
         result = await self.db.query(query, {"status": data.get("status", "pending")})
         return record_id_to_json(result)
 
-    
+    async def delete_connection(self, connection_id: str):
+        """
+        Delete the connection between two users
+
+        Args:
+            connection_id (str, required): The ID of the connection
+        Returns:
+            dict: The deleted relationship details
+        """
+        await self.db.let("edge", RecordID("friends", connection_id))
+        query = """
+            DELETE ONLY $edge
+        """
+        result = await self.db.query(query)
+        return record_id_to_json(result)
+
     async def fetch(self, id: str) -> Optional[dict]:
         """
         Fetch one user by ID
@@ -182,7 +204,7 @@ async def init_db(app: Quart) -> UsersDB:
     await db.connect()
 
     await db.signin(
-        {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
+        {"username": os.getenv("SURREAL_USER"), "password": os.getenv("SURREAL_PASS")}
     )
     await db.use("partyscene", "partyscene")
     return UsersDB(db)

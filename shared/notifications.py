@@ -6,6 +6,7 @@ from typing import Dict, List, Union, Optional
 
 logger = logging.getLogger(__name__)
 
+
 class NotificationManager:
     def __init__(self):
         """

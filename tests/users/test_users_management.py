@@ -46,6 +46,43 @@ class TestUserManagement(TestUsersBase):
         assert updated_profile["display_name"] == update_data["display_name"]
         assert updated_profile["bio"] == update_data["bio"]
 
+    async def test_create_connection(self, users_client, mock_user, bearer):
+        """Test creating a connection."""
+        target_id = mock_user["id"]
+        response = await self.create_connection(users_client, target_id, bearer)
+        assert response.status_code == 201
+        created_response = await response.get_json()
+
+        assert created_response[0]["status"] == "pending"
+
+    async def test_delete_connection(self, users_client, mock_user, bearer):
+        """Test deleting a connection."""
+        # Create connection first
+        response = await self.create_connection(users_client, mock_user["id"], bearer)
+        assert response.status_code == 201
+        created_response = await response.get_json()
+
+        connection_id = created_response[0]["id"]
+        response = await self.delete_connection(users_client, connection_id, bearer)
+        assert response.status_code == 204
+
+    async def test_update_connection(self, users_client, mock_user, bearer):
+        """Test updating a connection."""
+        # Create connection first
+        response = await self.create_connection(users_client, mock_user["id"], bearer)
+        assert response.status_code == 201
+        created_response = await response.get_json()
+
+        # Then update it
+        connection_id = created_response[0]["id"]
+        response = await self.update_connection(
+            users_client, connection_id, "accepted", bearer
+        )
+        assert response.status_code == 200
+        updated_response = await response.get_json()
+
+        assert updated_response["status"] == "accepted"
+
     # @pytest.mark.parametrize("invalid_data", [
     #     {"display_name": ""},  # Empty display name
     #     {"bio": "x" * 1001},  # Bio too long

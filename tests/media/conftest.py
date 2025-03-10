@@ -46,7 +46,7 @@ fake = Faker()
 async def media_app():
     from media.run import app
     from media.src.connectors import init_db
-    
+
     # with patch('google.cloud.video.live_stream_v1.LivestreamServiceAsyncClient') as mock_client:
     #     # Create a mock async client
     #     mock_async_client = AsyncMock()
@@ -88,8 +88,6 @@ async def media_app():
             app.register_routes()
             yield app
             await app.clean_up()
-
-
 
     except Exception as e:
         logger.error(f"Error in media_app fixture: {str(e)}")

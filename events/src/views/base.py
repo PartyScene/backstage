@@ -49,7 +49,11 @@ class BaseView(QuartClassful):
         key = f"live_query:{event_id}"
         await self.redis.delete(key)
 
-    @route("/health", methods=["GET"])
+    @route("/", methods=["GET"])
+    async def index(self):
+        return await self.healthcheck()
+
+    @route("/events/health", methods=["GET"])
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
@@ -59,12 +63,9 @@ class BaseView(QuartClassful):
             "service": "auth",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "dependencies": {
-                "database": "unknown",
-                "redis": "unknown"
-            }
+            "dependencies": {"database": "unknown", "redis": "unknown"},
         }
-        
+
         # Check database connection
         try:
             db_info = await self.conn.db.info()
@@ -73,22 +74,27 @@ class BaseView(QuartClassful):
             logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
-        
+
         # Check Redis connection
         try:
             redis_ping = await self.redis.ping()
-            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            health_status["dependencies"]["redis"] = (
+                "healthy" if redis_ping else "unhealthy"
+            )
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
             logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
-        
-        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
-        
-        return jsonify(health_status), status_code
 
+        status_code = (
+            HTTPStatus.OK
+            if health_status["status"] == "healthy"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+
+        return jsonify(health_status), status_code
 
     @route("/events", methods=["GET"])
     @route("/events/<event_id>", methods=["GET"])

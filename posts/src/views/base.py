@@ -1,16 +1,20 @@
 import httpx
+import json
 
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
 from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
-from ..connectors import PostsDB
+from posts.src.connectors import PostsDB
 from shared.utils import create_media_client, MediaClient
-from classful import route, QuartClassful
+from shared.classful import route, QuartClassful
 from http import HTTPStatus
 import os
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BaseView(QuartClassful):
@@ -21,7 +25,10 @@ class BaseView(QuartClassful):
         )
         self.__posts_handler: PostsDB = app.conn
 
-    @route("/health", methods=["GET"])
+        self.redis = app.redis
+
+    @route("/", methods=["GET"])
+    @route("/posts/health", methods=["GET"])
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
@@ -31,12 +38,9 @@ class BaseView(QuartClassful):
             "service": "auth",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "dependencies": {
-                "database": "unknown",
-                "redis": "unknown"
-            }
+            "dependencies": {"database": "unknown", "redis": "unknown"},
         }
-        
+
         # Check database connection
         try:
             db_info = await self.__posts_handler.db.info()
@@ -45,28 +49,84 @@ class BaseView(QuartClassful):
             logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
-        
+
         # Check Redis connection
         try:
             redis_ping = await self.redis.ping()
-            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            health_status["dependencies"]["redis"] = (
+                "healthy" if redis_ping else "unhealthy"
+            )
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
             logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
-        
-        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
-        
+
+        status_code = (
+            HTTPStatus.OK
+            if health_status["status"] == "healthy"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+
         return jsonify(health_status), status_code
 
-    @route("/event/<id>", methods=["GET", "POST"])
+    @route("/posts/<post_id>/comments", methods=["GET"])
+    @jwt_required
+    async def get_comments(self, post_id):
+        """
+        Asynchronously gets all comments for a given post.
+        Returns:
+            Response: A JSON response containing a list of comments and a status code of 200 if successful.
+                      If post ID is missing, returns a JSON error message and a status code of 400.
+        """
+        if result := await self.__posts_handler.fetch_comments(post_id):
+            return jsonify(result), HTTPStatus.OK
+        return (
+            jsonify({"error": "No Comments found or Post not found"}),
+            HTTPStatus.NOT_FOUND,
+        )
+
+    @route("/posts/<post_id>/comments", methods=["POST"])
+    @jwt_required
+    async def create_comment(self, post_id):
+        """
+        Asynchronously creates a new comment for a given post.
+        Returns:
+            Response: A JSON response containing the created comment and a status code of 201 if successful.
+                      If post ID is missing, returns a JSON error message and a status code of 400.
+        """
+        data = await request.get_json()
+        if not data:
+            return jsonify({"error": "Content is required"}), HTTPStatus.BAD_REQUEST
+        result = await self.__posts_handler.create_comment(
+            post_id, data, get_jwt_identity()
+        )
+        if isinstance(result, str):
+            return result, HTTPStatus.BAD_REQUEST
+        return result, HTTPStatus.CREATED
+
+    @route("/posts/<post_id>/comments/<comment_id>", methods=["DELETE"])
+    @jwt_required
+    async def delete_comment(self, post_id, comment_id):
+        """
+        Asynchronously deletes a comment for a given post.
+        Returns:
+            Response: A JSON response containing the created comment and a status code of 201 if successful.
+                      If post ID is missing, returns a JSON error message and a status code of 400.
+        """
+        result = await self.__posts_handler.delete_comment(comment_id)
+        logger.debug(json.dumps(result, indent=4, default=str))
+        if isinstance(result, str):
+            return result, HTTPStatus.BAD_REQUEST
+        return result, HTTPStatus.NO_CONTENT
+
+    @route("/posts/event/<id>", methods=["GET", "POST"])
     async def fetch_event_posts(self, id: str):
         """Fetch all posts for a given event"""
         return jsonify(await self.__posts_handler.fetch_event_posts(id), HTTPStatus.OK)
 
-    @route("/", methods=["POST"])
+    @route("/posts", methods=["POST"])
     @jwt_required
     async def create_post(self):
         """
@@ -106,7 +166,7 @@ class BaseView(QuartClassful):
             return result, HTTPStatus.BAD_REQUEST
         return result, HTTPStatus.CREATED
 
-    @route("/<id>", methods=["GET"])
+    @route("/posts/<id>", methods=["GET"])
     @jwt_required
     async def fetch_post(self, id: str):
         """
@@ -115,11 +175,11 @@ class BaseView(QuartClassful):
             Response: A JSON response containing a success message and a status code of 200 if successful.
                       If ID is missing, returns a JSON error message and a status code of 400.
         """
-        if (result := await self.__posts_handler.fetch_post(id)):
+        if result := await self.__posts_handler.fetch_post(id):
             return jsonify(result), HTTPStatus.OK
         return jsonify({"error": "Post not found"}), HTTPStatus.NOT_FOUND
 
-    @route("/<id>", methods=["DELETE"])
+    @route("/posts/<id>", methods=["DELETE"])
     @jwt_required
     async def delete_post(self, id: str):
         """

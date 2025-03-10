@@ -12,7 +12,7 @@ app = AuthMicroService(__name__)
 config = Config()
 config.bind = ["0.0.0.0:5510"]
 config.use_reloader = False
-config.worker_class = "asyncio"
+config.worker_class = "uvloop"
 config.workers = 4
 config.accesslog = "-"
 config.errorlog = "-"
@@ -22,7 +22,9 @@ config.keepalive_timeout = 120
 def main():
     """Run the application with uvloop"""
     # Register routes before startup
-    pprint.pp(app.url_map)
+    import uvloop
+
+    uvloop.install()
     asyncio.run(serve(app, config))
 
 

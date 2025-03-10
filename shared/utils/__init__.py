@@ -4,9 +4,11 @@ import json
 import os
 from typing import Optional, Any, Dict
 
+
 def create_media_client(media_service_url: str) -> MediaClient:
     """Factory function to create a MediaClient instance"""
     return MediaClient(media_service_url)
+
 
 def record_id_to_json(obj: Any) -> Any:
     """

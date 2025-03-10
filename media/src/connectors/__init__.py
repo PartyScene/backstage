@@ -8,7 +8,7 @@ class MediaDB:
 
     def __init__(self, db) -> None:
         self.db: AsyncSurreal = db
-    
+
     async def close(self):
         self.db.close()
 
@@ -44,13 +44,12 @@ class MediaDB:
             )  # Handle error case
         return record_id_to_json(result)
 
+
 async def init_db(app: Quart) -> MediaDB:
     db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
-    DB_USER = os.getenv("DB_USER")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
     await db.signin(
-        {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
+        {"username": os.getenv("SURREAL_USER"), "password": os.getenv("SURREAL_PASS")}
     )
     await db.use("partyscene", "partyscene")
     return MediaDB(db)

@@ -50,7 +50,7 @@ def mock_media_client():
             "url": "https://storage.googleapis.com/fake-bucket/test-image.jpg",
             "creator": "xxxxx",
             "event": "xxxxxxx",
-            "id": "test"
+            "id": "test",
         }
         mock_create_client.return_value = mock_client
         yield mock_client
@@ -103,8 +103,8 @@ async def users_app(mock_media_client):
             await app.get_shared_secret()
             app.register_routes()
             yield app
+            await app.conn.db.query("REMOVE table users; REMOVE table events;")
             await app.clean_up()
-
 
     except Exception as e:
         logger.error(f"Error in users_app fixture: {str(e)}")

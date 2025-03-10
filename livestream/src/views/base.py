@@ -1,18 +1,28 @@
 from pprint import pprint
-from quart import make_response, render_template, current_app as app, request, jsonify
+from quart import (
+    make_response,
+    render_template,
+    current_app as app,
+    request,
+    jsonify,
+    logging,
+)
 from quart.datastructures import FileStorage
-from livestream.src.lib import create_livestream_client
+from ..lib import create_livestream_client
 
 from http import HTTPStatus
 from shared.classful import route, QuartClassful
 from datetime import datetime
 
+
 class BaseView(QuartClassful):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.livestream = create_livestream_client(app.conn, app.logger)
+        self.logger = logging.create_logger(app)
+        self.livestream = create_livestream_client(app.conn, self.logger)
 
+    @route("/", methods=["GET"])
     @route("/health", methods=["GET"])
     async def healthcheck(self):
         """
@@ -23,38 +33,40 @@ class BaseView(QuartClassful):
             "service": "auth",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "dependencies": {
-                "database": "unknown",
-                "redis": "unknown"
-            }
+            "dependencies": {"database": "unknown", "redis": "unknown"},
         }
-        
+
         # Check database connection
         try:
             db_info = await self.livestream.db.db.info()
             health_status["dependencies"]["database"] = "healthy"
         except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+            self.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
-        
+
         # Check Redis connection
         try:
             redis_ping = await self.redis.ping()
-            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            health_status["dependencies"]["redis"] = (
+                "healthy" if redis_ping else "unhealthy"
+            )
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
-            logger.error(f"Redis health check failed: {e}")
+            self.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
-        
-        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
-        
+
+        status_code = (
+            HTTPStatus.OK
+            if health_status["status"] == "healthy"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+
         return jsonify(health_status), status_code
 
-
-    @route("/<event_id>", methods=["GET"])
+    @route("/scenes/<event_id>", methods=["GET"])
     async def get_livestream(self, event_id):
         try:
             stream_info = await self.livestream.get_stream(event_id)
@@ -66,8 +78,8 @@ class BaseView(QuartClassful):
                 jsonify({"error": "Failed to get livestream"}),
                 HTTPStatus.INTERNAL_SERVER_ERROR,
             )
-        
-    @route("/<event_id>", methods=["DELETE"])
+
+    @route("/scenes/<event_id>", methods=["DELETE"])
     async def end_livestream(self, event_id):
         try:
             stream_info = await self.livestream.delete_stream(event_id)
@@ -80,7 +92,7 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
-    @route("/<event_id>", methods=["POST"])
+    @route("/scenes/<event_id>", methods=["POST"])
     async def create_livestream(self, event_id):  # Renamed from index to manage_stream
         """
         Flow: Create a Stream -> Create Input -> Record Input -> Store Output -> Connect to Output

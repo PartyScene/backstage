@@ -4,13 +4,14 @@ from quart_jwt_extended import get_jwt_identity, jwt_required
 from http import HTTPStatus
 from typing import Tuple, Dict, Any
 
-from classful import route, QuartClassful
+from shared.classful import route, QuartClassful
 from datetime import datetime
 from shared.utils import create_media_client
 
-from ..connectors import UsersDB
+from users.src.connectors import UsersDB
 from shared.notifications import NotificationManager
 import logging
+import json
 import os
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,8 @@ class BaseView(QuartClassful):
         self.conn: UsersDB = app.conn
         self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
         self.__notification_manager = NotificationManager()
-    
-    @route("/health", methods=["GET"])
+
+    @route("/users/health", methods=["GET"])
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
@@ -32,12 +33,9 @@ class BaseView(QuartClassful):
             "service": "auth",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "dependencies": {
-                "database": "unknown",
-                "redis": "unknown"
-            }
+            "dependencies": {"database": "unknown", "redis": "unknown"},
         }
-        
+
         # Check database connection
         try:
             db_info = await self.conn.db.info()
@@ -46,20 +44,26 @@ class BaseView(QuartClassful):
             logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
-        
+
         # Check Redis connection
         try:
             redis_ping = await self.redis.ping()
-            health_status["dependencies"]["redis"] = "healthy" if redis_ping else "unhealthy"
+            health_status["dependencies"]["redis"] = (
+                "healthy" if redis_ping else "unhealthy"
+            )
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
             logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
-        
-        status_code = HTTPStatus.OK if health_status["status"] == "healthy" else HTTPStatus.SERVICE_UNAVAILABLE
-        
+
+        status_code = (
+            HTTPStatus.OK
+            if health_status["status"] == "healthy"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+
         return jsonify(health_status), status_code
 
     @route("/user", methods=["GET"])
@@ -132,7 +136,7 @@ class BaseView(QuartClassful):
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
-    @route("/friends/connections", methods=["GET"])
+    @route("/friends", methods=["GET"])
     @jwt_required
     async def get_connections_at_degree(self) -> Tuple[Dict[str, Any], int]:
         """
@@ -143,7 +147,7 @@ class BaseView(QuartClassful):
         """
         try:
             user_id = get_jwt_identity()
-            max_degree = request.args.get("max_degree", type=int, default=3)
+            max_degree = request.args.get("max_degree", type=int, default=1)
 
             if max_degree < 1 or max_degree > 6:
                 return {
@@ -151,30 +155,7 @@ class BaseView(QuartClassful):
                 }, HTTPStatus.BAD_REQUEST
 
             result = await self.conn.find_connections_at_degree(user_id, max_degree)
-            return {"connections": result}, HTTPStatus.OK
-        except Exception as e:
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-
-    @route("/friends/connections", methods=["PATCH"])
-    @jwt_required
-    async def update_connection(self) -> Tuple[Dict[str, Any], int]:
-        """
-        Update the connection status between two users
-
-        Query Parameters:
-            id (str): The ID of the target relationship
-            status (str): The new connection status (either "friend", "unfriend", or "blocked")
-        """
-        try:
-            data = await request.get_json()
-
-            if "id" not in data:
-                return {
-                    "error": "Target relationship ID is required"
-                }, HTTPStatus.BAD_REQUEST
-
-            result = await self.conn.update_friend_relationship(data)
-            return result, HTTPStatus.OK
+            return jsonify(result), HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -182,24 +163,44 @@ class BaseView(QuartClassful):
     @jwt_required
     async def create_connection(self) -> Tuple[Dict[str, Any], int]:
         """Create a friendship connection with another user"""
-        try:
-            user_id = get_jwt_identity()
-            data = await request.get_json()
-            data["origin"] = user_id
-
-            if "target" not in data:
-                return {"error": "Target user ID is required"}, HTTPStatus.BAD_REQUEST
-
-            result = await self.conn.create_friend_relationship(data)
-
+        data: dict = await request.get_json()
+        data["origin_id"] = get_jwt_identity()
+        if result := await self.conn.create_friend_relationship(data):
+            logger.info(json.dumps(result, indent=4, default=str))
             await self.__notification_manager.send_friend_request_notification(
-                sender=result["relationship"]["in"]["id"], recipient_id=data["target"]
+                sender=result[0]["in"], recipient_id=result[0]["out"]
             )
             return result, HTTPStatus.CREATED
-        except Exception as e:
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+        return {
+            "error": "Failed to create connection"
+        }, HTTPStatus.INTERNAL_SERVER_ERROR
 
-    @route("/upload", methods=["POST"])
+    @route("/friends/<connection_id>", methods=["PATCH"])
+    @jwt_required
+    async def update_connection(self, connection_id: str) -> Tuple[Dict[str, Any], int]:
+        """
+        Update the connection status between two users
+
+        Query Parameters:
+            connection_id (str): The ID of the target relationship
+            status (str): The new connection status (either "pending", "accepted", or "blocked")
+        """
+        data: dict = await request.get_json()
+
+        if "status" not in data:
+            return {"error": "Status is required"}, HTTPStatus.BAD_REQUEST
+
+        result = await self.conn.update_friend_relationship(connection_id, data)
+        return result, HTTPStatus.OK
+
+    @route("/friends/<connection_id>", methods=["DELETE"])
+    @jwt_required
+    async def delete_connection(self, connection_id: str) -> Tuple[Dict[str, Any], int]:
+        """Delete a friendship connection with another user"""
+        result = await self.conn.delete_connection(connection_id)
+        return result, HTTPStatus.NO_CONTENT
+
+    @route("/users/upload", methods=["POST"])
     @jwt_required
     async def upload_media(self):
         """
@@ -244,7 +245,7 @@ class BaseView(QuartClassful):
             )
 
             # Send notification to the recipient
-            self.notification_manager.send_friend_request_notification(
+            self.__notification_manager.send_friend_request_notification(
                 sender_id=sender_id, recipient_id=recipient_id
             )
 

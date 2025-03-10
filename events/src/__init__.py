@@ -55,8 +55,6 @@ class EventsMicroService(Quart):
             self.config["TESTING"] = True
             self.DEBUG = True
 
-        logger.info(self.config)
-
         # Initialize Redis with decode_responses=True
         # self.config["REDIS_URL"] = self.config.get("REDIS_URI", "redis://redis")
         self.config["REDIS_DECODE_RESPONSES"] = True
@@ -76,7 +74,15 @@ class EventsMicroService(Quart):
         async def services():
             """Initialize services before app is being served."""
             logger.info("Initializing services...")
+            await self.init_redis()
             await self.init_services()
+            self.register_routes()
+
+        @self.after_serving
+        async def cleanup():
+            """Cleanup resources after app is being stopped."""
+            logger.info("Cleaning up resources...")
+            await self.clean_up()
 
     async def init_redis(self):
         """Initialize Redis connection"""
@@ -96,10 +102,8 @@ class EventsMicroService(Quart):
         """Initialize all required services"""
         try:
             # Initialize DB
-
-            if not self.DEBUG:
-                logger.info("Initializing SurrealDB connection...")
-                self.conn = await init_db(self)
+            await self.init_redis()
+            self.conn = await init_db(self)
 
             # Get JWT secret
             logger.info("Retrieving JWT secret...")
@@ -118,6 +122,9 @@ class EventsMicroService(Quart):
 
         # Register WebSocket routes
         self.register_websocket_routes()
+
+        logger.info("Printing Application Routes...")
+        logger.info(self.url_map)
 
     def register_websocket_routes(self):
         """Register WebSocket routes"""
@@ -149,8 +156,8 @@ class EventsMicroService(Quart):
                 logger.info(f"WebSocket connection accepted for event {event_id}")
 
                 try:
-                    notifications: asyncio.Queue = await self.conn.get_live_notifications(
-                        live_id
+                    notifications: asyncio.Queue = (
+                        await self.conn.get_live_notifications(live_id)
                     )
                     while True:
                         try:
@@ -195,7 +202,7 @@ class EventsMicroService(Quart):
     async def clean_up(self):
         """
         Gracefully shutdown SurrealDB and Redis connections.
-        
+
         This method ensures that database connections are closed properly,
         with detailed logging and error handling to prevent resource leaks.
         """
@@ -209,7 +216,10 @@ class EventsMicroService(Quart):
                     await self.conn.db.close()
                     logger.info("SurrealDB connection closed successfully")
                 except Exception as db_close_error:
-                    logger.error(f"Error closing SurrealDB connection: {str(db_close_error)}", exc_info=True)
+                    logger.error(
+                        f"Error closing SurrealDB connection: {str(db_close_error)}",
+                        exc_info=True,
+                    )
 
             # Close Redis connection
             if hasattr(self, "redis") and self.redis is not None:
@@ -218,9 +228,15 @@ class EventsMicroService(Quart):
                     await self.redis.close()
                     logger.info("Redis connection closed successfully")
                 except Exception as redis_close_error:
-                    logger.error(f"Error closing Redis connection: {str(redis_close_error)}", exc_info=True)
+                    logger.error(
+                        f"Error closing Redis connection: {str(redis_close_error)}",
+                        exc_info=True,
+                    )
 
             logger.info("Service cleanup completed successfully")
         except Exception as general_error:
-            logger.error(f"Unexpected error during service cleanup: {str(general_error)}", exc_info=True)
+            logger.error(
+                f"Unexpected error during service cleanup: {str(general_error)}",
+                exc_info=True,
+            )
             raise

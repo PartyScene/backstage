@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 fake = Faker()
 
 
-
 # the custom event_loop fixture and update the async fixtures
 @pytest.fixture(scope="session", autouse=True)
 def event_loop():
@@ -95,7 +94,7 @@ async def auth_app():
             app.register_routes()
             yield app
             await app.clean_up()
-            
+
     except Exception as e:
         logger.error(f"Error in auth_app fixture: {str(e)}")
         raise
@@ -120,7 +119,7 @@ async def auth_client(auth_app):
 async def bearer(auth_client, mock_user):
     """Create a test bearer token"""
     try:
-        response = await auth_client.post("/login", json=mock_user)
+        response = await auth_client.post("/auth/login", json=mock_user)
         assert response.status_code == 200
         data = await response.get_json()
         return data["access_token"]
@@ -137,7 +136,7 @@ def mock_user():
         "email": "oyinxdoubx@gmail.com",
         "password": "testingTs",
         "confirm_password": "testingTs",
-        "avatar_url": f"https://picsum.photos/id/{fake.random_int(min=1, max=1000, step=1)}/200/200",
+        "avatar_url": fake.image_url(),
         "id": "test",
     }
 
@@ -151,7 +150,7 @@ def mock_event():
         "coordinates": fake.latlng(),
         "location": fake.address(),
         "price": fake.numerify("##"),
-        "id": "test"
+        "id": "test",
     }
 
 

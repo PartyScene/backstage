@@ -7,7 +7,7 @@ import uvloop
 import logging
 from logging.config import dictConfig
 
-from quart import Quart, app, request
+from quart import Quart, request
 from .connectors import init_db
 from .views.base import BaseView
 
@@ -80,6 +80,13 @@ class MediaMicroService(Quart):
             """Initialize services before app is being served."""
             logger.info("Initializing services...")
             await self.init_services()
+            self.register_routes()
+
+        @self.after_serving
+        async def cleanup():
+            """Cleanup resources after app is being stopped."""
+            logger.info("Cleaning up resources...")
+            await self.clean_up()
 
     async def init_redis(self):
         """Initialize Redis connection"""
@@ -133,7 +140,7 @@ class MediaMicroService(Quart):
     async def clean_up(self):
         """
         Gracefully shutdown SurrealDB and Redis connections.
-        
+
         This method ensures that database connections are closed properly,
         with detailed logging and error handling to prevent resource leaks.
         """
@@ -147,7 +154,10 @@ class MediaMicroService(Quart):
                     await self.conn.db.close()
                     logger.info("SurrealDB connection closed successfully")
                 except Exception as db_close_error:
-                    logger.error(f"Error closing SurrealDB connection: {str(db_close_error)}", exc_info=True)
+                    logger.error(
+                        f"Error closing SurrealDB connection: {str(db_close_error)}",
+                        exc_info=True,
+                    )
 
             # Close Redis connection
             if hasattr(self, "redis") and self.redis is not None:
@@ -156,11 +166,17 @@ class MediaMicroService(Quart):
                     await self.redis.close()
                     logger.info("Redis connection closed successfully")
                 except Exception as redis_close_error:
-                    logger.error(f"Error closing Redis connection: {str(redis_close_error)}", exc_info=True)
+                    logger.error(
+                        f"Error closing Redis connection: {str(redis_close_error)}",
+                        exc_info=True,
+                    )
 
             logger.info("Service cleanup completed successfully")
         except Exception as general_error:
-            logger.error(f"Unexpected error during service cleanup: {str(general_error)}", exc_info=True)
+            logger.error(
+                f"Unexpected error during service cleanup: {str(general_error)}",
+                exc_info=True,
+            )
             raise
 
     def register_routes(self):

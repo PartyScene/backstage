@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # Global Faker instance for generating test data
 fake = Faker()
 
+
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session
@@ -77,7 +78,6 @@ async def livestream_app():
             app.register_routes()
             yield app
             await app.clean_up()
-
 
     except Exception as e:
         logger.error(f"Error in livestream_app fixture: {str(e)}")

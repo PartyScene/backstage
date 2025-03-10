@@ -1,0 +1,33 @@
+kind: HTTPRoute
+apiVersion: gateway.networking.k8s.io/v1beta1
+metadata:
+  name: scenes-external
+spec:
+  parentRefs:
+  - kind: Gateway
+    name: external-http
+  rules:    
+  - matches:
+    - path:
+        value: /auth
+    backendRefs:
+    - name: auth-service
+      port: 80
+  - matches:
+    - path:
+        value: /events
+    backendRefs:
+    - name: microserv-events-service
+      port: 80
+  - matches:
+    - path:
+        value: /posts
+    backendRefs:
+    - name: microserv-posts-service
+      port: 80
+  # - matches:
+  #   - path:
+  #       value: /users
+  #   backendRefs:
+  #   - name: microserv-users-service
+  #     port: 80

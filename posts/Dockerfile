@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt
 
 # Copy requirements files
-COPY posts ./
+COPY posts .
 COPY auth /auth/
 
 # Copy application code and tests

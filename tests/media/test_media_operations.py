@@ -3,6 +3,8 @@ from faker import Faker
 from httpx import AsyncClient
 from datetime import datetime
 import io
+import os
+from PIL import Image
 from quart.datastructures import FileStorage
 from test_media_base import TestMediaBase
 
@@ -11,13 +13,21 @@ fake = Faker()
 
 @pytest.mark.asyncio
 class TestMediaOperations(TestMediaBase):
+    def generate_random_image(self, color):
+        image = Image.new('RGB', (100, 100), color=color)
+        # image.tobytes()
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format="JPEG")
+        return img_bytes
+
     async def test_upload_image(self, media_client, mock_event, bearer):
         """Test uploading an image file."""
         # Create a mock image file
+        color = fake.color_rgb()
         files = {
             "file": FileStorage(
-                io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
+                self.generate_random_image(color),
+                filename= mock_event["id"] + "/" + str(color) + "/" + fake.file_name(category="image"),
                 content_type="image/jpeg",
             )
         }
@@ -27,7 +37,6 @@ class TestMediaOperations(TestMediaBase):
             "event": mock_event["id"],
             "type": "image",
         }
-        
 
         response = await self.upload_media(media_client, files, metadata, bearer)
         assert response.status_code == 201

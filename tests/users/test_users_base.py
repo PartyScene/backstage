@@ -12,22 +12,28 @@ class TestUsersBase:
             f"/users/{user_id}", headers={"Authorization": f"Bearer {bearer}"}
         )
 
-    async def create_connection(self, client: QuartClient, post_id, bearer):
+    async def create_connection(self, client: QuartClient, target_id, bearer):
         """Helper method to create a connection."""
-        return await client.get(
-            f"/{post_id}", headers={"Authorization": f"Bearer {bearer}"}
+        return await client.post(
+            f"/friends",
+            json={"target_id": target_id},
+            headers={"Authorization": f"Bearer {bearer}"},
         )
 
-    async def delete_connection(self, client: QuartClient, post_id, bearer):
+    async def delete_connection(self, client: QuartClient, connection_id, bearer):
         """Helper method to delete a connection."""
-        return await client.get(
-            f"/{post_id}", headers={"Authorization": f"Bearer {bearer}"}
+        return await client.delete(
+            f"/friends/{connection_id}", headers={"Authorization": f"Bearer {bearer}"}
         )
 
-    async def update_connection(self, client: QuartClient, post_id, bearer):
-        """Helper method to set connection."""
-        return await client.get(
-            f"/{post_id}", headers={"Authorization": f"Bearer {bearer}"}
+    async def update_connection(
+        self, client: QuartClient, connection_id, connection_status, bearer
+    ):
+        """Helper method to edit a connection."""
+        return await client.patch(
+            f"/friends/{connection_id}",
+            json={"status": connection_status},
+            headers={"Authorization": f"Bearer {bearer}"},
         )
 
     async def update_user(self, client: QuartClient, metadata, bearer):
@@ -39,5 +45,5 @@ class TestUsersBase:
     async def delete_user(self, client: QuartClient, user_id, bearer):
         """Helper method to delete a user."""
         return await client.delete(
-            "/users/{user_id}", headers={"Authorization": f"Bearer {bearer}"}
+            f"/users/{user_id}", headers={"Authorization": f"Bearer {bearer}"}
         )

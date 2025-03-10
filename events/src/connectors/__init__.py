@@ -235,11 +235,10 @@ class EventsDB:
             Dict[str, Any]: Updated event data
         """
         result = await self.db.merge(RecordID("events", event_id), data)
-        if "ERR" in result:
+        if result and "ERR" in result:
             raise Exception(f"Error updating event: {result}")  # Handle error case
         logging.debug(json.dumps(result, indent=4, default=str))
-        result = {"id": result.pop("id").id, "host": result.pop("host").id, **result}
-        return result
+        return record_id_to_json(result)
 
     async def update_event_status(
         self, event_id: str, status: str, metadata: dict = None
@@ -312,7 +311,10 @@ async def init_db(app: Quart) -> EventsDB:
         await db.connect()
 
         await db.signin(
-            {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
+            {
+                "username": os.getenv("SURREAL_USER"),
+                "password": os.getenv("SURREAL_PASS"),
+            }
         )
         await db.use("partyscene", "partyscene")
         return EventsDB(db)

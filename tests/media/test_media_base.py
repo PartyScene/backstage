@@ -8,7 +8,7 @@ class TestMediaBase:
     async def upload_media(self, client: QuartClient, files, metadata, bearer):
         """Helper method to upload media"""
         return await client.post(
-            f"/upload",
+            f"/media/upload",
             files=files,
             form=metadata,
             headers={"Authorization": f"Bearer {bearer}"},

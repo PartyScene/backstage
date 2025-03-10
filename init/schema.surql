@@ -1,62 +1,64 @@
 -- Define the main atomic table, the users table
 DEFINE TABLE IF NOT EXISTS users schemafull;
-DEFINE FIELD OVERWRITE first_name on TABLE users TYPE string;
-DEFINE FIELD OVERWRITE last_name on TABLE users TYPE string;
-DEFINE FIELD OVERWRITE bio on TABLE users TYPE string DEFAULT "";
-DEFINE FIELD OVERWRITE display_name on TABLE users TYPE string DEFAULT "";
-DEFINE FIELD OVERWRITE avatar_url on TABLE users TYPE string DEFAULT "";
-DEFINE FIELD OVERWRITE sharedLoc on TABLE users TYPE option<bool> DEFAULT false;
-DEFINE FIELD OVERWRITE email on TABLE users TYPE string VALUE string::lowercase($value) ASSERT string::is::email($value);
+DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
+DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
+DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE display_name ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE avatar_url ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
+DEFINE FIELD OVERWRITE email ON TABLE users TYPE string VALUE string::lowercase($value) ASSERT string::is::email($value);
 DEFINE INDEX emailIndex ON TABLE users COLUMNS email UNIQUE;
-DEFINE FIELD OVERWRITE password on TABLE users TYPE string VALUE crypto::bcrypt::generate($value);
+DEFINE FIELD OVERWRITE password ON TABLE users TYPE string;
+
+DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $before == NonE THEN {UPDATE $after SET password = crypto::scrypt::generate(password)};
 
 -- Let's define a relation table for users and events to record attendance
-DEFINE TABLE IF NOT EXISTS attends TYPE RELATION IN users TO events;
+DEFINE TABLE IF NOT EXISTS attends TYPE RELATIon IN users TO events;
 
 -- Now let's define the events table
 DEFINE TABLE IF NOT EXISTS events schemafull;
-DEFINE FIELD OVERWRITE title on TABLE events TYPE string;
-DEFINE FIELD OVERWRITE description on TABLE events TYPE string;
-DEFINE FIELD OVERWRITE price on TABLE events TYPE string;
-DEFINE FIELD OVERWRITE status on TABLE events TYPE string DEFAULT 'scheduled';
-DEFINE FIELD OVERWRITE is_private on TABLE events TYPE option<bool> DEFAULT false;
-DEFINE FIELD OVERWRITE host on TABLE events TYPE record<users>;
-DEFINE FIELD OVERWRITE created_at on TABLE events TYPE datetime DEFAULT time::now();
-DEFINE FIELD OVERWRITE time on TABLE events TYPE datetime DEFAULT time::now();
-DEFINE FIELD OVERWRITE categories on TABLE events TYPE array<string> DEFAULT [];
-DEFINE FIELD OVERWRITE tags on TABLE events TYPE array<string> DEFAULT [];
-DEFINE FIELD OVERWRITE location on TABLE events FLEXIBLE TYPE object DEFAULT {};
-DEFINE FIELD OVERWRITE location.address on TABLE events TYPE string;
-DEFINE FIELD OVERWRITE location.coordinates on TABLE events TYPE array<string>;
-DEFINE FIELD OVERWRITE metadata on TABLE events FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE title ON TABLE events TYPE string;
+DEFINE FIELD OVERWRITE description ON TABLE events TYPE string;
+DEFINE FIELD OVERWRITE price ON TABLE events TYPE string;
+DEFINE FIELD OVERWRITE status ON TABLE events TYPE string DEFAULT 'scheduled';
+DEFINE FIELD OVERWRITE is_private ON TABLE events TYPE option<bool> DEFAULT false;
+DEFINE FIELD OVERWRITE host ON TABLE events TYPE record<users>;
+DEFINE FIELD OVERWRITE created_at ON TABLE events TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE time ON TABLE events TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE categories ON TABLE events TYPE array<string> DEFAULT [];
+DEFINE FIELD OVERWRITE tags ON TABLE events TYPE array<string> DEFAULT [];
+DEFINE FIELD OVERWRITE location ON TABLE events FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE location.address ON TABLE events TYPE string;
+DEFINE FIELD OVERWRITE location.coordinates ON TABLE events TYPE array<string>;
+DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 
 -- Let's define a table for livestreams
 DEFINE TABLE IF NOT EXISTS livestreams schemafull;
-DEFINE FIELD OVERWRITE channel_name on TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE input_name on TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE ingest_url on TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE playback_url on TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE channel_name ON TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE input_name ON TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE ingest_url ON TABLE livestreams type STRING;
+DEFINE FIELD OVERWRITE playback_url ON TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;
-DEFINE FIELD OVERWRITE event on TABLE livestreams TYPE record<events>;
+DEFINE FIELD OVERWRITE event ON TABLE livestreams TYPE record<events>;
 
 -- A table for posts
-DEFINE TABLE IF NOT EXISTS posts TYPE RELATION IN users TO media;
+DEFINE TABLE IF NOT EXISTS posts TYPE RELATIon IN users TO media;
 DEFINE FIELD OVERWRITE out ON TABLE posts TYPE record<media>;
 DEFINE FIELD OVERWRITE in ON TABLE posts TYPE record<users>;
-DEFINE FIELD OVERWRITE content on TABLE posts TYPE string;
-DEFINE FIELD OVERWRITE created_at on TABLE posts TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE content ON TABLE posts TYPE string;
+DEFINE FIELD OVERWRITE created_at ON TABLE posts TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE metadata ON TABLE posts FLEXIBLE TYPE object DEFAULT {};
-DEFINE FIELD OVERWRITE event on TABLE posts TYPE record<events>;
+DEFINE FIELD OVERWRITE event ON TABLE posts TYPE record<events>;
 
 -- A table for comments
-DEFINE TABLE IF NOT EXISTS comments TYPE RELATION IN users TO posts;
+DEFINE TABLE IF NOT EXISTS comments TYPE RELATIon IN users TO posts;
 DEFINE FIELD OVERWRITE out ON TABLE comments TYPE record<posts>;
 DEFINE FIELD OVERWRITE in ON TABLE comments TYPE record<users>;
-DEFINE FIELD OVERWRITE content on TABLE comments TYPE string;
-DEFINE FIELD OVERWRITE created_at on TABLE comments TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE content ON TABLE comments TYPE string;
+DEFINE FIELD OVERWRITE created_at ON TABLE comments TYPE datetime DEFAULT time::now();
 
 -- A table for friends
-DEFINE TABLE IF NOT EXISTS friends TYPE RELATION IN users to users;
+DEFINE TABLE IF NOT EXISTS friends TYPE RELATIon IN users to users;
 DEFINE FIELD OVERWRITE out ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE in ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();

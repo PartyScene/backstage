@@ -14,7 +14,7 @@ services:
     #   - backstage_network
     depends_on:
       - redis
-      - surrealdb
+    restart: on-failure
     # env_file:
     #   - .env
     volumes:
@@ -28,82 +28,68 @@ services:
       target: test
       context: .
       dockerfile: media/Dockerfile
-    # networks: 
-    #   - backstage_network
-    depends_on:
-      microservices.events:
-        condition: service_completed_successfully
-    # env_file:
-    #   - .env
-    volumes:
-      - ./init/schema.surql:/home/schema.surql
-      # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
-
-  microservices.livestream:
-    container_name: microservices.livestream
-    build:
-      target: test
-      context: .
-      dockerfile: livestream/Dockerfile
-    # networks: 
-    #   - backstage_network
-    # env_file:
-    #   - .env
-    volumes:
-      - ./init/schema.surql:/home/schema.surql
-      # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
-    depends_on:
-      microservices.events:
-        condition: service_completed_successfully
-
-  microservices.events:
-    container_name: microservices.events
-    build:
-      target: test
-      context: .
-      dockerfile: events/Dockerfile
-    # networks: 
-    #   - backstage_network
-    volumes:
-      - ./init/schema.surql:/home/schema.surql
-    # env_file:
-    #   - .env
     depends_on:
       microservices.auth:
         condition: service_completed_successfully
-
-  microservices.posts:
-    container_name: microservices.posts
-    build:
-      target: test
-      context: .
-      dockerfile: posts/Dockerfile
-    # networks: 
-    #   - backstage_network
-    # env_file:
-    #   - .env
     volumes:
       - ./init/schema.surql:/home/schema.surql
-      # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
-    depends_on:
-      microservices.media:
-        condition: service_completed_successfully
 
-  microservices.users:
-    container_name: microservices.users
-    build: 
-      target: test
-      context: .
-      dockerfile: users/Dockerfile
-    # networks: 
-    #   - backstage_network
-    volumes:
-      - ./init/schema.surql:/home/schema.surql
-    # env_file:
-    #   - .env
-    depends_on:
-      microservices.auth:
-        condition: service_completed_successfully
+  # microservices.livestream:
+  #   container_name: microservices.livestream
+  #   build:
+  #     target: test
+  #     context: .
+  #     dockerfile: livestream/Dockerfile
+  #   # networks: 
+  #   #   - backstage_network
+  #   # env_file:
+  #   #   - .env
+  #   volumes:
+  #     - ./init/schema.surql:/home/schema.surql
+  #     # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
+  #   depends_on:
+  #     microservices.events:
+  #       condition: service_completed_successfully
+
+  # microservices.events:
+  #   container_name: microservices.events
+  #   build:
+  #     target: test
+  #     context: .
+  #     dockerfile: events/Dockerfile
+  #   # networks: 
+  #   #   - backstage_network
+  #   volumes:
+  #     - ./init/schema.surql:/home/schema.surql
+  #   # env_file:
+  #   #   - .env
+  #   depends_on:
+  #     microservices.auth:
+  #       condition: service_completed_successfully
+
+  # microservices.posts:
+  #   container_name: microservices.posts
+  #   build:
+  #     target: test
+  #     context: .
+  #     dockerfile: posts/Dockerfile
+  #   volumes:
+  #     - ./init/schema.surql:/home/schema.surql
+  #   depends_on:
+  #     microservices.events:
+  #       condition: service_completed_successfully
+
+  # microservices.users:
+  #   container_name: microservices.users
+  #   build: 
+  #     target: test
+  #     context: .
+  #     dockerfile: users/Dockerfile
+  #   volumes:
+  #     - ./init/schema.surql:/home/schema.surql
+  #   depends_on:
+  #     microservices.posts:
+  #       condition: service_completed_successfully
 
   # kong:
   #   image: kong/kong-gateway:3.8.0.0
@@ -128,29 +114,7 @@ services:
   #     KONG_DECLARATIVE_CONFIG: ./kong/declarative/kong.yml
   #     KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
 
+
   redis:
     image: redis
-    
-    # networks: 
-    #   - backstage_network
-
-  surrealdb:
-    container_name: surrealdb
-    # env_file:
-    #   - .env
-    entrypoint:
-      - /surreal
-      - start
-      - --user
-      - $DB_USER
-      - --pass
-      - $DB_PASSWORD
-      - memory
-      - --log
-      - debug
-
-    image: surrealdb/surrealdb:v2.0-dev
-    ports:
-      - 8000:8000
-    # networks: 
-    #   - backstage_network
+    command: sh -c "redis-server & sleep 60; kill $!"

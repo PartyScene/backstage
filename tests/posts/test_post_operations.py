@@ -145,28 +145,124 @@ class TestPostOperations(TestPostsBase):
 
     #     assert like_response['likes_count'] > 0
 
-    # async def test_comment_on_post(self, async_client):
-    #     """Test commenting on a post."""
-    #     # First create a post
-    #     post_data = {"title": fake.sentence(), "content": fake.text()}
-    #     create_response = await async_client.post("/posts", json=post_data)
-    #     post_id = create_response.json()['id']
+    async def test_create_post_comment(self, posts_client, mock_event, bearer):
+        """Test commenting on a post."""
+        # First create a post
+        files = {
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
+        }
+        post_data = {
+            "title": fake.sentence(),
+            "content": fake.text(),
+            "event": mock_event["id"],
+            "type": "image",
+        }
+        create_response = await self.create_post(posts_client, files, post_data, bearer)
+        post_data = await create_response.get_json()
+        assert create_response.status_code == 201
+        post_id = post_data["id"]
 
-    #     # Add comment
-    #     comment_data = {
-    #         "content": fake.text(),
-    #         "author_id": fake.uuid4()
-    #     }
-    #     response = await async_client.post(f"/posts/{post_id}/comments", json=comment_data)
-    #     assert response.status_code == 201
+        response = await self.fetch_post(posts_client, post_id, bearer)
+        assert response.status_code == 200
+        posts = await response.get_json()
+        assert len(posts) >= 1
 
-    #     # Get comments
-    #     comments_response = await async_client.get(f"/posts/{post_id}/comments")
-    #     assert comments_response.status_code == 200
-    #     comments = comments_response.json()
+        # Add comment
+        comment_data = {
+            "content": fake.text(),
+        }
+        response = await self.create_comment(
+            posts_client, post_id, comment_data, bearer
+        )
+        assert response.status_code == 201
 
-    #     assert isinstance(comments, list)
-    #     assert len(comments) > 0
+    async def test_fetch_post_comments(self, posts_client, mock_event, bearer):
+        # First create a post
+        files = {
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
+        }
+        post_data = {
+            "title": fake.sentence(),
+            "content": fake.text(),
+            "event": mock_event["id"],
+            "type": "image",
+        }
+        create_response = await self.create_post(posts_client, files, post_data, bearer)
+        post_data = await create_response.get_json()
+        assert create_response.status_code == 201
+        post_id = post_data["id"]
+
+        # Add comment
+        comment_data = {
+            "content": fake.text(),
+        }
+        response = await self.create_comment(
+            posts_client, post_id, comment_data, bearer
+        )
+        assert response.status_code == 201
+
+        # Get comments
+        comments_response = await self.get_comments(posts_client, post_id, bearer)
+        assert comments_response.status_code == 200
+        comments = await comments_response.get_json()
+
+        assert isinstance(comments, list)
+        assert len(comments) > 0
+
+    async def test_delete_post_comments(self, posts_client, mock_event, bearer):
+        # First create a post
+        files = {
+            "file": FileStorage(
+                io.BytesIO(b"fake image content"),
+                filename="test_image.jpg",
+                content_type="image/jpeg",
+            )
+        }
+        post_data = {
+            "title": fake.sentence(),
+            "content": fake.text(),
+            "event": mock_event["id"],
+            "type": "image",
+        }
+        create_response = await self.create_post(posts_client, files, post_data, bearer)
+        post_data = await create_response.get_json()
+        assert create_response.status_code == 201
+        post_id = post_data["id"]
+
+        # Add comment
+        comment_data = {
+            "content": fake.text(),
+        }
+        response = await self.create_comment(
+            posts_client, post_id, comment_data, bearer
+        )
+        create_resp = await response.get_json()
+        assert response.status_code == 201
+        comment_id = create_resp["id"]
+
+        # Get comments
+        comments_response = await self.get_comments(posts_client, post_id, bearer)
+        assert comments_response.status_code == 200
+        comments = await comments_response.get_json()
+
+        assert isinstance(comments, list)
+        assert len(comments) > 0
+
+        # Delete comment
+        response = await self.delete_comment(posts_client, post_id, comment_id, bearer)
+        assert response.status_code == 204
+
+        # Verify comment is deleted
+        get_response = await self.get_comments(posts_client, post_id, bearer)
+        assert get_response.status_code == 404
 
     @pytest.mark.parametrize(
         "invalid_data",

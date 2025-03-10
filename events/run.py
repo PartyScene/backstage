@@ -21,12 +21,9 @@ config.keepalive_timeout = 120
 
 def main():
     """Run the application with uvloop"""
-    if os.name == "nt":
-        ...
-    else:
-        import uvloop
+    import uvloop
 
-        uvloop.install()
+    uvloop.install()
     asyncio.run(serve(app, config))
 
 
