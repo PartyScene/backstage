@@ -107,9 +107,8 @@ class MediaMicroService(Quart):
         try:
             await self.init_redis()
             # Initialize DB
-            if not self.DEBUG:
-                logger.info("Initializing SurrealDB connection...")
-                self.conn = await init_db(self)
+            logger.info("Initializing SurrealDB connection...")
+            self.conn = await init_db(self)
 
             # Get JWT secret
             logger.info("Retrieving JWT secret...")
