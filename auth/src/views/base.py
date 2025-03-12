@@ -24,6 +24,11 @@ class BaseView(QuartClassful):
         self.conn: AuthDB = app.conn
         self.redis: Redis = app.redis
         self.__notification_manager = NotificationManager()
+    
+    def generate_jwt_secret(self, identity):
+        return create_access_token(
+                identity=identity, expires_delta=timedelta(days=1)
+            )
 
     @route("/", methods=["GET"])
     @route("/auth/health", methods=["GET"])
@@ -77,13 +82,15 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         created_acct = await self.conn._create_user(data)
         if not created_acct:
-            return jsonify({"msg": "User already exists"}), HTTPStatus.CONFLICT
+            return jsonify({"msg": "Invalid Request Body or User already exists"}), HTTPStatus.CONFLICT
         try:
             await self.__n_register_user(created_acct)
             await self.__n_generate_otp(created_acct["id"], created_acct["email"])
         except Exception as e:
             logger.error(f"Registration error: {e}")
             raise
+        
+        created_acct['access_token'] = self.generate_jwt_secret(created_acct["id"])
         return jsonify(created_acct), HTTPStatus.CREATED
 
     @route("/auth/login", methods=["POST"])
@@ -93,9 +100,7 @@ class BaseView(QuartClassful):
         """
         data = await request.get_json()
         if result := await self.conn._login(data):
-            access_token = create_access_token(
-                identity=result["id"], expires_delta=timedelta(days=1)
-            )
+            access_token = self.generate_jwt_secret(result["id"])
             await self.__notification_manager.recent_login_notification(
                 user_id=result["id"],
                 payload={

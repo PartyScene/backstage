@@ -10,7 +10,7 @@ DEFINE FIELD OVERWRITE email ON TABLE users TYPE string VALUE string::lowercase(
 DEFINE INDEX emailIndex ON TABLE users COLUMNS email UNIQUE;
 DEFINE FIELD OVERWRITE password ON TABLE users TYPE string;
 
-DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $before == NonE THEN {UPDATE $after SET password = crypto::scrypt::generate(password)};
+DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET password = crypto::scrypt::generate(password)};
 
 -- Let's define a relation table for users and events to record attendance
 DEFINE TABLE IF NOT EXISTS attends TYPE RELATIon IN users TO events;

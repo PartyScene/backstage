@@ -151,7 +151,6 @@ class BaseView(QuartClassful):
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/public", methods=["GET"])
-    @jwt_required
     async def fetch_public_events(self):
         """This endpoints returns all the public events"""
         page = int(request.args.get("page", 1))
