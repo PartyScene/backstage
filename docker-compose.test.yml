@@ -10,13 +10,9 @@ services:
       context: .
       dockerfile: auth/Dockerfile
       target: test
-    # networks: 
-    #   - backstage_network
     depends_on:
       - redis
     restart: on-failure
-    # env_file:
-    #   - .env
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
@@ -51,69 +47,41 @@ services:
   #     microservices.events:
   #       condition: service_completed_successfully
 
-  # microservices.events:
-  #   container_name: microservices.events
-  #   build:
-  #     target: test
-  #     context: .
-  #     dockerfile: events/Dockerfile
-  #   # networks: 
-  #   #   - backstage_network
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   # env_file:
-  #   #   - .env
-  #   depends_on:
-  #     microservices.auth:
-  #       condition: service_completed_successfully
+  microservices.events:
+    container_name: microservices.events
+    build:
+      target: test
+      context: .
+      dockerfile: events/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.auth:
+        condition: service_completed_successfully
 
-  # microservices.posts:
-  #   container_name: microservices.posts
-  #   build:
-  #     target: test
-  #     context: .
-  #     dockerfile: posts/Dockerfile
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   depends_on:
-  #     microservices.events:
-  #       condition: service_completed_successfully
+  microservices.posts:
+    container_name: microservices.posts
+    build:
+      target: test
+      context: .
+      dockerfile: posts/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.events:
+        condition: service_completed_successfully
 
-  # microservices.users:
-  #   container_name: microservices.users
-  #   build: 
-  #     target: test
-  #     context: .
-  #     dockerfile: users/Dockerfile
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   depends_on:
-  #     microservices.posts:
-  #       condition: service_completed_successfully
-
-  # kong:
-  #   image: kong/kong-gateway:3.8.0.0
-  #   networks:
-  #     backstage_network:
-  #       ipv4_address: 11.0.0.19
-  #   ports:
-  #     - 8002:8000
-  #     - 8443:8443
-  #     - 8001:8001
-  #     - 8444:8444
-  #     - 8005:8002
-  #   volumes:
-  #     - ./kong/declarative:/kong/declarative/
-  #   environment:
-  #     KONG_DATABASE: off
-  #     KONG_PROXY_ACCESS_LOG: /dev/stdout
-  #     KONG_ADMIN_ACCESS_LOG: /dev/stdout
-  #     KONG_PROXY_ERROR_LOG: /dev/stderr
-  #     KONG_ADMIN_GUI_URL: http://localhost:8005
-  #     KONG_ADMIN_ERROR_LOG: /dev/stderr
-  #     KONG_DECLARATIVE_CONFIG: ./kong/declarative/kong.yml
-  #     KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
-
+  microservices.users:
+    container_name: microservices.users
+    build: 
+      target: test
+      context: .
+      dockerfile: users/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.posts:
+        condition: service_completed_successfully
 
   redis:
     image: redis

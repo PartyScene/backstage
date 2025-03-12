@@ -25,7 +25,7 @@ class MediaClient:
             files = {"file": (file.filename, file.stream, file.content_type)}
 
             response = await client.post(
-                f"{self.media_service_url}/upload",
+                f"{self.media_service_url}/media/upload",
                 headers=request.headers,
                 files=files,
                 data=dict(await request.form),

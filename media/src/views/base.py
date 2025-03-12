@@ -25,6 +25,7 @@ class BaseView(QuartClassful):
         # Try something new
         self.OBS_STORE = GCSStore(os.environ['GCS_BUCKET_NAME'])
         self.logger = logging.create_logger(app)
+        self.redis = app.redis
         self.__media_handler: MediaDB = app.conn
 
     @route("/", methods=["GET"])

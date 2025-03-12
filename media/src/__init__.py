@@ -107,6 +107,7 @@ class MediaMicroService(Quart):
         try:
             await self.init_redis()
             # Initialize DB
+            
             logger.info("Initializing SurrealDB connection...")
             self.conn = await init_db(self)
 

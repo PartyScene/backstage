@@ -13,21 +13,45 @@ spec:
     backendRefs:
     - name: auth-service
       port: 80
+
   - matches:
     - path:
         value: /events
     backendRefs:
     - name: microserv-events-service
       port: 80
+
   - matches:
     - path:
         value: /posts
     backendRefs:
     - name: microserv-posts-service
       port: 80
-  # - matches:
-  #   - path:
-  #       value: /users
-  #   backendRefs:
-  #   - name: microserv-users-service
-  #     port: 80
+
+  - matches:
+    - path:
+        value: /users
+    backendRefs:
+    - name: microserv-users-service
+      port: 80
+
+  - matches:
+    - path:
+        value: /friends
+    backendRefs:
+    - name: microserv-users-service
+      port: 80
+
+  - matches:
+    - path:
+        value: /user
+    backendRefs:
+    - name: microserv-users-service
+      port: 80
+
+  - matches:
+    - path:
+        value: /media
+    backendRefs:
+    - name: microserv-media-service
+      port: 80

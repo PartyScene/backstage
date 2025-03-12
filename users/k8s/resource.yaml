@@ -1,0 +1,105 @@
+---
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  name: "microserv.users-config-bygw"
+  namespace: "default"
+  labels:
+    app: "microserv.users"
+data:
+  SURREAL_URI: "wss://test-prod-insta-06amo5vohhuqn9u9qa1lbl9rcg.aws-use1.surreal.cloud"
+  REDIS_URI: "redis://default:R5WkzVGAM7ZavW9tnEv4iMVUPg7xOpnQ@redis-18628.c238.us-central1-2.gce.redns.redis-cloud.com:18628"
+  MEDIA_MICROSERVICE_URL: "http://microserv-media-service"
+  SURREAL_USER: "root"
+  SURREAL_PASS: "rootrm"
+  NOVU_SECRET_KEY: "26fa1c421a0fb45df02a0d63adffaa1e"
+---
+apiVersion: "apps/v1"
+kind: "Deployment"
+metadata:
+  name: "microserv.users"
+  namespace: "default"
+  labels:
+    app: "microserv.users"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: "microserv.users"
+  template:
+    metadata:
+      labels:
+        app: "microserv.users"
+    spec:
+      containers:
+      - name: "microservices-users-sha256-1"
+        image: "us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.users@sha256:2333ff123d0761090d699b27652a8e4c9903ba6186ab0db7cca3c6c565d3503e"
+        env:
+        - name: "SURREAL_URI"
+          valueFrom:
+            configMapKeyRef:
+              key: "SURREAL_URI"
+              name: "microserv.users-config-bygw"
+        - name: "REDIS_URI"
+          valueFrom:
+            configMapKeyRef:
+              key: "REDIS_URI"
+              name: "microserv.users-config-bygw"
+        - name: "MEDIA_MICROSERVICE_URL"
+          valueFrom:
+            configMapKeyRef:
+              key: "MEDIA_MICROSERVICE_URL"
+              name: "microserv.users-config-bygw"
+        - name: "SURREAL_USER"
+          valueFrom:
+            configMapKeyRef:
+              key: "SURREAL_USER"
+              name: "microserv.users-config-bygw"
+        - name: "SURREAL_PASS"
+          valueFrom:
+            configMapKeyRef:
+              key: "SURREAL_PASS"
+              name: "microserv.users-config-bygw"
+        - name: "NOVU_SECRET_KEY"
+          valueFrom:
+            configMapKeyRef:
+              key: "NOVU_SECRET_KEY"
+              name: "microserv.users-config-bygw"
+---
+apiVersion: "autoscaling/v2"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "microserv.users-hpa-l2dk"
+  namespace: "default"
+  labels:
+    app: "microserv.users"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "microserv.users"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      target:
+        type: "Utilization"
+        averageUtilization: 80
+---
+apiVersion: "v1"
+kind: "Service"
+metadata:
+  name: "microserv.users-service"
+  namespace: "default"
+  labels:
+    app: "microserv.users"
+spec:
+  ports:
+  - protocol: "TCP"
+    port: 80
+    targetPort: 5510
+  selector:
+    app: "microserv.users"
+  type: "NodePort"

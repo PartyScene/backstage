@@ -1,5 +1,5 @@
 import httpx
-from quart import request, current_app as app
+from quart import request, current_app as app, jsonify
 from quart_jwt_extended import get_jwt_identity, jwt_required
 from http import HTTPStatus
 from typing import Tuple, Dict, Any
@@ -20,8 +20,14 @@ logger = logging.getLogger(__name__)
 class BaseView(QuartClassful):
     def __init__(self):
         self.conn: UsersDB = app.conn
+        self.redis = app.redis
         self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
         self.__notification_manager = NotificationManager()
+    
+    
+    @route("/", methods=["GET"])
+    async def index(self):
+        return await self.healthcheck()
 
     @route("/users/health", methods=["GET"])
     async def healthcheck(self):
