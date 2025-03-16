@@ -31,6 +31,9 @@ steps:
   
 substitutions:
   _LOCATION: us-central1 # default value
+  
+options:
+  logging: CLOUD_LOGGING_ONLY 
 
 images:
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth'
