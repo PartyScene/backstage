@@ -35,7 +35,7 @@ class BaseView(QuartClassful):
         Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
         """
         health_status = {
-            "service": "auth",
+            "service": "microservices.posts",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},

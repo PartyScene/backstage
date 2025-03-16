@@ -36,7 +36,7 @@ class UsersDB:
         select_fields = []
         for i in range(1, max_degree + 1):
             path = "->friends->users" * i
-            select_fields.append(f"{path} AS degree_{i}")
+            select_fields.append(f"{path}.* AS degree_{i}")
 
         await self.db.let("origin", RecordID("users", origin_id))
         query = f"""

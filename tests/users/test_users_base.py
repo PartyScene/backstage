@@ -19,6 +19,13 @@ class TestUsersBase:
             json={"target_id": target_id},
             headers={"Authorization": f"Bearer {bearer}"},
         )
+    
+    async def fetch_connections(self, client: QuartClient, bearer):
+        """Helper method to fetch connections."""
+        return await client.get(
+            f"/friends",
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
 
     async def delete_connection(self, client: QuartClient, connection_id, bearer):
         """Helper method to delete a connection."""

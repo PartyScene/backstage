@@ -34,7 +34,13 @@ class AuthDB:
         except:
             return False
         logger.info(json.dumps(result, indent=4, default=str))
-        return record_id_to_json(result)
+
+        return await self._login({
+            "email": form.get('email'),
+            "password": form.get('password')
+        })
+
+        # return record_id_to_json(result)
 
 
 # result = await self.db.query('CREATE users; SELECT * FROM type::table($tb)', {

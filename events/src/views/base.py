@@ -60,7 +60,7 @@ class BaseView(QuartClassful):
         Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
         """
         health_status = {
-            "service": "auth",
+            "service": "microservices.events",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
@@ -108,6 +108,16 @@ class BaseView(QuartClassful):
             if result := await self.conn.fetch(event_id):
                 return result, HTTPStatus.OK
             return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+        
+        if any([x in request.args for x in ("lat", "lng")]):
+            # They requested for Lat Lng soo 
+            location = (
+                float(request.args.get("lat", 0)),
+                float(request.args.get("lng", 0)),
+            )
+            distance = int(request.args.get("distance", 1000))
+            result = await self.conn.fetch_by_distance(location, distance)
+            return result, HTTPStatus.OK
 
         result = await self.conn.fetch_all(page, limit)
         return result, HTTPStatus.OK

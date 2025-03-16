@@ -20,6 +20,7 @@ class BaseView(QuartClassful):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.logger = logging.create_logger(app)
+        self.redis = app.redis
         self.livestream = create_livestream_client(app.conn, self.logger)
 
     @route("/", methods=["GET"])
@@ -30,7 +31,7 @@ class BaseView(QuartClassful):
         Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
         """
         health_status = {
-            "service": "auth",
+            "service": "microservices.livestream",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
@@ -82,7 +83,7 @@ class BaseView(QuartClassful):
     @route("/scenes/<event_id>", methods=["DELETE"])
     async def end_livestream(self, event_id):
         try:
-            stream_info = await self.livestream.delete_stream(event_id)
+            stream_info = await self.livestream.end_stream(event_id)
             if not isinstance(stream_info, dict):
                 return jsonify(stream_info), HTTPStatus.NOT_FOUND
             return jsonify(stream_info), HTTPStatus.NO_CONTENT

@@ -35,7 +35,7 @@ class MediaDB:
             data (dict): _description_
         """
         query = """
-        CREATE ONLY media SET type = $type, url = $url, creator = type::thing('users', $creator), event = type::thing('events', $event) RETURN AFTER;
+        CREATE ONLY media SET type = $type, filename = $filename, creator = type::thing('users', $creator), event = type::thing('events', $event) RETURN AFTER;
         """
         result = await self.db.query(query, data)
         if "ERR" in result:

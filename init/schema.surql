@@ -68,10 +68,11 @@ DEFINE TABLE IF NOT EXISTS media SCHEMAFULL;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON media TYPE "image" | "video" | "vod";
 
-DEFINE FIELD OVERWRITE url ON media TYPE string 
-  ASSERT string::len($value) > 0;
+DEFINE FIELD OVERWRITE url ON media 
+  VALUE <future> {http::get("http://34.144.227.188/media/sign?filename=${$this.filename}")} ASSERT string::len($value) > 0 ;
   
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
 
 -- Metadata fields
 DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();

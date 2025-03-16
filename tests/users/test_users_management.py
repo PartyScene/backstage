@@ -9,22 +9,6 @@ fake = Faker()
 
 @pytest.mark.asyncio
 class TestUserManagement(TestUsersBase):
-    # async def test_create_user_profile(self, users_client, test_config):
-    #     """Test creating a user profile with valid data."""
-    #     profile_data = {
-    #         "display_name": fake.name(),
-    #         "bio": fake.text(max_nb_chars=200),
-    #         "location": fake.city(),
-    #         "avatar_url": fake.image_url(),
-    #         "interests": [fake.word() for _ in range(3)]
-    #     }
-
-    #     response = await users_client.post("/users/profile", json=profile_data)
-    #     assert response.status_code == 201
-    #     created_profile = response.json()
-
-    #     assert created_profile['display_name'] == profile_data['display_name']
-    #     assert 'id' in created_profile
 
     async def test_get_user_profile(self, users_client, mock_user, bearer):
         """Test retrieving a user profile."""
@@ -54,6 +38,15 @@ class TestUserManagement(TestUsersBase):
         created_response = await response.get_json()
 
         assert created_response[0]["status"] == "pending"
+
+    async def test_fetch_connections(self, users_client, mock_user, bearer):
+        """Test fetching all connections."""
+        response = await self.fetch_connections(users_client, bearer)
+        assert response.status_code == 200
+        response = await response.get_json()
+
+        assert isinstance(response, dict)
+        assert "degree_1" in response
 
     async def test_delete_connection(self, users_client, mock_user, bearer):
         """Test deleting a connection."""

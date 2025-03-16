@@ -53,5 +53,5 @@ class TestEventsBase:
         """Helper method to get events within a distance"""
         params = urllib.parse.urlencode({"lat": coordinates[0], "lng": coordinates[1]})
         return await client.get(
-            f"/events/distance?{params}", headers={"Authorization": f"Bearer {bearer}"}
+            f"/events?{params}", headers={"Authorization": f"Bearer {bearer}"}
         )

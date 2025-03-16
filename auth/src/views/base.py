@@ -38,7 +38,7 @@ class BaseView(QuartClassful):
         Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
         """
         health_status = {
-            "service": "auth",
+            "service": "microservices.auth",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
@@ -82,7 +82,7 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         created_acct = await self.conn._create_user(data)
         if not created_acct:
-            return jsonify({"msg": "Invalid Request Body or User already exists"}), HTTPStatus.CONFLICT
+            return "Invalid Request Body or User already exists", HTTPStatus.CONFLICT
         try:
             await self.__n_register_user(created_acct)
             await self.__n_generate_otp(created_acct["id"], created_acct["email"])
@@ -112,7 +112,7 @@ class BaseView(QuartClassful):
                 jsonify(access_token=access_token, token_type="bearer"),
                 HTTPStatus.OK,
             )
-        return jsonify({"msg": "Bad username or password"}), HTTPStatus.UNAUTHORIZED
+        return "Bad username or password", HTTPStatus.UNAUTHORIZED
 
     async def __n_register_user(self, user_data: dict):
         """

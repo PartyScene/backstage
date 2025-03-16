@@ -81,7 +81,7 @@ async def init_db(app: Quart) -> LiveStreamDB:
     db = AsyncSurreal(os.environ["SURREAL_URI"])
     await db.connect()
     await db.signin(
-        {"username": os.getenv("DB_USER"), "password": os.getenv("DB_PASSWORD")}
+        {"username": os.getenv("SURREAL_USER"), "password": os.getenv("SURREAL_PASS")}
     )
     await db.use("partyscene", "partyscene")
     return LiveStreamDB(db)

@@ -36,7 +36,7 @@ class BaseView(QuartClassful):
         Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
         """
         health_status = {
-            "service": "auth",
+            "service": "microservices.media",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
@@ -105,3 +105,13 @@ class BaseView(QuartClassful):
         # # blob.make_public() # Permissions are really messed up idk -- error : google.api_core.exceptions.BadRequest: 400 GET https://storage.googleapis.com/storage/v1/b/partyscene/o/file/acl?prettyPrint=false: Cannot get legacy ACL for an object when uniform bucket-level access is enabled. Read more at https://cloud.google.com/storage/docs/uniform-bucket-level-acces
         result = await self.__media_handler.create_media_metadata(data)
         return jsonify(result), HTTPStatus.CREATED
+
+    @route("/media/sign", methods=["GET", "POST"])
+    @jwt_required
+    async def sign(self):
+        """Sign a media in the Bucket for access"""
+        filename = request.args.get("filename")
+
+        media_url = await obs.sign_async(self.OBS_STORE, "GET", filename, timedelta(days=1))
+
+        return media_url, HTTPStatus.OK
