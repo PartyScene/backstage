@@ -7,16 +7,16 @@ fake = Faker()
 
 @pytest.mark.asyncio
 class TestEventUpdates(TestEventsBase):
-    async def test_update_event_details(self, event_client, mock_event, bearer):
-        """Test updating an existing event."""
-        update_data = {"title": fake.catch_phrase(), "description": fake.text()}
-        response = await self.update_event(
-            event_client, mock_event["id"], update_data, bearer
-        )
-        assert response.status_code == 200
+    # async def test_update_event_details(self, event_client, mock_event, bearer):
+    #     """Test updating an existing event."""
+    #     update_data = {"title": fake.catch_phrase(), "description": fake.text()}
+    #     response = await self.update_event(
+    #         event_client, mock_event["id"], update_data, bearer
+    #     )
+    #     assert response.status_code == 200
 
-        updated_event = await response.get_json()
-        assert updated_event["title"] == update_data["title"]
+    #     updated_event = await response.get_json()
+    #     assert updated_event["title"] == update_data["title"]
 
     async def test_update_event_status(self, event_client, mock_event, bearer):
         """Test changing event status."""

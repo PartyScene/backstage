@@ -1,6 +1,9 @@
 from quart import Quart
 from surrealdb import AsyncSurreal
 from surrealdb.data import GeometryPoint, RecordID, Table
+
+from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
+
 import os
 from typing import Optional, List, Dict, Any
 import logging
@@ -10,61 +13,60 @@ import json
 
 
 class EventsDB:
-    def __init__(self, db) -> None:
-        self.db: AsyncSurreal = db
-
-    async def close(self):
-        self.db.close()
+    def __init__(self, pool: SurrealDBConnectionPool) -> None:
+        self.pool = pool
 
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
-        try:
-            # data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
-            data["host"] = RecordID("users", data["host"])
-            data["location"] = {
-                "address": data.get("location"),
-                "coordinates": data.pop("coordinates"),
-            }
+        async with self.pool.acquire() as conn:
+            try:
+                # data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
+                data["host"] = RecordID("users", data["host"])
+                data["location"] = {
+                    "address": data.get("location"),
+                    "coordinates": data.pop("coordinates"),
+                }
 
-            result = await self.db.create("events", data)
-            # result = await self.db.query(
-            # """
-            # CREATE events SET
-            #         title = $title,
-            #         description = $description,
-            #         location.address = $location,
-            #         location.coordinates_hash = geo::hash::encode($coordinates),
-            #         is_private = $is_private,
-            #         price = $price,
-            #         categories = $categories,
-            #         tags = $tags,
-            #         host = $host,
-            #         status = 'scheduled'
-            #     RETURN AFTER;
-            #     """,
-            #     {
-            #         "title": data.get("title"),
-            #         "description": data.get("description"),
-            #         "location": data.get("location"),
-            #         "coordinates": data.get("coordinates"),
-            #         "is_private": data.get("is_private", False),
-            #         "price": data['price'],
-            #         "categories": data.get("categories", []),
-            #         "tags": data.get("tags", []),
-            #         "host": data.get("host")
-            #     }
-            # )
-            logging.info(json.dumps(result, indent=4, default=str))
-            if "ERR" in result:
-                raise Exception(f"Error creating event: {result}")  # Handle error case
-            return record_id_to_json(result)
+                result = await conn.create("events", data)
+                # result = await self.db.query(
+                # """
+                # CREATE events SET
+                #         title = $title,
+                #         description = $description,
+                #         location.address = $location,
+                #         location.coordinates_hash = geo::hash::encode($coordinates),
+                #         is_private = $is_private,
+                #         price = $price,
+                #         categories = $categories,
+                #         tags = $tags,
+                #         host = $host,
+                #         status = 'scheduled'
+                #     RETURN AFTER;
+                #     """,
+                #     {
+                #         "title": data.get("title"),
+                #         "description": data.get("description"),
+                #         "location": data.get("location"),
+                #         "coordinates": data.get("coordinates"),
+                #         "is_private": data.get("is_private", False),
+                #         "price": data['price'],
+                #         "categories": data.get("categories", []),
+                #         "tags": data.get("tags", []),
+                #         "host": data.get("host")
+                #     }
+                # )
+                logging.info(json.dumps(result, indent=4, default=str))
+                result = await conn.select(result["id"])
+                if "ERR" in result:
+                    raise Exception(f"Error creating event: {result}")  # Handle error case
+                return record_id_to_json(result)
 
-        except KeyError:
-            logging.error(f"Invalid Params: {data}")
-            return
-        except Exception as e:
-            logging.error(f"Failed to create event: {str(e)}")
-            raise
+            except KeyError:
+                logging.error(f"Invalid Params: {data}")
+                return
+            except Exception as e:
+                logging.error(f"Failed to create event: {str(e)}")
+                raise
 
     async def delete_event(self, event_id: str):
         """
@@ -73,11 +75,12 @@ class EventsDB:
         Args:
             event_id (str): The ID of the event to delete
         """
-        result = await self.db.delete(RecordID("events", event_id))
-        if "ERR" in result:
-            raise Exception(
-                f"Error deleting event: {result[0]['result']}"
-            )  # Handle error case
+        async with self.pool.acquire() as conn:
+            result = await conn.delete(RecordID("events", event_id))
+            if "ERR" in result:
+                raise Exception(
+                    f"Error deleting event: {result[0]['result']}"
+                )  # Handle error case
         return record_id_to_json(result)
 
     async def fetch_by_distance(
@@ -95,7 +98,8 @@ class EventsDB:
             List[Dict[str, Any]]: List of events within the specified distance
         """
         try:
-            result = await self.db.query(
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
                 """
                 SELECT 
                     *,
@@ -124,7 +128,8 @@ class EventsDB:
             List[Dict[str, Any]]: List of all events
         """
         try:
-            result = await self.db.query(
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
                 """
                      SELECT *,
                         <-attends<-users AS attendees,
@@ -154,7 +159,8 @@ class EventsDB:
             List[Dict[str, Any]]: List of public events
         """
         try:
-            result = await self.db.query(
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
                 """
                      SELECT *,
                         <-attends<-users AS attendees,
@@ -179,7 +185,8 @@ class EventsDB:
             Optional[Dict[str, Any]]: Event data or None if not found
         """
         try:
-            result = await self.db.query(
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
                 """
                 SELECT
                     *,
@@ -205,20 +212,23 @@ class EventsDB:
             FROM type::thing('events', $event_id)
             FETCH host, attendees;
             """
-            result = await self.db.query(query, {"event_id": event_id})
-            return result[0]["result"][0]
+            async with self.pool.acquire() as conn:
+                result = await conn.query(query, {"event_id": event_id})
+            return record_id_to_json(result)
         except Exception as e:
             logging.error(f"Failed to create live query: {str(e)}")
             raise
 
     async def get_live_notifications(self, live_id: str):
         """Get notifications for a live query"""
-        return self.db.subscribe_live(live_id)
+        async with self.pool.acquire() as conn:
+            return await conn.subscribe_live(live_id)
 
     async def kill_live_query(self, live_id: str):
         """Kill a live query"""
         try:
-            await self.db.kill(live_id)
+            async with self.pool.acquire() as conn:
+                await conn.kill(live_id)
         except Exception as e:
             logging.error(f"Failed to kill live query: {str(e)}")
             raise
@@ -234,11 +244,12 @@ class EventsDB:
         Returns:
             Dict[str, Any]: Updated event data
         """
-        result = await self.db.merge(RecordID("events", event_id), data)
-        if result and "ERR" in result:
-            raise Exception(f"Error updating event: {result}")  # Handle error case
-        logging.debug(json.dumps(result, indent=4, default=str))
-        return record_id_to_json(result)
+        async with self.pool.acquire() as conn:
+            result = await conn.merge(RecordID("events", event_id), data)
+            if result and "ERR" in result:
+                raise Exception(f"Error updating event: {result}")  # Handle error case
+            logging.debug(json.dumps(result, indent=4, default=str))
+            return record_id_to_json(result)
 
     async def update_event_status(
         self, event_id: str, status: str, metadata: dict = None
@@ -270,13 +281,14 @@ class EventsDB:
             if metadata:
                 update_data["metadata"] = metadata
 
-            result = await self.db.query(
-                """
-                UPDATE ONLY type::thing('events', $event_id) MERGE $update_data
-                RETURN 
-                    *,
-                    <-attends<-users AS attendees,
-                    array::len(<-attends<-users) as attendees_count;
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    UPDATE ONLY type::thing('events', $event_id) MERGE $update_data
+                    RETURN 
+                        *,
+                        <-attends<-users AS attendees,
+                        array::len(<-attends<-users) as attendees_count;
                 """,
                 {"event_id": event_id, "update_data": update_data},
             )
@@ -289,12 +301,13 @@ class EventsDB:
     async def create_attendance(self, data: Dict[str, Any]):
         """Create an attendance relationship between user and event"""
         try:
-            await self.db.let("user", RecordID("users", data["user"]))
-            await self.db.let("event", RecordID("events", data["event"]))
-            query = """
-            RELATE $user -> attends -> $event SET status = $status;
-            """
-            result = await self.db.query(query, {"status": data["status"]})
+            async with self.pool.acquire() as conn:
+                await conn.let("user", RecordID("users", data["user"]))
+                await conn.let("event", RecordID("events", data["event"]))
+                query = """
+                RELATE $user -> attends -> $event SET status = $status;
+                """
+                result = await conn.query(query, {"status": data["status"]})
             if result[0]["status"] == "ERR":
                 raise Exception(
                     f"Error creating attendance: {result[0]['result']}"
@@ -304,20 +317,53 @@ class EventsDB:
             raise
 
 
-async def init_db(app: Quart) -> EventsDB:
-    """Initialize database connection"""
-    try:
-        db = AsyncSurreal(os.getenv("SURREAL_URI"))
-        await db.connect()
-
-        await db.signin(
-            {
-                "username": os.getenv("SURREAL_USER"),
-                "password": os.getenv("SURREAL_PASS"),
-            }
-        )
-        await db.use("partyscene", "partyscene")
-        return EventsDB(db)
-    except Exception as e:
-        logging.error(f"Failed to initialize database: {str(e)}")
-        raise
+async def init_db(app) -> EventsDB:
+    """
+    Initialize the database connection pool and return an EventsDBa instance.
+    
+    Args:
+        app: The Quart application instance
+        
+    Returns:
+        EventsDB: Initialized database connector
+    """
+    SCHEMA_FILE = os.getenv("SCHEMA_FILE")
+    SURREAL_URI = os.getenv("SURREAL_URI")
+    SURREAL_USER = os.getenv("SURREAL_USER")
+    SURREAL_PASS = os.getenv("SURREAL_PASS")
+    NAMESPACE = "partyscene"
+    DATABASE = "partyscene"
+    
+    # Create connection pool manager
+    pool_manager = SurrealDBPoolManager()
+    
+    # Create a connection pool for events service
+    pool = await pool_manager.create_pool(
+        name="evehts_pool",
+        uri=SURREAL_URI,
+        credentials={"username": SURREAL_USER, "password": SURREAL_PASS},
+        namespace=NAMESPACE,
+        database=DATABASE,
+        min_connections=4,
+        max_connections=10,
+        max_idle_time=300,
+        connection_timeout=5.0,
+        acquisition_timeout=10.0,
+        health_check_interval=30,
+        max_usage_count=1000,
+        connection_retry_attempts=3,
+        connection_retry_delay=1.0,
+        schema_file=SCHEMA_FILE,
+        reset_on_return=True,
+        log_queries=True,
+    )
+    
+    # Create EventsDB instance
+    events_db = EventsDB(pool)
+    
+    # For backward compatibility with existing code
+    # This allows code that directly accesses EventsDB.db to still work
+    async with pool.acquire() as conn:
+        events_db.db = conn
+    
+    return events_db, pool_manager

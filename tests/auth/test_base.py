@@ -11,3 +11,7 @@ class TestAuthBase:
     async def login_user(self, client: QuartClient, credentials: dict):
         """Helper method to login a user"""
         return await client.post("/auth/login", json=credentials)
+    
+    async def health_check(self, client: QuartClient):
+        """Helper method to check service health"""
+        return await client.get("/auth/health")

@@ -194,6 +194,7 @@ class BaseView(QuartClassful):
 
             # Verify user has permission to update this event
             event = await self.conn.fetch(event_id)
+            self.logger.info(f"Updating event {event_id} by user {user_id}")
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
@@ -224,6 +225,7 @@ class BaseView(QuartClassful):
 
             # Verify user has access to this event
             event = await self.conn.fetch(event_id)
+            self.logger.info(f"Starting live updates for event {event_id} by user {user_id}")
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
@@ -265,6 +267,7 @@ class BaseView(QuartClassful):
 
             # Verify user has access to this event
             event = await self.conn.fetch(event_id)
+            self.logger.info(f"Stopping live updates for event {event_id} by user {user_id}")
             if not event:
                 self.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND

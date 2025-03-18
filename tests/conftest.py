@@ -87,7 +87,7 @@ async def auth_app():
                 pass
 
         app.redis = AsyncRedisMock()
-        app.conn = await init_db(app)
+        app.conn, app.pool_manager = await init_db(app)
 
         async with app.app_context():
             await app.set_shared_secret()
@@ -137,6 +137,7 @@ def mock_user():
         "password": "testingTs",
         "confirm_password": "testingTs",
         "avatar_url": fake.image_url(),
+        "host": "test",
         "id": "test",
     }
 
@@ -150,6 +151,7 @@ def mock_event():
         "coordinates": fake.latlng(),
         "location": fake.address(),
         "price": fake.numerify("##"),
+        "host": "test",
         "id": "test",
     }
 

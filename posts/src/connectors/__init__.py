@@ -142,8 +142,8 @@ class PostsDB:
 
 
 async def init_db(app: Quart) -> PostsDB:
-    db = AsyncSurreal(os.environ["SURREAL_URI"])
-    await db.connect()
+    db = AsyncSurreal(os.getenv("SURREAL_URI"))
+    
     await db.signin(
         {"username": os.getenv("SURREAL_USER"), "password": os.getenv("SURREAL_PASS")}
     )

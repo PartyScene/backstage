@@ -11,6 +11,8 @@ from shared.classful import route, QuartClassful
 from quart_jwt_extended import create_access_token
 from shared.notifications import NotificationManager
 from redis.asyncio import Redis
+from aiocache import cached, RedisCache, Cache
+import os
 
 import secrets
 import logging
@@ -31,9 +33,13 @@ class BaseView(QuartClassful):
             )
 
     @route("/", methods=["GET"])
+    async def index(self):
+        return await self.healthcheck()
+
     @route("/auth/health", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
-        """
+        """SSS
         Simple health check endpoint that verifies service and dependency status.
         Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
         """
@@ -46,7 +52,7 @@ class BaseView(QuartClassful):
 
         # Check database connection
         try:
-            db_info = await self.conn.db.info()
+            db_info = await self.conn._info()
             health_status["dependencies"]["database"] = "healthy"
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
@@ -89,8 +95,7 @@ class BaseView(QuartClassful):
         except Exception as e:
             logger.error(f"Registration error: {e}")
             raise
-        
-        created_acct['access_token'] = self.generate_jwt_secret(created_acct["id"])
+        created_acct["access_token"] = self.generate_jwt_secret(created_acct["id"])
         return jsonify(created_acct), HTTPStatus.CREATED
 
     @route("/auth/login", methods=["POST"])

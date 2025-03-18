@@ -103,7 +103,7 @@ async def users_app(mock_media_client):
             await app.get_shared_secret()
             app.register_routes()
             yield app
-            await app.conn.db.query("REMOVE table users; REMOVE table events;")
+            # await app.conn.db.query("REMOVE table users; REMOVE table events;")
             await app.clean_up()
 
     except Exception as e:

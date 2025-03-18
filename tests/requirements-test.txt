@@ -28,3 +28,4 @@ surrealdb
 flake8
 novu-py
 Pillow
+purreal

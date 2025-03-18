@@ -3,16 +3,14 @@ import os
 import secrets
 
 from logging.config import dictConfig
-from aiocache import Cache
 
 from redis.asyncio import Redis
-from quart_schema import QuartSchema
 from quart import Quart, request
-from quart_jwt_extended import JWTManager
+from quart_jwt_extended import JWTManager, jwt_required
 
-from .connectors import init_db
-from purreal import shutdown
-from .views.base import BaseView
+from .enum import Microservice
+from typing import Callable
+from shared.classful import QuartClassful
 
 # Configure logging
 dictConfig(
@@ -41,16 +39,17 @@ dictConfig(
 logger = logging.getLogger(__name__)
 
 
-class AuthMicroService(Quart):
-    def __init__(self, *args):
+class MicroService(Quart):
+    def __init__(self, instance: str, initialize_database: Callable, views: QuartClassful, *args, **kw):
         self.DEBUG = False
-
-        super(AuthMicroService, self).__init__(*args)
+        super(MicroService, self).__init__(__name__,*args, **kw)
 
         self.conn = None
         self.pool_manager: SurrealDBPoolManager = None
         self.redis = None
-        self.cache = None
+        self.views = views
+        self.initialize_database = initialize_database
+        self.microservice_instance = Microservice(instance)
 
         # Set dev environment settings
         if os.getenv("ENVIRONMENT") == "dev":
@@ -76,6 +75,8 @@ class AuthMicroService(Quart):
             logger.info("Initializing services...")
             await self.init_services()
             self.register_routes()
+            if self.microservice_instance == Microservice.EVENTS:
+                self.register_websocket_routes()
 
         @self.after_serving
         async def cleanup():
@@ -104,11 +105,16 @@ class AuthMicroService(Quart):
             await self.init_redis()
 
             # Initialize DB
-            self.conn, self.pool_manager = await init_db(self)
+            self.conn, self.pool_manager = await self.initialize_database(self)
 
-            # Set JWT secret
-            logger.info("Setting JWT secret...")
-            await self.set_shared_secret()
+            # If this MicroService handles authentication, then Set JWT secret
+            if self.microservice_instance == Microservice.AUTH:
+                logger.info("Setting JWT secret...")
+                await self.set_shared_secret()
+            
+            else:
+                logger.info("Getting JWT secret...")
+                await self.get_shared_secret()
 
             logger.info("All services initialized successfully")
 
@@ -138,6 +144,21 @@ class AuthMicroService(Quart):
 
         except Exception as e:
             logger.error(f"Failed to handle JWT secret: {str(e)}", exc_info=True)
+            raise
+    
+    async def get_shared_secret(self):
+        """Get JWT secret from Redis"""
+        try:
+            secret = await self.redis.get("SECRET_KEY")
+            if not secret:
+                raise ValueError("JWT secret not found in Redis")
+
+            self.config["SECRET_KEY"] = secret
+            self.jwt = JWTManager(self)
+            logger.info("JWT secret retrieved and manager initialized")
+
+        except Exception as e:
+            logger.error(f"Failed to get JWT secret: {str(e)}", exc_info=True)
             raise
 
     async def clean_up(self):
@@ -186,7 +207,72 @@ class AuthMicroService(Quart):
     def register_routes(self):
         # Register routes
         logger.info("Registering application routes...")
-        BaseView.register(self)
+        self.views.register(self)
 
         logger.info("Printing Application Routes...")
         logger.info(self.url_map)
+
+
+        # Register WebSocket routes
+        self.register_websocket_routes()
+
+        logger.info("Printing Application Routes...")
+        logger.info(self.url_map)
+
+    def register_websocket_routes(self):
+        """Register WebSocket routes"""
+
+        @self.websocket("/events/<event_id>/live/ws")
+        @jwt_required
+        async def event_live_updates(event_id: str):
+            try:
+                user_id = await get_jwt_identity()
+
+                # Verify user has access to this event
+                event = await self.conn.fetch(event_id)
+                if not event or (
+                    event["host"]["id"] != user_id
+                    and user_id not in [a["id"] for a in event.get("attendees", [])]
+                ):
+                    logger.warning(
+                        f"Unauthorized WebSocket connection attempt for event {event_id}"
+                    )
+                    return
+
+                # Get live query ID from Redis using get_redis()
+                live_id = await self.redis.get(f"live_query:{event_id}")
+                if not live_id:
+                    logger.warning(f"No live query found for event {event_id}")
+                    return
+
+                await websocket.accept()
+                logger.info(f"WebSocket connection accepted for event {event_id}")
+
+                try:
+                    notifications: asyncio.Queue = (
+                        await self.conn.get_live_notifications(live_id)
+                    )
+                    while True:
+                        try:
+                            if not websocket.connected:
+                                break
+
+                            notification = await notifications.get()
+                            if notification:
+                                await websocket.send(json.dumps(notification))
+
+                        except asyncio.QueueEmpty:
+                            break
+
+                except Exception as e:
+                    logger.error(f"WebSocket error: {str(e)}", exc_info=True)
+                finally:
+                    try:
+                        await self.conn.kill_live_query(live_id)
+                        await self.redis.delete(f"live_query:{event_id}")
+                        logger.info(f"Cleaned up resources for event {event_id}")
+                    except Exception as e:
+                        logger.error(f"Cleanup error: {str(e)}", exc_info=True)
+
+            except Exception as e:
+                logger.error(f"Live updates error: {str(e)}", exc_info=True)

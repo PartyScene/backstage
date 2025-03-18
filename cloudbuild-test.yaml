@@ -4,3 +4,19 @@ steps:
   env:
     - DB_USER=root
     - DB_PASSWORD=rootrm
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
+  
+substitutions:
+  _LOCATION: us-central1 # default value
+  
+# options:
+#   logging: CLOUD_LOGGING_ONLY 
+
+images:
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth'
+# - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events'
+# - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts'
+# - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users'
+# - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media'

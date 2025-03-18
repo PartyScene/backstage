@@ -2,31 +2,12 @@ import asyncio
 import pprint
 from hypercorn.config import Config
 from hypercorn.asyncio import serve
+from shared.microservice import client
 
 from auth.src import AuthMicroService
+from auth.src.connectors import init_db
+from auth.src.views.base import BaseView
 
 # Create app instance
-app = AuthMicroService(__name__)
-
-# Configure Hypercorn
-config = Config()
-config.bind = ["0.0.0.0:5510"]
-config.use_reloader = False
-config.worker_class = "uvloop"
-config.workers = 4
-config.accesslog = "-"
-config.errorlog = "-"
-config.keepalive_timeout = 120
-
-
-def main():
-    """Run the application with uvloop"""
-    # Register routes before startup
-    import uvloop
-
-    uvloop.install()
-    asyncio.run(serve(app, config))
-
-
-if __name__ == "__main__":
-    main()
+# app = AuthMicroService(__name__)
+app = client.MicroService("AUTH", init_db, BaseView)
