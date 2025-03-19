@@ -1,7 +1,3 @@
-import asyncio
-import pprint
-from hypercorn.config import Config
-from hypercorn.asyncio import serve
 from shared.microservice import client
 
 from events.src.connectors import init_db

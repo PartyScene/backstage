@@ -26,12 +26,12 @@ dictConfig(
             "console": {
                 "class": "logging.StreamHandler",
                 "formatter": "default",
-                "level": "INFO",
+                "level": "WARNING",
             }
         },
         "root": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": "WARNING",
         },
     }
 )
@@ -71,13 +71,13 @@ class MicroService(Quart):
         @self.after_request
         async def log_response(response):
             if response.status_code not in [200, 201, 204]:
-                logger.info(f"Response sent: {response.status_code}")
+                logger.warn(f"Response sent: {response.status_code}")
             return response
 
         @self.before_serving
         async def services():
             """Initialize services before app is being served."""
-            logger.info("Initializing services...")
+            logger.warn("Initializing services...")
             await self.init_services()
             self.register_routes()
             if self.microservice_instance == Microservice.EVENTS:
@@ -86,13 +86,13 @@ class MicroService(Quart):
         @self.after_serving
         async def cleanup():
             """Cleanup resources after app is being stopped."""
-            logger.info("Cleaning up resources...")
+            logger.warn("Cleaning up resources...")
             await self.clean_up()
 
     async def init_redis(self):
         """Initialize Redis connection"""
         try:
-            logger.info("Initializing Redis connection...")
+            logger.warn("Initializing Redis connection...")
             self.redis = Redis.from_url(
                 os.environ["REDIS_URI"], decode_responses=True, encoding="utf-8"
             )
@@ -114,11 +114,11 @@ class MicroService(Quart):
 
             # If this MicroService handles authentication, then Set JWT secret
             if self.microservice_instance == Microservice.AUTH:
-                logger.info("Setting JWT secret...")
+                logger.warn("Setting JWT secret...")
                 await self.set_shared_secret()
 
             else:
-                logger.info("Getting JWT secret...")
+                logger.warn("Getting JWT secret...")
                 await self.get_shared_secret()
 
             logger.info("All services initialized successfully")
@@ -133,14 +133,14 @@ class MicroService(Quart):
             # Check if secret already exists
             existing_secret = await self.redis.get("SECRET_KEY")
             if existing_secret:
-                logger.info("Using existing JWT secret from Redis")
+                logger.warn("Using existing JWT secret from Redis")
                 self.config["SECRET_KEY"] = existing_secret
             else:
                 # Generate and set new secret
-                logger.info("Generating new JWT secret")
+                logger.warn("Generating new JWT secret")
                 self.config["SECRET_KEY"] = secrets.token_hex(32)
                 await self.redis.set("SECRET_KEY", self.config["SECRET_KEY"])
-                logger.info("New JWT secret stored in Redis")
+                logger.warn("New JWT secret stored in Redis")
 
             # Set JWT secret key and initialize manager
             self.config["JWT_SECRET_KEY"] = self.config["SECRET_KEY"]
@@ -174,12 +174,12 @@ class MicroService(Quart):
         with detailed logging and error handling to prevent resource leaks.
         """
         try:
-            logger.info("Starting service cleanup process...")
+            logger.warn("Starting service cleanup process...")
 
             # Close SurrealDB connection
             if hasattr(self, "conn") and self.conn is not None:
                 try:
-                    logger.info("Closing SurrealDB connection...")
+                    logger.warn("Closing SurrealDB connection...")
                     # await self.conn._close_pools()
                     await self.pool_manager._close_pools()
                     logger.info("SurrealDB connection closed successfully")
@@ -192,7 +192,7 @@ class MicroService(Quart):
             # Close Redis connection
             if hasattr(self, "redis") and self.redis is not None:
                 try:
-                    logger.info("Closing Redis connection...")
+                    logger.warn("Closing Redis connection...")
                     await self.redis.close()
                     logger.info("Redis connection closed successfully")
                 except Exception as redis_close_error:
@@ -211,11 +211,11 @@ class MicroService(Quart):
 
     def register_routes(self):
         # Register routes
-        logger.info("Registering application routes...")
+        logger.warn("Registering application routes...")
         self.views.register(self)
 
-        logger.info("Printing Application Routes...")
-        logger.info(self.url_map)
+        logger.warn("Printing Application Routes...")
+        logger.warning(self.url_map)
 
     def register_websocket_routes(self):
         """Register WebSocket routes"""
