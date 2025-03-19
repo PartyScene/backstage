@@ -88,7 +88,7 @@ async def posts_app(mock_media_client):
             pass
 
     app.redis = AsyncRedisMock()
-    app.conn = await init_db(app)
+    app.conn, app.pool_manager = await init_db(app)
     try:
         async with app.app_context():
             await app.get_shared_secret()

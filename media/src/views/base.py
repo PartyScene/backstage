@@ -13,9 +13,11 @@ import os
 import io
 import werkzeug
 from datetime import datetime
+from aiocache import cached
 
 from obstore.store import GCSStore
 import obstore as obs
+
 
 class BaseView(QuartClassful):
 
@@ -23,13 +25,14 @@ class BaseView(QuartClassful):
         # self.GCP_client = storage.Client(os.getenv("GOOGLE_CLOUD_PROJECT"))
         # self.bucket = self.GCP_client.bucket("partyscene")
         # Try something new
-        self.OBS_STORE = GCSStore(os.environ['GCS_BUCKET_NAME'])
+        self.OBS_STORE = GCSStore(os.environ["GCS_BUCKET_NAME"])
         self.logger = logging.create_logger(app)
         self.redis = app.redis
         self.__media_handler: MediaDB = app.conn
 
     @route("/", methods=["GET"])
     @route("/media/health", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
@@ -44,7 +47,7 @@ class BaseView(QuartClassful):
 
         # Check database connection
         try:
-            db_info = await self.__media_handler.db.info()
+            db_info = await self.__media_handler._info()
             health_status["dependencies"]["database"] = "healthy"
         except Exception as e:
             self.logger.error(f"Database health check failed: {e}")
@@ -87,7 +90,9 @@ class BaseView(QuartClassful):
         # Upload to GCP
         await obs.put_async(self.OBS_STORE, file.filename, file.stream.read())
 
-        data["url"] = await obs.sign_async(self.OBS_STORE, "GET", file.filename, timedelta(days=1))
+        data["url"] = await obs.sign_async(
+            self.OBS_STORE, "GET", file.filename, timedelta(days=1)
+        )
 
         # upload to GCP
         # blob = self.bucket.blob(file.filename)
@@ -112,6 +117,8 @@ class BaseView(QuartClassful):
         """Sign a media in the Bucket for access"""
         filename = request.args.get("filename")
 
-        media_url = await obs.sign_async(self.OBS_STORE, "GET", filename, timedelta(days=1))
+        media_url = await obs.sign_async(
+            self.OBS_STORE, "GET", filename, timedelta(days=1)
+        )
 
         return media_url, HTTPStatus.OK

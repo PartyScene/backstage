@@ -4,19 +4,17 @@ import json
 
 from surrealdb import AsyncSurreal, RecordID
 from shared.utils import record_id_to_json
-
-import logging
-
-logger = logging.getLogger(__name__)
-
+from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 class PostsDB:
-    def __init__(self, db) -> None:
-        self.db: AsyncSurreal = db
+    def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
+        self.pool = pool
+        self.logger = logger
 
-    async def close(self):
-        self.db.close()
-
+    async def _info(self):
+        """Get database information."""
+        return await self.pool.execute_query("INFO FOR DB")
+        
     async def fetch_event_posts(self, id: str) -> dict:
         """
         Asynchronously fetches all posts associated with the given event.
@@ -30,8 +28,9 @@ class PostsDB:
                 FROM users WHERE ->posts[WHERE event == type::thing('events', $event_id)];
             """
         params = {"event_id": id}
-        result = await self.db.query(query, params)
-        logger.info(json.dumps(result, indent=4, default=str))
+        async with self.pool.acquire() as conn:
+            result = await conn.query(query, params)
+        self.logger.info(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
 
     async def create_comment(self, post_id, data, author) -> dict:
@@ -44,13 +43,14 @@ class PostsDB:
             Returns:
                 dict: A dictionary containing the result of the comment creation query.
         """
-        await self.db.let("user", RecordID("users", author))
-        await self.db.let("post", RecordID("posts", post_id))
-        query = """
-        RELATE ONLY $user -> comments -> $post SET content = $content;
-        """
-        params = {"content": data["content"]}
-        result = await self.db.query(query, params)
+        async with self.pool.acquire() as conn:
+            await conn.let("user", RecordID("users", author))
+            await conn.let("post", RecordID("posts", post_id))
+            query = """
+            RELATE ONLY $user -> comments -> $post SET content = $content;
+            """
+            params = {"content": data["content"]}
+            result = await conn.query(query, params)
         return record_id_to_json(result)
 
     async def fetch_comments(self, post_id: str) -> dict:
@@ -61,12 +61,10 @@ class PostsDB:
             Returns:
                 dict: A dictionary containing the result of the comment fetch query.
         """
-        query = """
-                SELECT ->comments.*
-                FROM users WHERE ->comments[WHERE out = type::thing('posts', $post_id)];
-            """
+        query = """ SELECT ->comments.* FROM users WHERE ->comments[WHERE out = type::thing('posts', $post_id)];"""
         params = {"post_id": post_id}
-        result = await self.db.query(query, params)
+        async with self.pool.acquire() as conn:
+            result = await conn.query(query, params)
         return record_id_to_json(result)
 
     async def delete_comment(self, comment_id):
@@ -79,8 +77,8 @@ class PostsDB:
         Raises:
             Exception: If the deletion operation fails.
         """
-
-        result = await self.db.delete(RecordID("comments", comment_id))
+        async with self.pool.acquire() as conn:
+            result = await conn.delete(RecordID("comments", comment_id))
         return record_id_to_json(result)
 
     async def create_post(self, data, media_links, author) -> dict:
@@ -93,20 +91,21 @@ class PostsDB:
             Returns:
                 dict: A dictionary containing the result of the post creation query.
         """
-        await self.db.let("users", RecordID("users", author))
-        await self.db.let(
-            "media", [RecordID("media", media["id"]) for media in media_links]
-        )
-        query = """
-        RELATE ONLY $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
-        """
-        params = {
-            "content": data["content"],
-            "media_links": media_links,
-            "event": RecordID("events", data["event"]),
-        }
-        result = await self.db.query(query, params)
-        logger.info(json.dumps(result, indent=4, default=str))
+        async with self.pool.acquire() as conn:
+            await conn.let("users", RecordID("users", author))
+            await conn.let(
+                "media", [RecordID("media", media["id"]) for media in media_links]
+            )
+            query = """
+            RELATE ONLY $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
+            """
+            params = {
+                "content": data["content"],
+                "media_links": media_links,
+                "event": RecordID("events", data["event"]),
+            }
+            result = await conn.query(query, params)
+        self.logger.info(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
 
     async def delete_post(self, id: str):
@@ -119,8 +118,8 @@ class PostsDB:
         Raises:
             Exception: If the deletion operation fails.
         """
-
-        result = await self.db.delete(RecordID("posts", id))
+        async with self.pool.acquire() as conn:
+            result = await conn.delete(RecordID("posts", id))
         return record_id_to_json(result)
 
     async def fetch_post(self, id: str) -> dict:
@@ -133,19 +132,56 @@ class PostsDB:
         Raises:
             Exception: If the deletion operation fails.
         """
-
-        result = await self.db.select(RecordID("posts", id))
+        async with self.pool.acquire() as conn:
+            result = await conn.select(RecordID("posts", id))
         if not result:
             return None
-        logger.debug(json.dumps(result, indent=4, default=str))
+        self.logger.debug(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
 
 
-async def init_db(app: Quart) -> PostsDB:
-    db = AsyncSurreal(os.getenv("SURREAL_URI"))
-    
-    await db.signin(
-        {"username": os.getenv("SURREAL_USER"), "password": os.getenv("SURREAL_PASS")}
+async def init_db(app) -> PostsDB:
+    """
+    Initialize the database connection pool and return an PostsDB instance.
+
+    Args:
+        app: The Quart application instance
+
+    Returns:
+        PostsDB: Initialized database connector
+    """
+    SCHEMA_FILE = os.getenv("SCHEMA_FILE")
+    SURREAL_URI = os.getenv("SURREAL_URI")
+    SURREAL_USER = os.getenv("SURREAL_USER")
+    SURREAL_PASS = os.getenv("SURREAL_PASS")
+    NAMESPACE = "partyscene"
+    DATABASE = "partyscene"
+
+    # Create connection pool manager
+    pool_manager = SurrealDBPoolManager()
+
+    # Create a connection pool for events service
+    pool = await pool_manager.create_pool(
+        name="posts_pool",
+        uri=SURREAL_URI,
+        credentials={"username": SURREAL_USER, "password": SURREAL_PASS},
+        namespace=NAMESPACE,
+        database=DATABASE,
+        min_connections=2,
+        max_connections=10,
+        max_idle_time=300,
+        connection_timeout=5.0,
+        acquisition_timeout=10.0,
+        health_check_interval=30,
+        max_usage_count=1000,
+        connection_retry_attempts=3,
+        connection_retry_delay=1.0,
+        schema_file=SCHEMA_FILE,
+        reset_on_return=True,
+        log_queries=True,
     )
-    await db.use("partyscene", "partyscene")
-    return PostsDB(db)
+
+    # Create PostsDB instance
+    posts_db = PostsDB(pool, app.logger)
+
+    return posts_db, pool_manager

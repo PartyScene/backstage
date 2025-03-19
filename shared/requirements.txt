@@ -10,3 +10,4 @@ surrealdb
 python-dotenv
 hypercorn[uvloop]
 purreal
+aiocache

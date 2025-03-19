@@ -26,11 +26,9 @@ class BaseView(QuartClassful):
         self.conn: AuthDB = app.conn
         self.redis: Redis = app.redis
         self.__notification_manager = NotificationManager()
-    
+
     def generate_jwt_secret(self, identity):
-        return create_access_token(
-                identity=identity, expires_delta=timedelta(days=1)
-            )
+        return create_access_token(identity=identity, expires_delta=timedelta(days=1))
 
     @route("/", methods=["GET"])
     async def index(self):

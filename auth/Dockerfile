@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # These dependencies should exist at the top layer for best caching practices
 COPY shared/ /shared/
-COPY purreal/ /purreal/
 COPY init/schema.surql /home/schema.surql
 COPY tests/requirements-test.txt /tests/requirements-test.txt
 

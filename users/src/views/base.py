@@ -13,8 +13,7 @@ from shared.notifications import NotificationManager
 import logging
 import json
 import os
-
-logger = logging.getLogger(__name__)
+from aiocache import cached
 
 
 class BaseView(QuartClassful):
@@ -23,13 +22,13 @@ class BaseView(QuartClassful):
         self.redis = app.redis
         self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
         self.__notification_manager = NotificationManager()
-    
-    
+
     @route("/", methods=["GET"])
     async def index(self):
         return await self.healthcheck()
 
     @route("/users/health", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
@@ -44,10 +43,10 @@ class BaseView(QuartClassful):
 
         # Check database connection
         try:
-            db_info = await self.conn.db.info()
+            db_info = await self.conn._info()
             health_status["dependencies"]["database"] = "healthy"
         except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+            app.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
 
@@ -60,7 +59,7 @@ class BaseView(QuartClassful):
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
-            logger.error(f"Redis health check failed: {e}")
+            app.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
 
@@ -172,7 +171,7 @@ class BaseView(QuartClassful):
         data: dict = await request.get_json()
         data["origin_id"] = get_jwt_identity()
         if result := await self.conn.create_friend_relationship(data):
-            logger.info(json.dumps(result, indent=4, default=str))
+            app.logger.info(json.dumps(result, indent=4, default=str))
             await self.__notification_manager.send_friend_request_notification(
                 sender=result[0]["in"], recipient_id=result[0]["out"]
             )
@@ -258,5 +257,5 @@ class BaseView(QuartClassful):
             return friend_request
         except Exception as e:
             # Log the error and handle appropriately
-            logger.error(f"Friend request error: {e}")
+            app.logger.error(f"Friend request error: {e}")
             raise

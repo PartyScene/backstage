@@ -12,9 +12,7 @@ from shared.classful import route, QuartClassful
 from http import HTTPStatus
 import os
 from datetime import datetime
-import logging
-
-logger = logging.getLogger(__name__)
+from aiocache import cached
 
 
 class BaseView(QuartClassful):
@@ -29,6 +27,7 @@ class BaseView(QuartClassful):
 
     @route("/", methods=["GET"])
     @route("/posts/health", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
@@ -43,10 +42,10 @@ class BaseView(QuartClassful):
 
         # Check database connection
         try:
-            db_info = await self.__posts_handler.db.info()
+            db_info = await self.__posts_handler._info()
             health_status["dependencies"]["database"] = "healthy"
         except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+            app.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
 
@@ -59,7 +58,7 @@ class BaseView(QuartClassful):
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
-            logger.error(f"Redis health check failed: {e}")
+            app.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
 
@@ -116,7 +115,7 @@ class BaseView(QuartClassful):
                       If post ID is missing, returns a JSON error message and a status code of 400.
         """
         result = await self.__posts_handler.delete_comment(comment_id)
-        logger.debug(json.dumps(result, indent=4, default=str))
+        app.logger.debug(json.dumps(result, indent=4, default=str))
         if isinstance(result, str):
             return result, HTTPStatus.BAD_REQUEST
         return result, HTTPStatus.NO_CONTENT

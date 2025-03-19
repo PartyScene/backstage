@@ -12,7 +12,6 @@ class TestAuthentication(TestAuthBase):
         data = await response.get_json()
         assert data["status"] == "healthy"
 
-
     async def test_user_registration(self, auth_client, mock_user):
         """Test user registration"""
         response = await self.register_user(auth_client, mock_user)

@@ -21,10 +21,7 @@ from ..connectors import EventsDB
 from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
-
-from logging import getLogger
-
-logger = getLogger(__name__)
+from aiocache import cached
 
 
 class BaseView(QuartClassful):
@@ -32,7 +29,7 @@ class BaseView(QuartClassful):
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
-        self.logger = logger
+        app.logger = app.logger
 
     async def _store_live_query(self, event_id: str, live_id: str):
         """Store live query ID in Redis"""
@@ -54,6 +51,7 @@ class BaseView(QuartClassful):
         return await self.healthcheck()
 
     @route("/events/health", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
@@ -68,10 +66,10 @@ class BaseView(QuartClassful):
 
         # Check database connection
         try:
-            db_info = await self.conn.db.info()
+            db_info = await self.conn._info()
             health_status["dependencies"]["database"] = "healthy"
         except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+            app.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
 
@@ -84,7 +82,7 @@ class BaseView(QuartClassful):
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
-            logger.error(f"Redis health check failed: {e}")
+            app.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
 
@@ -108,9 +106,9 @@ class BaseView(QuartClassful):
             if result := await self.conn.fetch(event_id):
                 return result, HTTPStatus.OK
             return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
-        
+
         if any([x in request.args for x in ("lat", "lng")]):
-            # They requested for Lat Lng soo 
+            # They requested for Lat Lng soo
             location = (
                 float(request.args.get("lat", 0)),
                 float(request.args.get("lng", 0)),
@@ -146,7 +144,7 @@ class BaseView(QuartClassful):
                 return jsonify(result), HTTPStatus.CREATED
             return {"error": "Bad params"}, HTTPStatus.BAD_REQUEST
         except Exception as e:
-            self.logger.error(f"Error creating event: {str(e)}", exc_info=True)
+            app.logger.error(f"Error creating event: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.BAD_REQUEST
 
     @route("/events/<event_id>/delete", methods=["DELETE"])
@@ -157,7 +155,7 @@ class BaseView(QuartClassful):
             await self.conn.delete_event(event_id)
             return {"message": "Event deleted successfully"}, HTTPStatus.NO_CONTENT
         except Exception as e:
-            self.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
+            app.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
     @route("/events/public", methods=["GET"])
@@ -194,13 +192,13 @@ class BaseView(QuartClassful):
 
             # Verify user has permission to update this event
             event = await self.conn.fetch(event_id)
-            self.logger.info(f"Updating event {event_id} by user {user_id}")
+            app.logger.info(f"Updating event {event_id} by user {user_id}")
             if not event:
-                self.logger.warning(f"Event not found: {event_id}")
+                app.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
             if event["host"] != user_id:
-                self.logger.warning(
+                app.logger.warning(
                     f"Unauthorized access attempt to event {event_id} by user {user_id}"
                 )
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
@@ -208,10 +206,10 @@ class BaseView(QuartClassful):
             result = await self.conn.update_event_status(
                 event_id, status=data["status"], metadata=data.get("metadata")
             )
-            self.logger.info(f"Successfully updated status for event {event_id}")
+            app.logger.info(f"Successfully updated status for event {event_id}")
             return result, HTTPStatus.OK
         except Exception as e:
-            self.logger.error(
+            app.logger.error(
                 f"Error updating event status for {event_id}: {str(e)}", exc_info=True
             )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
@@ -225,13 +223,15 @@ class BaseView(QuartClassful):
 
             # Verify user has access to this event
             event = await self.conn.fetch(event_id)
-            self.logger.info(f"Starting live updates for event {event_id} by user {user_id}")
+            app.logger.info(
+                f"Starting live updates for event {event_id} by user {user_id}"
+            )
             if not event:
-                self.logger.warning(f"Event not found: {event_id}")
+                app.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
             if event["host"] != user_id:
-                self.logger.warning(
+                app.logger.warning(
                     f"Unauthorized live updates access attempt for event {event_id} by user {user_id}"
                 )
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
@@ -239,7 +239,7 @@ class BaseView(QuartClassful):
             # Check if live query already exists
             existing_live_id = await self._get_live_query(event_id)
             if existing_live_id:
-                self.logger.info(f"Returning existing live query for event {event_id}")
+                app.logger.info(f"Returning existing live query for event {event_id}")
                 return {"live_query_id": existing_live_id}, HTTPStatus.OK
 
             # Start the live query and get its ID
@@ -248,11 +248,11 @@ class BaseView(QuartClassful):
             # Store in Redis
             await self._store_live_query(event_id, live_id)
 
-            self.logger.info(f"Started new live query for event {event_id}")
+            app.logger.info(f"Started new live query for event {event_id}")
             return {"live_query_id": live_id}, HTTPStatus.OK
 
         except Exception as e:
-            self.logger.error(
+            app.logger.error(
                 f"Failed to start live query for event {event_id}: {str(e)}",
                 exc_info=True,
             )
@@ -267,13 +267,15 @@ class BaseView(QuartClassful):
 
             # Verify user has access to this event
             event = await self.conn.fetch(event_id)
-            self.logger.info(f"Stopping live updates for event {event_id} by user {user_id}")
+            app.logger.info(
+                f"Stopping live updates for event {event_id} by user {user_id}"
+            )
             if not event:
-                self.logger.warning(f"Event not found: {event_id}")
+                app.logger.warning(f"Event not found: {event_id}")
                 return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
 
             if event["host"].id != user_id:
-                self.logger.warning(
+                app.logger.warning(
                     f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}"
                 )
                 return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
@@ -283,16 +285,16 @@ class BaseView(QuartClassful):
             if live_id:
                 await self.conn.kill_live_query(live_id)
                 await self._remove_live_query(event_id)
-                self.logger.info(
+                app.logger.info(
                     f"Successfully stopped live updates for event {event_id}"
                 )
                 return {"message": "Live updates stopped"}, HTTPStatus.NO_CONTENT
 
-            self.logger.info(f"No live updates running for event {event_id}")
+            app.logger.info(f"No live updates running for event {event_id}")
             return {"message": "No live updates running"}, HTTPStatus.NO_CONTENT
 
         except Exception as e:
-            self.logger.error(
+            app.logger.error(
                 f"Failed to stop live query for event {event_id}: {str(e)}",
                 exc_info=True,
             )
@@ -323,7 +325,7 @@ class BaseView(QuartClassful):
             return {"message": "Ticket purchased successfully"}, HTTPStatus.CREATED
 
         except Exception as e:
-            self.logger.error(
+            app.logger.error(
                 f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
             )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR

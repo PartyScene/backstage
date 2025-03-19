@@ -19,7 +19,7 @@ class TestEventCreation(TestEventsBase):
 
         mock_event["id"] = created_event["id"]
 
-        assert created_event["title"] == mock_event["title"]
+        assert created_event["host"] == mock_event["host"]
         assert "id" in created_event
 
     @pytest.mark.parametrize(

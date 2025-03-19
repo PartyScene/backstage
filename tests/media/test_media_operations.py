@@ -14,7 +14,7 @@ fake = Faker()
 @pytest.mark.asyncio
 class TestMediaOperations(TestMediaBase):
     def generate_random_image(self, color):
-        image = Image.new('RGB', (100, 100), color=color)
+        image = Image.new("RGB", (100, 100), color=color)
         # image.tobytes()
         img_bytes = io.BytesIO()
         image.save(img_bytes, format="JPEG")
@@ -27,7 +27,11 @@ class TestMediaOperations(TestMediaBase):
         files = {
             "file": FileStorage(
                 self.generate_random_image(color),
-                filename= mock_event["id"] + "/" + str(color) + "/" + fake.file_name(category="image"),
+                filename=mock_event["id"]
+                + "/"
+                + str(color)
+                + "/"
+                + fake.file_name(category="image"),
                 content_type="image/jpeg",
             )
         }

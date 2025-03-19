@@ -31,7 +31,7 @@ dictConfig(
         },
         "root": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": "DEBUG",
         },
     }
 )
@@ -40,9 +40,15 @@ logger = logging.getLogger(__name__)
 
 
 class MicroService(Quart):
-    def __init__(self, instance: str, initialize_database: Callable, views: QuartClassful, *args, **kw):
-        self.DEBUG = False
-        super(MicroService, self).__init__(__name__,*args, **kw)
+    def __init__(
+        self,
+        instance: str,
+        initialize_database: Callable,
+        views: QuartClassful,
+        *args,
+        **kw,
+    ):
+        super(MicroService, self).__init__(__name__, *args, **kw)
 
         self.conn = None
         self.pool_manager: SurrealDBPoolManager = None
@@ -55,7 +61,6 @@ class MicroService(Quart):
         if os.getenv("ENVIRONMENT") == "dev":
             self.config["DEBUG"] = True
             self.config["TESTING"] = True
-            self.DEBUG = True
 
         self.config["REDIS_DECODE_RESPONSES"] = True
 
@@ -65,7 +70,7 @@ class MicroService(Quart):
 
         @self.after_request
         async def log_response(response):
-            if response.status_code not in [200, 201]:
+            if response.status_code not in [200, 201, 204]:
                 logger.info(f"Response sent: {response.status_code}")
             return response
 
@@ -111,7 +116,7 @@ class MicroService(Quart):
             if self.microservice_instance == Microservice.AUTH:
                 logger.info("Setting JWT secret...")
                 await self.set_shared_secret()
-            
+
             else:
                 logger.info("Getting JWT secret...")
                 await self.get_shared_secret()
@@ -145,7 +150,7 @@ class MicroService(Quart):
         except Exception as e:
             logger.error(f"Failed to handle JWT secret: {str(e)}", exc_info=True)
             raise
-    
+
     async def get_shared_secret(self):
         """Get JWT secret from Redis"""
         try:
@@ -208,13 +213,6 @@ class MicroService(Quart):
         # Register routes
         logger.info("Registering application routes...")
         self.views.register(self)
-
-        logger.info("Printing Application Routes...")
-        logger.info(self.url_map)
-
-
-        # Register WebSocket routes
-        self.register_websocket_routes()
 
         logger.info("Printing Application Routes...")
         logger.info(self.url_map)

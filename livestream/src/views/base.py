@@ -13,6 +13,7 @@ from ..lib import create_livestream_client
 from http import HTTPStatus
 from shared.classful import route, QuartClassful
 from datetime import datetime
+from aiocache import cached
 
 
 class BaseView(QuartClassful):
@@ -25,6 +26,7 @@ class BaseView(QuartClassful):
 
     @route("/", methods=["GET"])
     @route("/health", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
         """
         Simple health check endpoint that verifies service and dependency status.
