@@ -8,6 +8,6 @@ httpx
 novu-py
 surrealdb
 python-dotenv
-hypercorn[uvloop]
+granian[uvloop]
 purreal
 aiocache

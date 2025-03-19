@@ -58,6 +58,7 @@ def event_loop():
 async def auth_app():
     """Create a session-scoped auth app"""
 
+
     from auth.run import app
     from auth.src.connectors import init_db
 

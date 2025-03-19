@@ -43,11 +43,14 @@ class MediaDB:
             CREATE ONLY media SET type = $type, filename = $filename, creator = type::thing('users', $creator), event = type::thing('events', $event) RETURN AFTER;
             """
             result = await conn.query(query, data)
-            if "ERR" in result:
+
+            if isinstance(result, dict):
+                return record_id_to_json(result)
+            
+            else:
                 raise Exception(
                     f"Error creating media record: {result}"
                 )  # Handle error case
-            return record_id_to_json(result)
 
 
 async def init_db(app) -> MediaDB:

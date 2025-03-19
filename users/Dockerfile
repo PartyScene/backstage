@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
+COPY --from=test /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY users/ ./
 COPY shared/ /shared/
 
@@ -63,11 +64,12 @@ USER myuser
 # Expose port
 EXPOSE 5510
 
-# Run with Hypercorn
-CMD ["hypercorn", "run:app", \
-     "--bind", "0.0.0.0:5510", \
+# Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
+CMD ["granian", \
+     "--loop", "uvloop", \
+     "--host", "0.0.0.0", \
+     "--port", "5510", \
      "--workers", "2", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-", \
-     "--worker-class", "uvloop", \
-     "--keep-alive", "120"]
+     "--access-log", \
+     "--interface", "asgi", \
+     "run:app"]

@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
+COPY --from=test /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY livestream/ ./
 COPY shared/ /shared/
 

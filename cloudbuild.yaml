@@ -6,19 +6,19 @@ steps:
     - DB_PASSWORD=rootrm
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts', '-f', 'posts/Dockerfile', '.']
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts',  '-f', 'posts/Dockerfile', '.']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users', '-f', 'users/Dockerfile', '.']
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',  '-f', 'users/Dockerfile', '.']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media', '-f', 'media/Dockerfile', '.']
+  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media',  '-f', 'media/Dockerfile', '.']
 
 - name: 'gcr.io/cloud-builders/kubectl'
   args:
@@ -34,6 +34,7 @@ substitutions:
   
 options:
   logging: CLOUD_LOGGING_ONLY 
+  machineType: E2_HIGHCPU_32
 
 images:
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth'

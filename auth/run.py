@@ -1,6 +1,5 @@
 from shared.microservice import client
 
-from auth.src import AuthMicroService
 from auth.src.connectors import init_db
 from auth.src.views.base import BaseView
 

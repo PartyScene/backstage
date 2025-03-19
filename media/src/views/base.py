@@ -31,6 +31,10 @@ class BaseView(QuartClassful):
         self.__media_handler: MediaDB = app.conn
 
     @route("/", methods=["GET"])
+    async def index(self):
+        return await self.healthcheck()
+
+
     @route("/media/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
@@ -90,9 +94,9 @@ class BaseView(QuartClassful):
         # Upload to GCP
         await obs.put_async(self.OBS_STORE, file.filename, file.stream.read())
 
-        data["url"] = await obs.sign_async(
-            self.OBS_STORE, "GET", file.filename, timedelta(days=1)
-        )
+        # data["url"] = await obs.sign_async(
+        #     self.OBS_STORE, "GET", file.filename, timedelta(days=1)
+        # )
 
         # upload to GCP
         # blob = self.bucket.blob(file.filename)

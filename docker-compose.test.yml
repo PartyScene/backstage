@@ -1,7 +1,7 @@
-networks:
-  default:
-    external: true
-    name: cloudbuild
+# networks:
+#   default:
+#     external: true
+#     name: cloudbuild
 
 services:
   microservices.auth:
@@ -9,7 +9,7 @@ services:
     build:
       context: .
       dockerfile: auth/Dockerfile
-      target: test
+      target: prod
     depends_on:
       - redis
     restart: on-failure
@@ -36,13 +36,8 @@ services:
   #     target: test
   #     context: .
   #     dockerfile: livestream/Dockerfile
-  #   # networks: 
-  #   #   - backstage_network
-  #   # env_file:
-  #   #   - .env
   #   volumes:
   #     - ./init/schema.surql:/home/schema.surql
-  #     # - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
   #   depends_on:
   #     microservices.events:
   #       condition: service_completed_successfully
