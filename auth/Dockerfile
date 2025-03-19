@@ -67,7 +67,7 @@ USER myuser
 EXPOSE 5510
 
 
-CMD ["granian", \
+CMD ["python3", "-m", "granian", \
      "--loop", "uvloop", \
      "--host", "0.0.0.0", \
      "--port", "5510", \
