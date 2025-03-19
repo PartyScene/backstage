@@ -71,6 +71,7 @@ class MicroService(Quart):
         @self.after_request
         async def log_response(response):
             if response.status_code not in [200, 201, 204]:
+                logger.warn(f"Request body: {await request.get_json()}")
                 logger.warn(f"Response sent: {response.status_code}")
             return response
 

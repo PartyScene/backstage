@@ -1,7 +1,7 @@
-# networks:
-#   default:
-#     external: true
-#     name: cloudbuild
+networks:
+  default:
+    external: true
+    name: cloudbuild
 
 services:
   microservices.auth:
@@ -9,7 +9,7 @@ services:
     build:
       context: .
       dockerfile: auth/Dockerfile
-      target: prod
+      target: test
     depends_on:
       - redis
     restart: on-failure
@@ -18,17 +18,17 @@ services:
     environment:
       - SCHEMA_FILE=/home/schema.surql
 
-  # microservices.media:
-  #   container_name: microservices.media
-  #   build:
-  #     target: test
-  #     context: .
-  #     dockerfile: media/Dockerfile
-  #   depends_on:
-  #     microservices.auth:
-  #       condition: service_completed_successfully
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
+  microservices.media:
+    container_name: microservices.media
+    build:
+      target: test
+      context: .
+      dockerfile: media/Dockerfile
+    depends_on:
+      microservices.auth:
+        condition: service_completed_successfully
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
 
   # microservices.livestream:
   #   container_name: microservices.livestream
@@ -42,41 +42,41 @@ services:
   #     microservices.events:
   #       condition: service_completed_successfully
 
-  # microservices.events:
-  #   container_name: microservices.events
-  #   build:
-  #     target: test
-  #     context: .
-  #     dockerfile: events/Dockerfile
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   depends_on:
-  #     microservices.auth:
-  #       condition: service_completed_successfully
+  microservices.events:
+    container_name: microservices.events
+    build:
+      target: test
+      context: .
+      dockerfile: events/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.auth:
+        condition: service_completed_successfully
 
-  # microservices.posts:
-  #   container_name: microservices.posts
-  #   build:
-  #     target: test
-  #     context: .
-  #     dockerfile: posts/Dockerfile
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   depends_on:
-  #     microservices.events:
-  #       condition: service_completed_successfully
+  microservices.posts:
+    container_name: microservices.posts
+    build:
+      target: test
+      context: .
+      dockerfile: posts/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.events:
+        condition: service_completed_successfully
 
-  # microservices.users:
-  #   container_name: microservices.users
-  #   build: 
-  #     target: test
-  #     context: .
-  #     dockerfile: users/Dockerfile
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   depends_on:
-  #     microservices.posts:
-  #       condition: service_completed_successfully
+  microservices.users:
+    container_name: microservices.users
+    build: 
+      target: test
+      context: .
+      dockerfile: users/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.posts:
+        condition: service_completed_successfully
 
   redis:
     image: redis

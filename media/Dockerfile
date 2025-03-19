@@ -79,4 +79,7 @@ CMD ["python3", "-m", "granian", \
      "--workers", "2", \
      "--access-log", \
      "--interface", "asgi", \
+     "--log-level", "warning", \
+     "--task-impl", "rust", \
+     "--runtime-mode", "mt", \
      "run:app"]

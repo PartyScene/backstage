@@ -77,4 +77,5 @@ CMD ["hypercorn", "run:app", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
      "--worker-class", "uvloop", \
+     "--log-level", "warning", \
      "--keep-alive", "120"]
