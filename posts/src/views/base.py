@@ -26,6 +26,9 @@ class BaseView(QuartClassful):
         self.redis = app.redis
 
     @route("/", methods=["GET"])
+    async def index(self):
+        return await self.healthcheck()
+        
     @route("/posts/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):

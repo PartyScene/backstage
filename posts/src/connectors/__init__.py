@@ -134,8 +134,6 @@ class PostsDB:
         """
         async with self.pool.acquire() as conn:
             result = await conn.select(RecordID("posts", id))
-        if not result:
-            return None
         self.logger.debug(json.dumps(result, indent=4, default=str))
         return record_id_to_json(result)
 
