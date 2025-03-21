@@ -94,8 +94,13 @@ class BaseView(QuartClassful):
 
         return jsonify(health_status), status_code
 
-    @route("/events", methods=["GET"])
     @route("/events/<event_id>", methods=["GET"])
+    @jwt_required
+    async def fetch_event(self, event_id):
+        """This endpoints returns a specific event"""
+        return await self.fetch_events(event_id)
+
+    @route("/events", methods=["GET"])
     @jwt_required
     async def fetch_events(self, event_id=None):
         """This endpoints returns all the events"""

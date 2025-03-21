@@ -72,9 +72,8 @@ CMD ["python3", "-m", "granian", \
      "--host", "0.0.0.0", \
      "--port", "5510", \
      "--workers", "2", \
-     "--access-log", \
      "--interface", "asgi", \
-     "--log-level", "warning", \
+     "--no-log", \
      "--task-impl", "rust", \
      "--runtime-mode", "mt", \
      "run:app"]

@@ -10,6 +10,7 @@ from quart import (
 from quart.datastructures import FileStorage
 from ..lib import create_livestream_client
 
+from quart_jwt
 from http import HTTPStatus
 from shared.classful import route, QuartClassful
 from datetime import datetime
@@ -70,6 +71,7 @@ class BaseView(QuartClassful):
         return jsonify(health_status), status_code
 
     @route("/scenes/<event_id>", methods=["GET"])
+    @jwt_required
     async def get_livestream(self, event_id):
         try:
             stream_info = await self.livestream.get_stream(event_id)

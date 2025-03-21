@@ -21,7 +21,7 @@ services:
   microservices.media:
     container_name: microservices.media
     build:
-      target: test
+      target: prod
       context: .
       dockerfile: media/Dockerfile
     depends_on:
