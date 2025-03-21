@@ -28,11 +28,11 @@ class EventsDB:
                 data["host"] = RecordID("users", data["host"])
                 data["location"] = {
                     "address": data.get("location"),
-                    "coordinates": data.pop("coordinates"),
+                    "coordinates": tuple(data.pop("coordinates")),
                 }
 
                 result = await conn.create("events", data)
-                self.logger.info(json.dumps(result, indent=4, default=str))
+                self.logger.warning(json.dumps(result, indent=4, default=str))
                 result = await conn.select(result["id"])
                 if "ERR" in result:
                     raise Exception(
