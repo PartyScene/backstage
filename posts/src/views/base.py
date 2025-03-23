@@ -145,8 +145,7 @@ class BaseView(QuartClassful):
                       If media upload fails, returns a JSON error message and a status code of 500.
         """
         """"""
-        data = await request.form
-        data = dict(data)
+        data = (await request.form).to_dict()
         content = data.get("content")
 
         if not content:

@@ -2,13 +2,23 @@ import pytest_asyncio
 import pytest
 import urllib
 from quart.testing import QuartClient
-
+from PIL import Image
+import io
+from typing import IO
 
 class TestEventsBase:
-    async def create_event(self, client: QuartClient, event_data: dict, bearer):
+    def generate_random_image(self, color = "blue") -> IO[bytes]:
+        image = Image.new("RGB", (100, 100), color=color)
+        # image.tobytes()
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format="JPEG")
+        img_bytes.seek(0)
+        return img_bytes
+
+    async def create_event(self, client: QuartClient, event_data: dict, files, bearer):
         """Helper method to create an event"""
         return await client.post(
-            "/events", json=event_data, headers={"Authorization": f"Bearer {bearer}"}
+            "/events", form=event_data, files=files, headers={"Authorization": f"Bearer {bearer}"}
         )
 
     async def update_event(

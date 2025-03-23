@@ -90,9 +90,11 @@ class BaseView(QuartClassful):
         data = await request.form
         data = data.to_dict()
         data["creator"] = get_jwt_identity()
+        data["filename"] = file.filename
 
         # Upload to GCP
-        await obs.put_async(self.OBS_STORE, file.filename, file.stream.read())
+        file.stream.seek(0) # Reset the stream position
+        await obs.put_async(self.OBS_STORE, file.filename, file.stream)
 
         # data["url"] = await obs.sign_async(
         #     self.OBS_STORE, "GET", file.filename, timedelta(days=1)
@@ -108,7 +110,7 @@ class BaseView(QuartClassful):
 
         # # More fields attached
         # data["url"] = blob.media_link
-        self.logger.info(data)
+        self.logger.warn(data)
 
         # # uncomment this line
         # # blob.make_public() # Permissions are really messed up idk -- error : google.api_core.exceptions.BadRequest: 400 GET https://storage.googleapis.com/storage/v1/b/partyscene/o/file/acl?prettyPrint=false: Cannot get legacy ACL for an object when uniform bucket-level access is enabled. Read more at https://cloud.google.com/storage/docs/uniform-bucket-level-acces

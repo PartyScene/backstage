@@ -149,7 +149,7 @@ def mock_event():
         "title": fake.catch_phrase(),
         "description": fake.text(),
         "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
-        "coordinates": fake.latlng(),
+        "coordinates": str(fake.latitude()) + "," + str(fake.longitude()),
         "location": fake.address(),
         "price": fake.numerify("##"),
         "host": "test",

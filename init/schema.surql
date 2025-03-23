@@ -26,11 +26,12 @@ DEFINE FIELD OVERWRITE host ON TABLE events TYPE record<users>;
 DEFINE FIELD OVERWRITE created_at ON TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE time ON TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE categories ON TABLE events TYPE array<string> DEFAULT [];
-DEFINE FIELD OVERWRITE tags ON TABLE events TYPE array<string> DEFAULT [];
 DEFINE FIELD OVERWRITE location ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE location.address ON TABLE events TYPE string;
-DEFINE FIELD OVERWRITE location.coordinates ON TABLE events TYPE geometry<point>;
+DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE object;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
+DEFINE FIELD OVERWRITE media ON TABLE events TYPE array<record<media>> DEFAULT []; 
 
 -- Let's define a table for livestreams
 DEFINE TABLE IF NOT EXISTS livestreams schemafull;
@@ -42,7 +43,7 @@ DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;
 DEFINE FIELD OVERWRITE event ON TABLE livestreams TYPE record<events>;
 
 -- A table for posts
-DEFINE TABLE IF NOT EXISTS posts TYPE RELATIon IN users TO media;
+DEFINE TABLE IF NOT EXISTS posts TYPE RELATION IN users TO media;
 DEFINE FIELD OVERWRITE out ON TABLE posts TYPE record<media>;
 DEFINE FIELD OVERWRITE in ON TABLE posts TYPE record<users>;
 DEFINE FIELD OVERWRITE content ON TABLE posts TYPE string;
@@ -51,14 +52,14 @@ DEFINE FIELD OVERWRITE metadata ON TABLE posts FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE event ON TABLE posts TYPE record<events>;
 
 -- A table for comments
-DEFINE TABLE IF NOT EXISTS comments TYPE RELATIon IN users TO posts;
+DEFINE TABLE IF NOT EXISTS comments TYPE RELATION IN users TO posts;
 DEFINE FIELD OVERWRITE out ON TABLE comments TYPE record<posts>;
 DEFINE FIELD OVERWRITE in ON TABLE comments TYPE record<users>;
 DEFINE FIELD OVERWRITE content ON TABLE comments TYPE string;
 DEFINE FIELD OVERWRITE created_at ON TABLE comments TYPE datetime DEFAULT time::now();
 
 -- A table for friends
-DEFINE TABLE IF NOT EXISTS friends TYPE RELATIon IN users to users;
+DEFINE TABLE IF NOT EXISTS friends TYPE RELATION IN users to users;
 DEFINE FIELD OVERWRITE out ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE in ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();
@@ -68,8 +69,8 @@ DEFINE TABLE IF NOT EXISTS media SCHEMAFULL;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON media TYPE "image" | "video" | "vod";
 
-DEFINE FIELD OVERWRITE url ON media 
-  VALUE <future> {http::get("http://34.144.227.188/media/sign?filename=${$this.filename}")} ASSERT string::len($value) > 0 ;
+DEFINE FIELD OVERWRITE url ON media VALUE "https://fastly.picsum.photos/id/866/200/300.jpg?hmac=rcadCENKh4rD6MAp6V_ma-AyWv641M4iiOpe1RyFHeI"  ASSERT string::len($value) > 0 ;
+  -- VALUE <future> {http::get("http://34.144.227.188/media/sign?filename=${$this.filename}")} ASSERT string::len($value) > 0 
   
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";

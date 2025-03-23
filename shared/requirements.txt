@@ -9,5 +9,7 @@ novu-py
 surrealdb
 python-dotenv
 granian[uvloop]
+hypercorn[uvloop]
 purreal
 aiocache
+prometheus-client

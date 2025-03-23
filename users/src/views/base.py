@@ -140,6 +140,14 @@ class BaseView(QuartClassful):
             return user, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+        
+    
+    @route("/users/search", methods=["GET"])
+    @jwt_required
+    async def search_user(self):
+        username = request.args.get("username")
+        ...
+
 
     @route("/friends", methods=["GET"])
     @jwt_required

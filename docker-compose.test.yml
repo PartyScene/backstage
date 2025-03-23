@@ -21,7 +21,7 @@ services:
   microservices.media:
     container_name: microservices.media
     build:
-      target: prod
+      target: prodkill
       context: .
       dockerfile: media/Dockerfile
     depends_on:
@@ -29,6 +29,9 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./init/schema.surql:/home/schema.surql
+    environment:
+      - ENVIRONMENT=dev
+    env_file: .env
 
   # microservices.livestream:
   #   container_name: microservices.livestream
@@ -51,8 +54,8 @@ services:
     volumes:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
-      microservices.auth:
-        condition: service_completed_successfully
+      microservices.media:
+        condition: service_started # service_completed_successfully
 
   microservices.posts:
     container_name: microservices.posts
@@ -63,8 +66,8 @@ services:
     volumes:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
-      microservices.events:
-        condition: service_completed_successfully
+      microservices.media:
+        condition: service_started # service_completed_successfully
 
   microservices.users:
     container_name: microservices.users
@@ -75,9 +78,9 @@ services:
     volumes:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
-      microservices.posts:
-        condition: service_completed_successfully
+      microservices.media:
+        condition: service_started # service_completed_successfully
 
   redis:
     image: redis
-    command: sh -c "redis-server & sleep 60; kill $!"
+    command: sh -c "redis-server & sleep 80; kill $!"

@@ -10,7 +10,7 @@ from quart import (
 from quart.datastructures import FileStorage
 from ..lib import create_livestream_client
 
-from quart_jwt
+from quart_jwt_extended import jwt_required
 from http import HTTPStatus
 from shared.classful import route, QuartClassful
 from datetime import datetime

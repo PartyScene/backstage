@@ -38,13 +38,11 @@ class UsersDB:
 
         async with self.pool.acquire() as conn:
             await conn.let("origin", RecordID("users", origin_id))
-        query = f"""
-        SELECT 
-            {', '.join(select_fields)}
-        FROM ONLY $origin;
-        """
-
-        async with self.pool.acquire() as conn:
+            query = f"""
+            SELECT 
+                {', '.join(select_fields)}
+            FROM ONLY $origin;
+            """
             result = await conn.query(query)
         return record_id_to_json(result)
 
@@ -120,8 +118,8 @@ class UsersDB:
         async with self.pool.acquire() as conn:
             await conn.let("edge", RecordID("friends", connection_id))
             query = """
-                UPDATE ONLY $edge SET status = $status
-            """
+                    UPDATE ONLY $edge SET status = $status
+                """
             result = await conn.query(query, {"status": data.get("status", "pending")})
         return record_id_to_json(result)
 
@@ -163,6 +161,7 @@ class UsersDB:
                 {"id": id},
             )
         self.logger.info(json.dumps(result, indent=4, default=str))
+        result.pop("password"); result.pop("bio")
         return record_id_to_json(result)
 
     async def delete(self, id: str) -> Optional[dict]:

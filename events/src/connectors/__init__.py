@@ -24,12 +24,12 @@ class EventsDB:
         """Create a new event"""
         async with self.pool.acquire() as conn:
             try:
-                # data['coordinates'] = GeometryPoint(data['coordinates'][0], data["coordinates"][1])
                 data["host"] = RecordID("users", data["host"])
                 data["location"] = {
                     "address": data.get("location"),
-                    "coordinates": tuple(data.pop("coordinates")),
+                    "coordinates": { "type": "Point", "coordinates": data.pop("coordinates").split(",")},
                 }
+                data["media"] = [RecordID("media", media["id"]) for media in data["media"]]
 
                 result = await conn.create("events", data)
                 self.logger.warning(json.dumps(result, indent=4, default=str))
@@ -82,14 +82,14 @@ class EventsDB:
                     *,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count,
-                    geo::distance(coordinates, type::point($coordinates)) as distance
+                    geo::distance(coordinates, $coordinates) as distance
                 FROM events 
                 WHERE 
                     is_live = $live 
-                    AND geo::distance(coordinates, type::point($coordinates)) <= $distance
+                    AND geo::distance(coordinates, $coordinates) <= $distance
                 ORDER BY distance ASC;
                 """,
-                    {"live": live, "distance": distance, "coordinates": coordinates},
+                    {"live": live, "distance": distance, "coordinates": GeometryPoint.parse_coordinates(coordinates)},
                 )
             return record_id_to_json(result)
 

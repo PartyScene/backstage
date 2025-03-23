@@ -1,3 +1,7 @@
+networks:
+  default:
+    external: true
+    name: cloudbuild
 
 services:
   microservices.auth:
@@ -6,21 +10,14 @@ services:
       context: .
       dockerfile: auth/Dockerfile
       target: prod
-    restart: always
     depends_on:
       - redis
-      - surrealdb
-    env_file:
-      - .env
+    restart: on-failure
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
       - SCHEMA_FILE=/home/schema.surql
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    env_file: .env
 
   microservices.media:
     container_name: microservices.media
@@ -28,43 +25,26 @@ services:
       target: prod
       context: .
       dockerfile: media/Dockerfile
-    restart: always
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.15
     depends_on:
-      - microservices.auth
-    env_file:
-      - .env
+      microservices.auth:
+        condition: service_started
     volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - ./init/schema.surql:/home/schema.surql
+    environment:
+      - ENVIRONMENT=dev
+    env_file: .env
 
-  microservices.livestream:
-    container_name: microservices.livestream
-    build:
-      target: prod
-      context: .
-      dockerfile: livestream/Dockerfile
-    restart: always
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.13
-    env_file:
-      - .env
-    volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
-    depends_on:
-      - microservices.auth
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # microservices.livestream:
+  #   container_name: microservices.livestream
+  #   build:
+  #     target: prod
+  #     context: .
+  #     dockerfile: livestream/Dockerfile
+  #   volumes:
+  #     - ./init/schema.surql:/home/schema.surql
+  #   depends_on:
+  #     microservices.events:
+  #       condition: service_completed_successfully
 
   microservices.events:
     container_name: microservices.events
@@ -72,19 +52,13 @@ services:
       target: prod
       context: .
       dockerfile: events/Dockerfile
-    restart: always
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.12
-    env_file:
-      - .env
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
     depends_on:
-      - microservices.auth
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      microservices.media:
+        condition: service_started # service_completed_successfully
+    env_file: .env
+
 
   microservices.posts:
     container_name: microservices.posts
@@ -92,84 +66,28 @@ services:
       target: prod
       context: .
       dockerfile: posts/Dockerfile
-    restart: always
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.11
-    env_file:
-      - .env
     volumes:
-      - ${GCLOUD_AUTH_DIR}:/root/.config/gcloud:ro
+      - ./init/schema.surql:/home/schema.surql
     depends_on:
-      - microservices.media
-      - microservices.auth
+      microservices.media:
+        condition: service_started # service_completed_successfully
+    env_file: .env
+
+
   microservices.users:
     container_name: microservices.users
     build: 
       target: prod
       context: .
       dockerfile: users/Dockerfile
-    restart: always
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.10
-    env_file:
-      - .env
-    depends_on:
-      - microservices.auth
-      - microservices.media
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5510/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  kong:
-    image: kong/kong-gateway:3.8.0.0
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.19
-    ports:
-      - 8002:8000
-      - 8443:8443
-      - 8001:8001
-      - 8444:8444
-      - 8005:8002
     volumes:
-      - ./kong/declarative:/kong/declarative/
-    environment:
-      KONG_DATABASE: off
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_GUI_URL: http://localhost:8005
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_DECLARATIVE_CONFIG: ./kong/declarative/kong.yml
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001, 0.0.0.0:8444 ssl
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.media:
+        condition: service_started # service_completed_successfully
+    env_file: .env
+
 
   redis:
     image: redis
-    
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.18
-
-  surrealdb:
-    container_name: surrealdb
-    env_file:
-      - .env
-    entrypoint:
-      - /surreal
-      - start
-      - --user
-      - $DB_USER
-      - --pass
-      - $DB_PASSWORD
-      - memory
-
-    image: surrealdb/surrealdb:v2.0-dev
-    ports:
-      - 8000:8000
-    networks:
-      backstage_network:
-        ipv4_address: 11.0.0.20
+    command: sh -c "redis-server & sleep 80; kill $!"

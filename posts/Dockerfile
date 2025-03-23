@@ -1,5 +1,5 @@
 # Test stage
-FROM python:3.11-slim AS test
+FROM python:3.11-slim AS base
 
 WORKDIR /posts
 
@@ -27,24 +27,21 @@ COPY tests/conftest.py /tests/conftest.py
 COPY tests/posts/ /tests/posts/
 COPY tests/pytest.ini /tests/pytest.ini
 
+FROM base AS test
+
 # Run tests
 CMD ["pytest", "--disable-warnings", "/tests", "-v"]
 
 # Main stage
-FROM python:3.11-slim AS prod
+FROM base AS prod
 
 WORKDIR /posts
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
 
 # Set PYTHONPATH for shared libraries
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
-COPY --from=test /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY posts/ .
 COPY shared/ /shared/
 

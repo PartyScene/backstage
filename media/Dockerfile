@@ -1,5 +1,5 @@
 # Test stage
-FROM python:3.11-slim AS test
+FROM python:3.11-slim AS base
 
 WORKDIR /media
 
@@ -31,25 +31,21 @@ COPY tests/conftest.py /tests/conftest.py
 COPY tests/media/ /tests/media/
 COPY tests/pytest.ini /tests/pytest.ini
 
+FROM base AS test
 
 # Run tests
 CMD ["pytest", "--disable-warnings", "/tests", "-v"]
 
 # Main stage
-FROM python:3.11-slim AS prod
+FROM base AS stage_production
 
 WORKDIR /media
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
 
 # Set PYTHONPATH for shared libraries
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
-COPY --from=test /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY media/ .
 COPY shared/ /shared/
 
@@ -71,6 +67,8 @@ USER myuser
 EXPOSE 5510
 
 
+FROM stage_production AS prod
+
 # Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
 CMD ["python3", "-m", "granian", \
      "--loop", "uvloop", \
@@ -82,3 +80,18 @@ CMD ["python3", "-m", "granian", \
      "--task-impl", "rust", \
      "--runtime-mode", "mt", \
      "run:app"]
+
+FROM stage_production AS prodkill
+
+# Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
+CMD ["timeout", "80", \
+    "python3", "-m", "granian", \
+    "--loop", "uvloop", \
+    "--host", "0.0.0.0", \
+    "--port", "5510", \
+    "--workers", "2", \
+    "--interface", "asgi", \
+    "--no-log", \
+    "--task-impl", "rust", \
+    "--runtime-mode", "mt", \
+    "run:app"]

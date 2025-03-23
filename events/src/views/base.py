@@ -2,6 +2,8 @@ from datetime import datetime
 import random
 import json
 import asyncio
+import os
+
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
 
@@ -17,11 +19,12 @@ from quart import (
 )
 from quart_schema import validate_request, DataSource
 
-from ..connectors import EventsDB
+from events.src.connectors import EventsDB
 from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
+from shared.utils import create_media_client, MediaClient
 
 
 class BaseView(QuartClassful):
@@ -29,6 +32,9 @@ class BaseView(QuartClassful):
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
+        self.__media_client: MediaClient = create_media_client(
+            os.environ["MEDIA_MICROSERVICE_URL"]
+        )
         app.logger = app.logger
 
     async def _store_live_query(self, event_id: str, live_id: str):
@@ -140,14 +146,26 @@ class BaseView(QuartClassful):
     async def create_event(self):
         """Create an event"""
         try:
-            data = await request.get_json()  # Get raw JSON data
-            # You can add your own validation here if needed
-            data["host"] = data.get("host", get_jwt_identity())
+            data = (await request.form).to_dict()
+            data["event"] = 'test'
+            data["host"] = get_jwt_identity()
+            
+            files = await request.files
+            media_links = []
+
+            for file_key in files:
+                data["type"] = "image"
+                req = await self.__media_client.upload_media(request, files[file_key], data)
+                media_links.append(req)
+            
+            data["media"] = media_links
+            app.logger.debug(f"Creating event data: {data}")
             if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
                 return jsonify(result), HTTPStatus.CREATED
-            return {"error": "Bad params"}, HTTPStatus.BAD_REQUEST
+            app.logger.error("Failed to create event")
+            return {"error": "Failed to create event"}, HTTPStatus.BAD_REQUEST
         except Exception as e:
             app.logger.error(f"Error creating event: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.BAD_REQUEST
@@ -334,3 +352,4 @@ class BaseView(QuartClassful):
                 f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
             )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+

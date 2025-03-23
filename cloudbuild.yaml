@@ -1,24 +1,38 @@
 steps:
+- name: 'python:3.10'
+  entrypoint: 'sh'
+  args:
+    - '-c'
+    - |
+      pip install flake8 &&
+      flake8 --select=E9,F63,F7,F82 .
+
 - name: 'gcr.io/cloud-builders/docker'
   args: ['compose', '-f', 'docker-compose.test.yml', 'up']
   env:
     - DB_USER=root
     - DB_PASSWORD=rootrm
+  id: 'test'
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
+  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
+  waitFor: ['test']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
+  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
+  waitFor: ['test']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts',  '-f', 'posts/Dockerfile', '.']
+  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts',  '-f', 'posts/Dockerfile', '.']
+  waitFor: ['test']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',  '-f', 'users/Dockerfile', '.']
+  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',  '-f', 'users/Dockerfile', '.']
+  waitFor: ['test']
 
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media',  '-f', 'media/Dockerfile', '.']
+  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media',  '-f', 'media/Dockerfile', '.']
+  waitFor: ['test']
 
 - name: 'gcr.io/cloud-builders/kubectl'
   args:
@@ -33,8 +47,7 @@ substitutions:
   _LOCATION: us-central1 # default value
   
 options:
-  logging: CLOUD_LOGGING_ONLY 
-  machineType: E2_HIGHCPU_8
+  machineType: E2_HIGHCPU_32
 
 images:
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth'
