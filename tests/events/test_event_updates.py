@@ -5,7 +5,7 @@ from test_events_base import TestEventsBase
 fake = Faker()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestEventUpdates(TestEventsBase):
     # async def test_update_event_details(self, event_client, mock_event, bearer):
     #     """Test updating an existing event."""

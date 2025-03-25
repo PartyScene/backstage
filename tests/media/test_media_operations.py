@@ -11,7 +11,7 @@ from test_media_base import TestMediaBase
 fake = Faker()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestMediaOperations(TestMediaBase):
     def generate_random_image(self, color):
         image = Image.new("RGB", (100, 100), color=color)

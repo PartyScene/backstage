@@ -32,12 +32,12 @@ fake = Faker()
 
 
 # the custom event_loop fixture and update the async fixtures
-@pytest.fixture(scope="session", autouse=True)
-def event_loop():
-    uvloop.install()
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+# @pytest.fixture(scope="session", autouse=True)
+# def event_loop():
+#     uvloop.install()
+#     loop = asyncio.new_event_loop()
+#     yield loop
+#     loop.close()
 
 
 # @pytest_asyncio.fixture(scope="session", loop_scope="session")

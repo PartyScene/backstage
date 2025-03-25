@@ -9,7 +9,7 @@ import io
 fake = Faker()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestMLOperations(TestR18EBase):
     async def test_extract_features(
         self, r18e_client, bearer
@@ -17,7 +17,7 @@ class TestMLOperations(TestR18EBase):
         """Test extracting features."""
         files = {
             "file": FileStorage(
-                io.BytesIO(b"fake image content"),
+                self.generate_random_image(),
                 filename="test_image.jpg",
                 content_type="image/jpeg",
             )

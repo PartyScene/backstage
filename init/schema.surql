@@ -31,7 +31,12 @@ DEFINE FIELD OVERWRITE location.address ON TABLE events TYPE string;
 DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE object;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
-DEFINE FIELD OVERWRITE media ON TABLE events TYPE array<record<media>> DEFAULT []; 
+DEFINE FIELD OVERWRITE media ON TABLE events TYPE array<record<media>> DEFAULT [];
+
+DEFINE FIELD OVERWRITE embeddings ON TABLE events FLEXIBLE TYPE object DEFAULT {}; 
+DEFINE FIELD OVERWRITE embeddings.media ON TABLE events FLEXIBLE TYPE object DEFAULT [];
+-- Define a vector index on the liquidsVector table for embedding field 
+DEFINE INDEX OVERWRITE mt_pts ON TABLE events FIELDS embeddings.media MTREE DIMENSION 4 DIST COSINE TYPE F32;
 
 -- Let's define a table for livestreams
 DEFINE TABLE IF NOT EXISTS livestreams schemafull;

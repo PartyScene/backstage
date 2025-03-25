@@ -8,7 +8,7 @@ from quart.datastructures import FileStorage
 fake = Faker()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestEventCreation(TestEventsBase):
     async def test_create_valid_event(self, event_client, mock_event, bearer):
         """Test creating a valid event."""

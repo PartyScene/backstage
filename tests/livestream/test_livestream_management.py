@@ -7,7 +7,7 @@ from test_livestream_base import TestLiveStreamBase
 fake = Faker()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestLiveStreamManagement(TestLiveStreamBase):
     async def test_create_stream(self, livestream_client, mock_event, bearer):
         """Test creating a new livestream session."""

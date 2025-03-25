@@ -9,7 +9,7 @@ import io
 fake = Faker()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestPostOperations(TestPostsBase):
     async def test_create_post(
         self, posts_client, mock_event, bearer, mock_media_client

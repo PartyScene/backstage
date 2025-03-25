@@ -19,8 +19,14 @@ class R18E:
 
     async def store_embedding(self, event_id: str, embedding: list[float]) -> dict:
         """Store an embedding for an event."""
-        self.logger.warning(f"Storing embedding for event {event_id} -- {embedding}")
-        return await self.pool.execute_query(f"INSERT INTO embeddings VALUES ($id, $embedding) RETURN AFTER;", {"id": event_id, "embedding": embedding})
+
+        # self.logger.warning(f"Storing embedding for event {event_id} -- {embedding}")
+
+        data = dict()
+        data['embeddings']['media'] = embedding
+        async with self.pool.acquire() as conn:
+            result = await conn.merge(RecordID('events', event_id), data)
+        return result
 
     async def fetch_embedding(self, event_id: str) -> dict:
         """Fetch an embedding for an event."""

@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 from aiocache import cached
 
-
+import io
 
 import torch
 
@@ -39,30 +39,62 @@ class BaseView(QuartClassful):
     async def index(self):
         return await self.healthcheck()
         
-    @route("/posts/health", methods=["GET"])
+    @route("/r18e/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
         return jsonify({"status": "healthy"}), HTTPStatus.OK
 
-    @route("/features/extract", methods=["POST"])
+    @route("/r18e/features/extract", methods=["POST"])
     async def extract_features(self):
         """
-
-        Args:
-            event_id (str): Event ID
-            file (UploadFile): Image file
+        Extract deep learning features from an uploaded image for event analysis.
+    
+        This method processes an image file and generates embedding features using 
+        a pre-trained transformer model. The features are then stored in a vector 
+        database for semantic search and analysis.
+    
+        Query Parameters:
+        ----------------
+        event : str, required
+            Unique identifier for the event associated with the image.
+    
+        Form Data:
+        ----------
+        file : FileStorage, required
+            The image file to extract features from. Supports various image formats.
+    
+        Returns:
+        --------
+        tuple
+            A JSON response with:
+            - Success: Embedding storage result and HTTP 200 OK status
+            - Error cases:
+                * Missing event ID: HTTP 400 Bad Request
+                * Missing file: HTTP 400 Bad Request
+    
+        Raises:
+        -------
+        Exception
+            If feature extraction or embedding storage fails.
+    
+        Example:
+        --------
+        POST /r18e/features/extract?event=event_123
+        Content-Type: multipart/form-data
+        file: <image_file>
         """
-        event_id = request.args.get("event_id", None)
+        event_id = request.args.get("event", None)
         if not event_id:
             return jsonify({"error": "Event ID is required"}), HTTPStatus.BAD_REQUEST
-
+        
+    
         file : FileStorage = (await request.files).get("file")
         if not file:
             return jsonify({"error": "File is required"}), HTTPStatus.BAD_REQUEST
 
         file.stream.seek(0)
 
-        image = Image.open(file.stream)
+        image = Image.open(io.BytesIO(file.stream.read())).convert('RGB')
 
         inputs = self.processor(images=image, return_tensors="pt")
 

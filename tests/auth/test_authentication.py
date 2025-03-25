@@ -2,7 +2,7 @@ import pytest
 from test_base import TestAuthBase
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestAuthentication(TestAuthBase):
 
     async def test_service_health(self, auth_client):
@@ -19,7 +19,7 @@ class TestAuthentication(TestAuthBase):
         # data = await response.get_json()
         # assert "id" in data
 
-    # @pytest.mark.asyncio
+    # @pytest.mark.asyncio(loop_scope="session")
     async def test_user_login(self, auth_client, mock_user):
         """Test user login"""
 
@@ -32,7 +32,7 @@ class TestAuthentication(TestAuthBase):
         data = await response.get_json()
         assert "access_token" in data
 
-    # @pytest.mark.asyncio
+    # @pytest.mark.asyncio(loop_scope="session")
     @pytest.mark.parametrize(
         "invalid_data",
         [

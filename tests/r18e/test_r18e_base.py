@@ -1,10 +1,21 @@
 import pytest_asyncio
 import pytest
 import urllib
-from quart.testing import QuartClient
+import io
 
+from quart.testing import QuartClient
+from typing import IO
+from PIL import Image
 
 class TestR18EBase:
+    def generate_random_image(self, color = "blue") -> IO[bytes]:
+        image = Image.new("RGB", (100, 100), color=color)
+        # image.tobytes()
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format="JPEG")
+        img_bytes.seek(0)
+        return img_bytes
+
     async def extract_features(self, client: QuartClient, files, bearer):
         """Helper method to extract features"""
         return await client.post(

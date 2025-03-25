@@ -6,7 +6,7 @@ from test_events_base import TestEventsBase
 faker = Faker()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 class TestEventQueries(TestEventsBase):
     async def test_list_events(self, event_client, bearer):
         """Test retrieving a list of events."""
