@@ -110,7 +110,7 @@ class BaseView(QuartClassful):
 
         # # More fields attached
         # data["url"] = blob.media_link
-        self.logger.warn(data)
+        self.logger.warning(data)
 
         # # uncomment this line
         # # blob.make_public() # Permissions are really messed up idk -- error : google.api_core.exceptions.BadRequest: 400 GET https://storage.googleapis.com/storage/v1/b/partyscene/o/file/acl?prettyPrint=false: Cannot get legacy ACL for an object when uniform bucket-level access is enabled. Read more at https://cloud.google.com/storage/docs/uniform-bucket-level-acces

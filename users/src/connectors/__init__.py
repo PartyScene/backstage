@@ -1,7 +1,7 @@
 from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
 import os
-from typing import Optional
+from typing import Optional, Tuple
 from shared.utils import record_id_to_json
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
@@ -197,7 +197,7 @@ class UsersDB:
         return record_id_to_json(result)
 
 
-async def init_db(app) -> UsersDB:
+async def init_db(app) -> Tuple[UsersDB, SurrealDBConnectionPool]:
     """
     Initialize the database connection pool and return an UsersDB instance.
 
@@ -205,7 +205,7 @@ async def init_db(app) -> UsersDB:
         app: The Quart application instance
 
     Returns:
-        UsersDB: Initialized database connector
+        Tuple[UsersDB, SurrealDBConnectionPool]: Initialized database connector and connection pool
     """
     SCHEMA_FILE = os.getenv("SCHEMA_FILE")
     SURREAL_URI = os.getenv("SURREAL_URI")

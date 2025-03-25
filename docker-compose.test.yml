@@ -18,6 +18,20 @@ services:
     environment:
       - SCHEMA_FILE=/home/schema.surql
 
+  microservices.r18e:
+    container_name: microservices.r18e
+    build:
+      context: .
+      dockerfile: r18e/Dockerfile
+      target: test
+    depends_on:
+        microservices.auth:
+          condition: service_completed_successfully
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    environment:
+      - SCHEMA_FILE=/home/schema.surql
+
   microservices.media:
     container_name: microservices.media
     build:

@@ -104,7 +104,7 @@ async def auth_app():
             await app.redis.close()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def auth_client(auth_app):
     """Create a test client"""
     try:
@@ -116,7 +116,7 @@ async def auth_client(auth_app):
         raise
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", autouse=True, loop_scope="session")
 async def bearer(auth_client, mock_user):
     """Create a test bearer token"""
     try:

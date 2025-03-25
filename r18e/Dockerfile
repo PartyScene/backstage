@@ -1,7 +1,7 @@
 # Test stage
 FROM python:3.11-slim AS base
 
-WORKDIR /media
+WORKDIR /r18e
 
 # Set PYTHONPATH for shared libraries
 ENV PYTHONPATH="/"
@@ -11,8 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+
 # Copy requirements files
-COPY media ./
+COPY r18e ./
 COPY shared /shared/
 COPY tests/requirements-test.txt /tests/requirements-test.txt
 
@@ -28,7 +29,7 @@ FROM base AS test
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
-COPY tests/media/ /tests/media/
+COPY tests/r18e/ /tests/r18e/
 COPY tests/pytest.ini /tests/pytest.ini
 
 
@@ -38,14 +39,14 @@ CMD ["pytest", "--disable-warnings", "/tests", "-v"]
 # Main stage
 FROM base AS stage_production
 
-WORKDIR /media
+WORKDIR /r18e
 
 # Set PYTHONPATH for shared libraries
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
-COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY media/ .
+COPY --from=base /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY r18e/ .
 COPY shared/ /shared/
 
 # install deps
@@ -73,24 +74,9 @@ CMD ["python3", "-m", "granian", \
      "--loop", "uvloop", \
      "--host", "0.0.0.0", \
      "--port", "5510", \
-     "--workers", "2", \
+     "--workers", "4", \
      "--interface", "asgi", \
      "--no-log", \
      "--task-impl", "rust", \
      "--runtime-mode", "mt", \
      "run:app"]
-
-FROM stage_production AS prodkill
-
-# Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
-CMD ["timeout", "80", \
-    "python3", "-m", "granian", \
-    "--loop", "uvloop", \
-    "--host", "0.0.0.0", \
-    "--port", "5510", \
-    "--workers", "2", \
-    "--interface", "asgi", \
-    "--no-log", \
-    "--task-impl", "rust", \
-    "--runtime-mode", "mt", \
-    "run:app"]

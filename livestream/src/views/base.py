@@ -100,10 +100,26 @@ class BaseView(QuartClassful):
     @route("/scenes/<event_id>", methods=["POST"])
     async def create_livestream(self, event_id):  # Renamed from index to manage_stream
         """
-        Flow: Create a Stream -> Create Input -> Record Input -> Store Output -> Connect to Output
-        API Endpoint to create a livestream input using GCP Livestream API.
-        """
+        Create a livestream for a given event using the GCP Livestream API.
 
+        This method follows a comprehensive livestream creation workflow:
+        1. Create a Stream: Initializes a new livestream for the specified event
+        2. Create Input: Sets up the input configuration for the livestream
+        3. Record Input: Prepares the livestream to start recording
+        4. Store Output: Saves the livestream configuration and metadata
+        5. Connect to Output: Establishes the output streaming destination
+
+        Args:
+            event_id (str): Unique identifier for the event to create a livestream for
+
+        Returns:
+            tuple: A JSON response containing stream information and HTTP status code
+                - On success: (stream_info, HTTPStatus.CREATED)
+                - On failure: (error_message, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        Raises:
+            Exception: If any step in the livestream creation process fails
+        """
         try:
             stream_create_resp = await self.livestream.start_stream(event_id)
             if stream_create_resp:

@@ -146,8 +146,13 @@ class BaseView(QuartClassful):
     async def create_event(self):
         """Create an event"""
         try:
-            data = (await request.form).to_dict()
+            form = (await request.form)
+            data = form.to_dict()
+
+
             data["event"] = 'test'
+            data['coordinates'] = form.getlist("coordinates[]", type=float)
+            data['categories'] = form.getlist("categories[]")
             data["host"] = get_jwt_identity()
             
             files = await request.files

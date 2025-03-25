@@ -23,11 +23,13 @@ class EventsDB:
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
         async with self.pool.acquire() as conn:
+            coordinates = data.pop("coordinates")
+
             try:
                 data["host"] = RecordID("users", data["host"])
                 data["location"] = {
                     "address": data.get("location"),
-                    "coordinates": { "type": "Point", "coordinates": data.pop("coordinates").split(",")},
+                    "coordinates": { "type": "Point", "coordinates": coordinates },
                 }
                 data["media"] = [RecordID("media", media["id"]) for media in data["media"]]
 
