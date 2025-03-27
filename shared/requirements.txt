@@ -13,3 +13,4 @@ hypercorn[uvloop]
 purreal
 aiocache
 prometheus-client
+faststream[rabbit]

@@ -30,8 +30,6 @@ class BaseView(QuartClassful):
     # inputs = image_processor(image, return_tensors="pt")
 
     def __init__(self) -> None:
-        self.processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224-in21k')
-        self.model = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k', output_hidden_states=True)
         self.__vector_database : R18E = app.conn
 
     @route("/", methods=["GET"])

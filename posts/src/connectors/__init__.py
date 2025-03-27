@@ -81,7 +81,7 @@ class PostsDB:
             result = await conn.delete(RecordID("comments", comment_id))
         return record_id_to_json(result)
 
-    async def create_post(self, data, media_links, author) -> dict:
+    async def create_post(self, data, author) -> dict:
         """
         Asynchronously creates a new post in the database.
             Args:
@@ -93,15 +93,36 @@ class PostsDB:
         """
         async with self.pool.acquire() as conn:
             await conn.let("users", RecordID("users", author))
-            await conn.let(
-                "media", [RecordID("media", media["id"]) for media in media_links]
-            )
             query = """
-            RELATE ONLY $users -> posts -> $media SET content = $content, media_links = $media_links, event = $event;
+            RELATE ONLY $users -> posts -> $media SET content = $content, event = $event;
             """
             params = {
                 "content": data["content"],
-                "media_links": media_links,
+                "event": RecordID("events", data["event"]),
+            }
+            result = await conn.query(query, params)
+        self.logger.info(json.dumps(result, indent=4, default=str))
+        return record_id_to_json(result)
+
+    async def create_postand_precreate_media(self, data, author) -> dict:
+        """
+        Asynchronously creates media relationship first, then a new post in the database.
+            Args:
+                data (dict): A dictionary containing the post data.
+                author (str): The ID of the author creating the post.
+            Returns:
+                dict: A dictionary containing the result of the post creation query.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.let("users", RecordID("users", author))
+            media_ids = await conn.query("RETURN fn::media::create($filenames, $type, $creator, $event)", data)
+            await conn.let("media", [RecordID("media", id) for id in media_ids])
+
+            query = """
+            RELATE ONLY $users -> posts -> $media SET content = $content, event = $event;
+            """
+            params = {
+                "content": data["content"],
                 "event": RecordID("events", data["event"]),
             }
             result = await conn.query(query, params)

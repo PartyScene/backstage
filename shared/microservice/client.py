@@ -5,6 +5,7 @@ import json
 import secrets
 
 from logging.config import dictConfig
+from shared.workers.rmq import listeners
 
 from redis.asyncio import Redis
 from quart import Quart, request, websocket
@@ -67,7 +68,7 @@ class MicroService(Quart):
         *args,
         **kw,
     ):
-        super(MicroService, self).__init__(__name__, *args, **kw)
+        super().__init__(__name__, *args, **kw)
 
         self.conn = None
         self.pool_manager: SurrealDBPoolManager = None
@@ -75,13 +76,11 @@ class MicroService(Quart):
         self.views = views
         self.initialize_database = initialize_database
         self.microservice_instance = Microservice(instance)
-
+        
         # Set dev environment settings
         if os.getenv("ENVIRONMENT") == "dev":
             self.config["DEBUG"] = True
             self.config["TESTING"] = True
-
-        self.config["REDIS_DECODE_RESPONSES"] = True
 
         @self.before_request
         async def log_request():
@@ -101,8 +100,12 @@ class MicroService(Quart):
             await self.init_services()
             self.setup_metrics()
             self.register_routes()
+            
             if self.microservice_instance == Microservice.EVENTS:
                 self.register_websocket_routes()
+            
+            if self.microservice_instance.needs_rmq():
+                self.RMQ = listeners.RMQBroker(self, *args, **kw)
 
         @self.after_serving
         async def cleanup():

@@ -14,13 +14,13 @@ import os
 from datetime import datetime
 from aiocache import cached
 
+from shared.workers.rmq.listeners import RMQBroker
+
 
 class BaseView(QuartClassful):
 
     def __init__(self) -> None:
-        self.__media_client: MediaClient = create_media_client(
-            os.environ["MEDIA_MICROSERVICE_URL"]
-        )
+        self.RMQ : RMQBroker = app.RMQ
         self.__posts_handler: PostsDB = app.conn
 
         self.redis = app.redis
@@ -147,23 +147,25 @@ class BaseView(QuartClassful):
         """
         """"""
         data = (await request.form).to_dict()
+        files = await request.files
         content = data.get("content")
 
         if not content:
             return jsonify({"error": "Content is required"}), 400
-
-        files = await request.files
-        media_links = []
-
-        for file_key in files:
-            try:
-                req = await self.__media_client.upload_media(request, files[file_key])
-                media_links.append(req)
-            except:
-                return jsonify({"error": "Error uploading files"}), 400
+        
+        for file_key, file in files:
+            data['filename'] = file.filename
+            await self.RMQ._publish_media(data, file.read())
+        
+        data['creator'] = get_jwt_identity()
+        data['type'] = file.content_type
+        data['filenames'] = [file.filename for file in files]
+        
+        # Push post media to RMQ after creating post
         result = await self.__posts_handler.create_post(
-            data=data, media_links=media_links, author=get_jwt_identity()
+            data=data, author=get_jwt_identity()
         )
+
         if isinstance(result, str):
             return result, HTTPStatus.BAD_REQUEST
         return result, HTTPStatus.CREATED

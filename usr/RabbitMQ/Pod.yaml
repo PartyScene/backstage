@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: scenes-rabbitmq-server
+  labels:
+    name: scenes-rabbitmq-server
+spec:
+  containers:
+    - image: marketplace.gcr.io/google/rabbitmq3
+      name: rabbitmq
+      env:
+        - name: "RABBITMQ_ERLANG_COOKIE"
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq
+              key: erlangCookie
+              # Create Secret with: kubectl create secret generic rabbitmq --from-literal=erlangCookie=$(dd if=/dev/urandom bs=30 count=1 | base64)
+      volumeMounts:
+        - name: rabbitmq-data
+          mountPath: /var/lib/rabbitmq
+  volumes:
+    - name: rabbitmq-data
+      persistentVolumeClaim:
+        claimName: rabbitmq-data
+---
+# Request a persistent volume from the cluster using a Persistent Volume Claim.
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: rabbitmq-data
+  annotations:
+    volume.alpha.kubernetes.io/storage-class: default
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+
+# kubectl expose pod scenes-rabbitmq-server --name scenes-rabbitmq-server-4369 \
+#   --type LoadBalancer --port 4369 --protocol TCP
+# kubectl expose pod scenes-rabbitmq-server --name scenes-rabbitmq-server-5671 \
+#   --type LoadBalancer --port 5671 --protocol TCP
+# kubectl expose pod scenes-rabbitmq-server --name scenes-rabbitmq-server-5672 \
+#   --type LoadBalancer --port 5672 --protocol TCP
+# kubectl expose pod scenes-rabbitmq-server --name scenes-rabbitmq-server-25672 \
+#   --type LoadBalancer --port 25672 --protocol TCP

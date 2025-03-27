@@ -87,3 +87,19 @@ DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE creator ON media TYPE record<users>;
 DEFINE FIELD OVERWRITE event ON media TYPE record<events>
   VALUE $value OR NULL;
+
+DEFINE FUNCTION fn::media::create($filenames: array<string>, $type: string, $creator: string, $event: string) {
+  -- Initialize an empty array to store the created IDs
+  LET $created_ids = [];
+
+  -- Iterate over each filename and create a media record
+  FOR $filename IN $filenames {
+      LET $record = CREATE ONLY media SET type = $type, filename = $filename, creator = type::thing('users', $creator), event = type::thing('events', $event);
+
+      -- Append the created ID to the list
+      LET $created_ids = array::append($created_ids, $record.id);
+  };
+
+  -- Return the list of created IDs
+  RETURN $created_ids;
+};

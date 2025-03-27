@@ -31,12 +31,13 @@ class EventsDB:
                     "address": data.get("location"),
                     "coordinates": { "type": "Point", "coordinates": coordinates },
                 }
-                data["media"] = [RecordID("media", media["id"]) for media in data["media"]]
+                data["media"] = await conn.query("RETURN fn::media::create($filenames, $type, $creator, $event)", data)
 
                 result = await conn.create("events", data)
                 self.logger.warning(json.dumps(result, indent=4, default=str))
+
                 result = await conn.select(result["id"])
-                if "ERR" in result:
+                if isinstance(result, str):
                     raise Exception(
                         f"Error creating event: {result}"
                     )  # Handle error case

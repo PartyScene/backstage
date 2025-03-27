@@ -20,8 +20,6 @@ from google.cloud.video.live_stream_v1.types import (
     ChannelOperationResponse,
 )
 
-from connectors import LiveStreamDB
-
 
 class LSClient:
 
@@ -31,7 +29,7 @@ class LSClient:
         self.STREAM_TYPE = os.environ["STREAM_TYPE"]
         self.OUTPUT_URI = os.environ["OUTPUT_URI"]
         self.client = LivestreamServiceAsyncClient()
-        self.db: LiveStreamDB = db
+        self.db = db
         self.logger = logger
 
     def get_parent(self):

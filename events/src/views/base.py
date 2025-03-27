@@ -26,16 +26,17 @@ from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
 from shared.utils import create_media_client, MediaClient
 
+from shared.workers.rmq.listeners import RMQBroker
 
 class BaseView(QuartClassful):
 
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
-        self.__media_client: MediaClient = create_media_client(
-            os.environ["MEDIA_MICROSERVICE_URL"]
-        )
+        
         app.logger = app.logger
+        self.RMQ : RMQBroker = app.RMQ
+
 
     async def _store_live_query(self, event_id: str, live_id: str):
         """Store live query ID in Redis"""
@@ -147,28 +148,28 @@ class BaseView(QuartClassful):
         """Create an event"""
         try:
             form = (await request.form)
-            data = form.to_dict()
-
-
-            data["event"] = 'test'
-            data['coordinates'] = form.getlist("coordinates[]", type=float)
-            data['categories'] = form.getlist("categories[]")
-            data["host"] = get_jwt_identity()
-            
             files = await request.files
+            
             media_links = []
 
-            for file_key in files:
-                data["type"] = "image"
-                req = await self.__media_client.upload_media(request, files[file_key], data)
-                media_links.append(req)
+            data = form.to_dict()
+            data['coordinates'] = form.getlist("coordinates[]", type=float)
+            data['categories'] = form.getlist("categories[]")
+            data['host'] = get_jwt_identity()
+            data['creator'] = get_jwt_identity()
+            data['filenames'] = [file.filename for file in files]
             
-            data["media"] = media_links
+            for file_key, file in files:
+                data['filename'] = file.filename
+                app.logger.warning(f"Uploading new event media to GCP: {file.filename}")
+                await self.RMQ._publish_media(data, file.read())
+
             app.logger.debug(f"Creating event data: {data}")
             if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
                 return jsonify(result), HTTPStatus.CREATED
+                
             app.logger.error("Failed to create event")
             return {"error": "Failed to create event"}, HTTPStatus.BAD_REQUEST
         except Exception as e:
