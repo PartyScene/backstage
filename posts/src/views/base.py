@@ -14,7 +14,7 @@ import os
 from datetime import datetime
 from aiocache import cached
 
-from shared.workers.rmq.listeners import RMQBroker
+from shared.workers.rmq import RMQBroker
 
 
 class BaseView(QuartClassful):
@@ -153,13 +153,13 @@ class BaseView(QuartClassful):
         if not content:
             return jsonify({"error": "Content is required"}), 400
         
-        for file_key, file in files:
+        for file_key, file in files.items():
             data['filename'] = file.filename
             await self.RMQ._publish_media(data, file.read())
         
         data['creator'] = get_jwt_identity()
         data['type'] = file.content_type
-        data['filenames'] = [file.filename for file in files]
+        data['filenames'] = [file.filename for file in files.items()]
         
         # Push post media to RMQ after creating post
         result = await self.__posts_handler.create_post(

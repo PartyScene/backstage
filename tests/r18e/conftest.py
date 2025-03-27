@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 import io
 from unittest.mock import MagicMock, AsyncMock, patch
 from dotenv import load_dotenv
+from shared.workers import rmq
 
 # Configure logging
 logging.basicConfig(
@@ -73,6 +74,7 @@ async def r18e_app():
 
     app.redis = AsyncRedisMock()
     app.conn, app.pool_manager = await init_db(app)
+    app.RMQ = rmq.RMQBroker(app)
     try:
         async with app.app_context():
             await app.get_shared_secret()

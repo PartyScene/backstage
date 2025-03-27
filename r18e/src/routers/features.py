@@ -81,32 +81,4 @@ class BaseView(QuartClassful):
         Content-Type: multipart/form-data
         file: <image_file>
         """
-        event_id = request.args.get("event", None)
-        if not event_id:
-            return jsonify({"error": "Event ID is required"}), HTTPStatus.BAD_REQUEST
-        
-    
-        file : FileStorage = (await request.files).get("file")
-        if not file:
-            return jsonify({"error": "File is required"}), HTTPStatus.BAD_REQUEST
-
-        file.stream.seek(0)
-
-        image = Image.open(io.BytesIO(file.stream.read())).convert('RGB')
-
-        inputs = self.processor(images=image, return_tensors="pt")
-
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-
-            # Retrieve all hidden states
-            hidden_states = outputs.hidden_states  # Tuple of (num_layers+1, batch, seq_len, hidden_dim)
-
-            # Get the last 4 hidden states
-            last_4_layers = hidden_states[-4:]  # Last 4 layers
-
-            # Option 1: Average over last 4 layers
-            embedding = torch.stack(last_4_layers).mean(dim=0)  # (batch, seq_len, hidden_dim)
-        
-        resp = await self.__vector_database.store_embedding(event_id, embedding.tolist())
-        return jsonify(resp), HTTPStatus.OK
+        return "Ok", HTTPStatus.OK

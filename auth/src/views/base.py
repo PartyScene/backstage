@@ -9,7 +9,7 @@ from ..connectors import AuthDB
 from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import create_access_token
-from shared.notifications import NotificationManager
+from shared.workers.novu import NotificationManager
 from redis.asyncio import Redis
 from aiocache import cached, RedisCache, Cache
 import os

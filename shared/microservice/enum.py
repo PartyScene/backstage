@@ -11,4 +11,4 @@ class Microservice(StrEnum):
     R18E = "R18E"
 
     def needs_rmq(self) -> bool:
-        return self in (Microservice.R18E, Microservice.MEDIA, Microservice.LIVESTREAM)
+        return self in (Microservice.R18E, Microservice.MEDIA, Microservice.POSTS, Microservice.LIVESTREAM, Microservice.EVENTS)

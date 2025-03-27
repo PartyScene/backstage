@@ -9,10 +9,9 @@ from datetime import datetime
 from shared.utils import create_media_client
 
 from users.src.connectors import UsersDB
-from shared.notifications import NotificationManager
-import logging
-import json
+from shared.workers.novu import NotificationManager
 import os
+import json
 from aiocache import cached
 
 

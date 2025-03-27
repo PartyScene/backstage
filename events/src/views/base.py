@@ -26,7 +26,7 @@ from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
 from shared.utils import create_media_client, MediaClient
 
-from shared.workers.rmq.listeners import RMQBroker
+from shared.workers.rmq import RMQBroker
 
 class BaseView(QuartClassful):
 
@@ -157,9 +157,9 @@ class BaseView(QuartClassful):
             data['categories'] = form.getlist("categories[]")
             data['host'] = get_jwt_identity()
             data['creator'] = get_jwt_identity()
-            data['filenames'] = [file.filename for file in files]
+            data['filenames'] = [file.filename for file_key, file in files.items()]
             
-            for file_key, file in files:
+            for file_key, file in files.items():
                 data['filename'] = file.filename
                 app.logger.warning(f"Uploading new event media to GCP: {file.filename}")
                 await self.RMQ._publish_media(data, file.read())

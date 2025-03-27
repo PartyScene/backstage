@@ -8,8 +8,6 @@ import os
 from datetime import datetime
 from aiocache import cached
 
-import obstore as obs
-from obstore.store import GCSStore
 
 import io
 from importlib import util
@@ -24,12 +22,16 @@ class RMQBroker(RabbitBroker):
     def __init__(self, app, *args, **kwargs):
         self.RABBITMQ_MEDIA_QUEUE = RabbitQueue(os.environ["RABBITMQ_MEDIA_QUEUE"])
         self.RABBITMQ_R18E_QUEUE = RabbitQueue(os.environ["RABBITMQ_R18E_QUEUE"])
-        self.OBS_STORE = GCSStore(os.environ["GCS_BUCKET_NAME"])
 
         self.__vector_database = app.conn
         super().__init__(url = os.environ["RABBITMQ_URI"], *args, **kwargs)
 
+
         if app.microservice_instance == "MEDIA":
+            import obstore as obs
+            from obstore.store import GCSStore
+            self.OBS_STORE = GCSStore(os.environ["GCS_BUCKET_NAME"])
+
             @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
             async def handle_media_upload(message):
                 await self.upload_to_bucket(message.headers.get("filename"), message.body)
@@ -44,6 +46,8 @@ class RMQBroker(RabbitBroker):
             from transformers import ViTImageProcessor, ViTModel
             self.processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224-in21k')
             self.model = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k', output_hidden_states=True)
+        
+        self.start()
     
     async def upload_to_bucket(self, filename, image_bytes: bytes):
         await obs.put_async(self.OBS_STORE, filename, image_bytes)
@@ -72,12 +76,10 @@ class RMQBroker(RabbitBroker):
             file (bytes): File to be published
         """
         await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(
-            RabbitMessage(
-                headers={
-                    "filename": data.get("filename"),
-                },
-                body=file
-            )
+            file,
+            headers={
+                "filename": data.get("filename"),
+            }
         )
 
     async def process_r18e_event(self, message: RabbitMessage):

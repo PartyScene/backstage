@@ -5,7 +5,7 @@ import json
 import secrets
 
 from logging.config import dictConfig
-from shared.workers.rmq import listeners
+from shared.workers import rmq
 
 from redis.asyncio import Redis
 from quart import Quart, request, websocket
@@ -105,7 +105,7 @@ class MicroService(Quart):
                 self.register_websocket_routes()
             
             if self.microservice_instance.needs_rmq():
-                self.RMQ = listeners.RMQBroker(self, *args, **kw)
+                self.RMQ = rmq.RMQBroker(self)
 
         @self.after_serving
         async def cleanup():
