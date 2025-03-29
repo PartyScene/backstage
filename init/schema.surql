@@ -1,10 +1,11 @@
+DEFINE DATABASE OVERWRITE partyscene;
 -- Define the main atomic table, the users table
 DEFINE TABLE IF NOT EXISTS users schemafull;
 DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
-DEFINE FIELD OVERWRITE display_name ON TABLE users TYPE string DEFAULT "";
-DEFINE FIELD OVERWRITE avatar_url ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE username ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE option<record<media>>;
 DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE email ON TABLE users TYPE string VALUE string::lowercase($value) ASSERT string::is::email($value);
 DEFINE INDEX emailIndex ON TABLE users COLUMNS email UNIQUE;
@@ -34,7 +35,7 @@ DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
 DEFINE FIELD OVERWRITE media ON TABLE events TYPE array<record<media>> DEFAULT [];
 
 DEFINE FIELD OVERWRITE embeddings ON TABLE events FLEXIBLE TYPE object DEFAULT {}; 
-DEFINE FIELD OVERWRITE embeddings.media ON TABLE events FLEXIBLE TYPE object DEFAULT [];
+DEFINE FIELD OVERWRITE embeddings.media ON TABLE events TYPE array DEFAULT [0, 0, 0, 0];
 -- Define a vector index on the liquidsVector table for embedding field 
 DEFINE INDEX OVERWRITE mt_pts ON TABLE events FIELDS embeddings.media MTREE DIMENSION 4 DIST COSINE TYPE F32;
 
@@ -72,7 +73,7 @@ DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();
 -- & Finally? A table for media
 DEFINE TABLE IF NOT EXISTS media SCHEMAFULL;
 -- Define fields with literal types
-DEFINE FIELD OVERWRITE type ON media TYPE "image" | "video" | "vod";
+DEFINE FIELD OVERWRITE type ON media TYPE "image/jpeg" | "video/mp4" | "vod";
 
 DEFINE FIELD OVERWRITE url ON media VALUE "https://fastly.picsum.photos/id/866/200/300.jpg?hmac=rcadCENKh4rD6MAp6V_ma-AyWv641M4iiOpe1RyFHeI"  ASSERT string::len($value) > 0 ;
   -- VALUE <future> {http::get("http://34.144.227.188/media/sign?filename=${$this.filename}")} ASSERT string::len($value) > 0 
@@ -85,21 +86,4 @@ DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();
 
 -- Relations
 DEFINE FIELD OVERWRITE creator ON media TYPE record<users>;
-DEFINE FIELD OVERWRITE event ON media TYPE record<events>
-  VALUE $value OR NULL;
-
--- DEFINE FUNCTION fn::media::create($filenames: array<string>, $type: string, $creator: string, $event: string) {
---   -- Initialize an empty array to store the created IDs
---   LET $created_ids = []
-
---   -- Iterate over each filename and create a media record
---   FOR $filename IN $filenames {
---       LET $record = CREATE ONLY media SET type = $type, filename = $filename, creator = type::thing('users', $creator), event = type::thing('events', $event)
-
---       -- Append the created ID to the list
---       LET $created_ids = array::append($created_ids, $record.id)
---   };
-
---   -- Return the list of created IDs
---   RETURN $created_ids
--- };
+DEFINE FIELD OVERWRITE event ON media TYPE option<record<events>>;

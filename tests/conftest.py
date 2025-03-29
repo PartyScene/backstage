@@ -116,7 +116,7 @@ async def auth_client(auth_app):
         raise
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True, loop_scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def bearer(auth_client, mock_user):
     """Create a test bearer token"""
     try:
@@ -138,23 +138,33 @@ def mock_user():
         "password": "testingTs",
         "confirm_password": "testingTs",
         "avatar_url": fake.image_url(),
+        "username": fake.user_name(),
         "host": "test",
         "id": "test",
     }
 
 
+from werkzeug.datastructures import MultiDict
+
 @pytest.fixture(scope="session")
 def mock_event():
-    return {
+    event = {
         "title": fake.catch_phrase(),
         "description": fake.text(),
         "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
-        "coordinates": str(fake.latitude()) + "," + str(fake.longitude()),
         "location": fake.address(),
         "price": fake.numerify("##"),
         "host": "test",
         "id": "test",
     }
+    event = MultiDict(event)
+    event.add("coordinates[]", str(fake.latitude()))
+    event.add("coordinates[]", str(fake.longitude()))
+
+    event.add("categories[]", "beach")
+    event.add("categories[]", "outdoor")
+
+    return event
 
 
 def pytest_addoption(parser):

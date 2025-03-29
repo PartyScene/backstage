@@ -20,7 +20,6 @@ from shared.workers.rmq import RMQBroker
 class BaseView(QuartClassful):
 
     def __init__(self) -> None:
-        self.RMQ : RMQBroker = app.RMQ
         self.__posts_handler: PostsDB = app.conn
 
         self.redis = app.redis
@@ -153,13 +152,12 @@ class BaseView(QuartClassful):
         if not content:
             return jsonify({"error": "Content is required"}), 400
         
-        for file_key, file in files.items():
+        for file in files.values():
             data['filename'] = file.filename
-            await self.RMQ._publish_media(data, file.read())
-        
-        data['creator'] = get_jwt_identity()
-        data['type'] = file.content_type
-        data['filenames'] = [file.filename for file in files.items()]
+            data['type'] = file.content_type
+            await app.RMQ._publish_media(data, file.stream)
+
+        data['filenames'] = [file.filename for file in files.values()]
         
         # Push post media to RMQ after creating post
         result = await self.__posts_handler.create_post(

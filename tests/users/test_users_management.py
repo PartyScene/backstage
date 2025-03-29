@@ -21,13 +21,13 @@ class TestUserManagement(TestUsersBase):
 
     async def test_update_user_profile(self, users_client, mock_user, bearer):
         """Test updating user profile information."""
-        update_data = {"display_name": fake.name(), "bio": fake.text(max_nb_chars=200)}
+        update_data = {"username": fake.name(), "bio": fake.text(max_nb_chars=200)}
 
         response = await self.update_user(users_client, update_data, bearer)
         assert response.status_code == 200
         updated_profile = await response.get_json()
 
-        assert updated_profile["display_name"] == update_data["display_name"]
+        assert updated_profile["username"] == update_data["username"]
         assert updated_profile["bio"] == update_data["bio"]
 
     async def test_create_connection(self, users_client, mock_user, bearer):

@@ -177,7 +177,10 @@ class UsersDB:
         async with self.pool.acquire() as conn:
             result = await conn.delete(RecordID("users", id))
         return result
-
+    
+    def subset(self, d, keys):
+        return {k: d[k] for k in keys if k in d}
+    
     async def update(self, data: dict) -> dict:
         """
         Update user data
@@ -188,6 +191,17 @@ class UsersDB:
         Returns:
             dict: Updated user data
         """
+
+        if 'filename' in data:
+            async with self.pool.acquire() as conn:
+                data['creator'] = RecordID('users', data['creator'])
+                media_query_result = (await conn.create("media", self.subset(data, ['filename', 'type', 'creator'])))
+                self.logger.warning(json.dumps(media_query_result, indent=4, default=str))
+
+                avatar_media = RecordID("media", record_id_to_json(media_query_result)['id'])
+
+                data["avatar"] = avatar_media
+
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 "UPDATE ONLY type::thing('users', $record_id) MERGE $content RETURN AFTER;",

@@ -91,6 +91,7 @@ async def posts_app(mock_media_client):
     app.redis = AsyncRedisMock()
     app.conn, app.pool_manager = await init_db(app)
     app.RMQ = rmq.RMQBroker(app)
+    await app.RMQ.start()
     try:
         async with app.app_context():
             await app.get_shared_secret()

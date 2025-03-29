@@ -13,13 +13,14 @@ from shared.workers.novu import NotificationManager
 import os
 import json
 from aiocache import cached
-
+from shared.workers.rmq import RMQBroker
 
 class BaseView(QuartClassful):
     def __init__(self):
         self.conn: UsersDB = app.conn
         self.redis = app.redis
-        self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
+
+        # self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
         self.__notification_manager = NotificationManager()
 
     @route("/", methods=["GET"])
@@ -229,18 +230,17 @@ class BaseView(QuartClassful):
             data = {"id": user_id}  # Changed from 'user' to 'id' to match update method
 
             file = (await request.files).get("file")
+
             if not file:
                 return {"error": "No file provided"}, HTTPStatus.BAD_REQUEST
+            
+            data['filename'] = file.filename
+            data['type'] = file.content_type
+            data['creator'] = user_id
+            app.logger.warning(f"Uploading new event media to GCP: {file.filename}")
 
-            # Relay file to the Media Microservice
-            media_data = await self.__media_client.upload_media(request, file)
-            media_link = media_data.get("url")
-            if not media_link:
-                return {
-                    "error": "Invalid response from Media Microservice"
-                }, HTTPStatus.BAD_GATEWAY
+            await app.RMQ._publish_media(data, file.stream)
 
-            data["avatar_url"] = media_link
             response = await self.conn.update(data)
             return response, HTTPStatus.OK
         except Exception as e:

@@ -33,9 +33,7 @@ class BaseView(QuartClassful):
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
-        
         app.logger = app.logger
-        self.RMQ : RMQBroker = app.RMQ
 
 
     async def _store_live_query(self, event_id: str, live_id: str):
@@ -157,12 +155,14 @@ class BaseView(QuartClassful):
             data['categories'] = form.getlist("categories[]")
             data['host'] = get_jwt_identity()
             data['creator'] = get_jwt_identity()
-            data['filenames'] = [file.filename for file_key, file in files.items()]
+            data['filenames'] = [file.filename for file in files.values()]
+            data['degree_of_freedom'] = form.get('degree_of_freedom', 1, type=int)
             
-            for file_key, file in files.items():
+            for file in files.values():
                 data['filename'] = file.filename
+                data['type'] = file.content_type
                 app.logger.warning(f"Uploading new event media to GCP: {file.filename}")
-                await self.RMQ._publish_media(data, file.read())
+                await app.RMQ._publish_media(data, file.stream)
 
             app.logger.debug(f"Creating event data: {data}")
             if result := await self.conn.create_event(
@@ -216,7 +216,7 @@ class BaseView(QuartClassful):
     async def update_event_status(self, event_id: str) -> Tuple[Dict[str, Any], int]:
         """Update event status"""
         try:
-            user_id = get_jwt_identity()
+            user_id = get_jwt_identity() 
             data = await request.get_json()
 
             # Verify user has permission to update this event

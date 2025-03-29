@@ -20,6 +20,10 @@ class EventsDB:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
+    
+    def subset(self, d, keys):
+        return {k: d[k] for k in keys if k in d}
+
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
         async with self.pool.acquire() as conn:
@@ -31,7 +35,19 @@ class EventsDB:
                     "address": data.get("location"),
                     "coordinates": { "type": "Point", "coordinates": coordinates },
                 }
-                data["media"] = await conn.query("RETURN fn::media::create($filenames, $type, $creator, $event)", data)
+                data['creator'] = data['host']
+
+                media_ids = []
+
+                subset = lambda d, keys: {k: d[k] for k in keys if k in d}
+                
+                for filename in data['filenames']:
+                    data['filename'] = filename
+                    media_query_result = (await conn.create("media", self.subset(data, ['filename', 'type', 'creator'])))
+                    self.logger.warning(json.dumps(media_query_result, indent=4, default=str))
+                    media_ids.append(RecordID("media", record_id_to_json(media_query_result)['id']))
+
+                data["media"] = media_ids
 
                 result = await conn.create("events", data)
                 self.logger.warning(json.dumps(result, indent=4, default=str))
@@ -43,9 +59,6 @@ class EventsDB:
                     )  # Handle error case
                 return record_id_to_json(result)
 
-            except KeyError:
-                self.logger.error(f"Invalid Params: {data}")
-                return
             except Exception as e:
                 self.logger.error(f"Failed to create event: {str(e)}")
                 raise

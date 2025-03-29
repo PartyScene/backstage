@@ -16,6 +16,7 @@ import requests
 from contextlib import asynccontextmanager
 
 from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
+import msgpack
 
 class RMQBroker(RabbitBroker):
 
@@ -24,7 +25,10 @@ class RMQBroker(RabbitBroker):
         self.RABBITMQ_R18E_QUEUE = RabbitQueue(os.environ["RABBITMQ_R18E_QUEUE"])
 
         self.__vector_database = app.conn
-        super().__init__(url = os.environ["RABBITMQ_URI"], *args, **kwargs)
+        self.logger = app.logger
+
+        if app.microservice_instance.needs_rmq():
+            super().__init__(url = os.environ["RABBITMQ_URI"], decoder = self.decode_message, *args, **kwargs)
 
 
         if app.microservice_instance == "MEDIA":
@@ -34,7 +38,7 @@ class RMQBroker(RabbitBroker):
 
             @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
             async def handle_media_upload(message):
-                await self.upload_to_bucket(message.headers.get("filename"), message.body)
+                await self.upload_to_bucket(message.headers, message.body)
 
         if app.microservice_instance == "R18E":
             @self.subscriber(self.RABBITMQ_R18E_QUEUE)
@@ -46,20 +50,27 @@ class RMQBroker(RabbitBroker):
             from transformers import ViTImageProcessor, ViTModel
             self.processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224-in21k')
             self.model = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k', output_hidden_states=True)
-        
-        self.start()
     
-    async def upload_to_bucket(self, filename, image_bytes: bytes):
-        await obs.put_async(self.OBS_STORE, filename, image_bytes)
+    async def decode_message(self, msg: RabbitMessage, original_decoder):
+        # self.logger.warning(msg)
+        try:
+            msg.body = msgpack.loads(msg.body)
+        except:
+            return await original_decoder(msg)
+        return msg
+    
+    async def upload_to_bucket(self, data, image_bytes: bytes):
+        import obstore as obs
+        await obs.put_async(self.OBS_STORE, data["filename"], image_bytes, attributes= {"Content-Type": data['content-type']})
     
     async def _publish_r18e(self, event: str, file: bytes):
+        
+        file = msgpack.dumps(file.read())
         await self.publisher(self.RABBITMQ_R18E_QUEUE).publish(
-            RabbitMessage(
-                headers={
-                    "event": event,
-                },
-                body=file
-            )
+            file,
+            headers={
+                "event": event,
+            }
         )
     
     async def _publish_media(self, data: dict, file: bytes):
@@ -75,30 +86,34 @@ class RMQBroker(RabbitBroker):
             data (dict): Dictionary containing the data to be published
             file (bytes): File to be published
         """
+        file = msgpack.dumps(file.read())
         await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(
             file,
             headers={
                 "filename": data.get("filename"),
+                "content-type": data.get("type")
             }
         )
 
     async def process_r18e_event(self, message: RabbitMessage):
-        
-        image = Image.open(io.BytesIO(message.body)).convert('RGB')
+        if util.find_spec("torch"):
+            import torch
 
-        inputs = self.processor(images=image, return_tensors="pt")
+            image = Image.open(io.BytesIO(message.body)).convert('RGB')
 
-        with torch.no_grad():
-            outputs = self.model(**inputs)
+            inputs = self.processor(images=image, return_tensors="pt")
 
-            # Retrieve all hidden states
-            hidden_states = outputs.hidden_states  # Tuple of (num_layers+1, batch, seq_len, hidden_dim)
+            with torch.no_grad():
+                outputs = self.model(**inputs)
 
-            # Get the last 4 hidden states
-            last_4_layers = hidden_states[-4:]  # Last 4 layers
+                # Retrieve all hidden states
+                hidden_states = outputs.hidden_states  # Tuple of (num_layers+1, batch, seq_len, hidden_dim)
 
-            # Option 1: Average over last 4 layers
-            embedding = torch.stack(last_4_layers).mean(dim=0)  # (batch, seq_len, hidden_dim)
-        
-        resp = await self.__vector_database.store_embedding(message.headers.get("event"), embedding.tolist())
-        return resp
+                # Get the last 4 hidden states
+                last_4_layers = hidden_states[-4:]  # Last 4 layers
+
+                # Option 1: Average over last 4 layers
+                embedding = torch.stack(last_4_layers).mean(dim=0)  # (batch, seq_len, hidden_dim)
+            
+            resp = await self.__vector_database.store_embedding(message.headers.get("event"), embedding.tolist())
+            return resp

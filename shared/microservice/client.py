@@ -106,6 +106,7 @@ class MicroService(Quart):
             
             if self.microservice_instance.needs_rmq():
                 self.RMQ = rmq.RMQBroker(self)
+                await self.RMQ.start()
 
         @self.after_serving
         async def cleanup():
