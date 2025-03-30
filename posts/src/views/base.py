@@ -154,7 +154,7 @@ class BaseView(QuartClassful):
             return jsonify({"error": "Content is required"}), 400
 
         data["filenames"] = [
-            f"posts/{user_id}/{file.filename}" for file in files.values()
+            f"posts/{user_id}_{file.filename}" for file in files.values()
         ]
         data["types"] = [file.content_type for file in files.values()]
 

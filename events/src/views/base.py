@@ -156,7 +156,7 @@ class BaseView(QuartClassful):
             data["host"] = get_jwt_identity()
             data["creator"] = get_jwt_identity()
             data["filenames"] = [
-                f"events/{data['host']}/{file.filename}" for file in files.values()
+                f"events/{data['host']}_{file.filename}" for file in files.values()
             ]
             data["types"] = [file.content_type for file in files.values()]
 
@@ -167,7 +167,7 @@ class BaseView(QuartClassful):
 
             for i, file in enumerate(files.values()):
                 data["filename"] = data["filenames"][i]
-                data["type"] = data["types"][i]1
+                data["type"] = data["types"][i]
                 app.logger.warning(
                     f"Uploading new event media to GCP: {data['filename']}"
                 )

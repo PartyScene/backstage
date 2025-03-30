@@ -156,14 +156,12 @@ class UsersDB:
             result = await conn.query(
                 """
                 SELECT
-                    *
+                    * OMIT password
                 FROM ONLY type::thing('users', $id);
             """,
                 {"id": id},
             )
         self.logger.info(json.dumps(result, indent=4, default=str))
-        result.pop("password")
-        result.pop("bio")
         return record_id_to_json(result)
 
     async def delete(self, id: str) -> Optional[dict]:

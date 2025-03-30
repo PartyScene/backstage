@@ -46,6 +46,41 @@ class LiveStreamDB:
                 },
             )
         return record_id_to_json(result[0])
+        
+    
+    async def store_cloudflare_scene(self, input_response, event_id: str):
+        """
+        Store the ingest url / playback url / from Cloudflare and attach it to the event.
+
+        Returns:
+            bool: Indicates if this operation was a success
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                INSERT INTO scenes 
+                    (input_uid, srt, event) VALUES ($input_uid, $srt, type::thing("events", $event_id))
+                """,
+                {
+                    "input_uid": input_response.uid,
+                    "srt": input_response.srt,
+                    "event_id": event_id,
+                },
+            )
+        return record_id_to_json(result[0])
+
+    async def fetch_cloudflare_scene(self, event_id: str):
+        """
+        Get the current Cloudflare scene data attached to an event
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                SELECT * FROM ONLY scenes WHERE event = type::thing("events", $event_id)
+                """,
+                {"event_id": event_id},
+            )
+        return record_id_to_json(result)
 
     # async def delete(self, email) :
     #     """This db function deletes a user.

@@ -233,10 +233,10 @@ class BaseView(QuartClassful):
             if not file:
                 return {"error": "No file provided"}, HTTPStatus.BAD_REQUEST
 
-            data["filename"] = f"users/{user_id}/{file.filename}"
+            data["filename"] = f"users/{user_id}_{file.filename}"
             data["type"] = file.content_type
             data["creator"] = user_id
-            app.logger.warning(f"Uploading new event media to GCP: {file.filename}")
+            app.logger.warning(f"Uploading new user media to GCP: {file.filename}")
 
             await app.RMQ._publish_media(data, file.stream)
 

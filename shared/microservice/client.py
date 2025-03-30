@@ -299,6 +299,7 @@ class MicroService(Quart):
         @self.websocket("/events/<event_id>/live/ws")
         @jwt_required
         async def event_live_updates(event_id: str):
+            """Handle WebSocket connections for live event updates."""
             try:
                 user_id = await get_jwt_identity()
 
@@ -306,7 +307,7 @@ class MicroService(Quart):
                 event = await self.conn.fetch(event_id)
                 if not event or (
                     event["host"]["id"] != user_id
-                    and user_id not in [a["id"] for a in event.get("attendees", [])]
+                    or user_id not in [a["id"] for a in event.get("attendees", [])]
                 ):
                     logger.warning(
                         f"Unauthorized WebSocket connection attempt for event {event_id}"

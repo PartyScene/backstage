@@ -48,6 +48,12 @@ DEFINE FIELD OVERWRITE playback_url ON TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;
 DEFINE FIELD OVERWRITE event ON TABLE livestreams TYPE record<events>;
 
+-- Let's define a table for scenes???
+DEFINE TABLE IF NOT EXISTS scenes schemafull;
+DEFINE FIELD OVERWRITE input_uid ON TABLE scenes TYPE STRING;
+DEFINE FIELD OVERWRITE srt ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE event ON TABLE scenes TYPE record<events>;
+
 -- A table for posts
 DEFINE TABLE IF NOT EXISTS posts TYPE RELATION IN users TO media;
 DEFINE FIELD OVERWRITE out ON TABLE posts TYPE record<media>;

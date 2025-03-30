@@ -49,7 +49,7 @@ class TestPostOperations(TestPostsBase):
         files = {
             "file": FileStorage(
                 io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }
@@ -103,7 +103,7 @@ class TestPostOperations(TestPostsBase):
         files = {
             "file": FileStorage(
                 io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }
@@ -151,7 +151,7 @@ class TestPostOperations(TestPostsBase):
         files = {
             "file": FileStorage(
                 io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }
@@ -185,7 +185,7 @@ class TestPostOperations(TestPostsBase):
         files = {
             "file": FileStorage(
                 io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }
@@ -222,7 +222,7 @@ class TestPostOperations(TestPostsBase):
         files = {
             "file": FileStorage(
                 io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }

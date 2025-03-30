@@ -16,7 +16,7 @@ class TestEventCreation(TestEventsBase):
         files = {
             "file": FileStorage(
                 self.generate_random_image(),
-                filename="pytests/" + fake.file_name(category="image"),
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }
@@ -44,7 +44,7 @@ class TestEventCreation(TestEventsBase):
         files = {
             "file": FileStorage(
                 self.generate_random_image(),
-                filename="pytests/" + fake.file_name(category="image"),
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }

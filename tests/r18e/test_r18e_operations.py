@@ -16,7 +16,7 @@ class TestMLOperations(TestR18EBase):
         files = {
             "file": FileStorage(
                 self.generate_random_image(),
-                filename="test_image.jpg",
+                filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }

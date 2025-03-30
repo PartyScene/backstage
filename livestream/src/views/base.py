@@ -13,6 +13,7 @@ from ..lib import create_livestream_client
 from quart_jwt_extended import jwt_required
 from http import HTTPStatus
 from shared.classful import route, QuartClassful
+from shared.workers import cloudflare_stream
 from datetime import datetime
 from aiocache import cached
 
@@ -21,9 +22,9 @@ class BaseView(QuartClassful):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.logger = logging.create_logger(app)
         self.redis = app.redis
         self.livestream = create_livestream_client(app.conn, self.logger)
+        self.scenes_client = cloudflare_stream.create_livestream_client(app, app.logger)
 
     @route("/", methods=["GET"])
     @route("/health", methods=["GET"])
@@ -74,9 +75,12 @@ class BaseView(QuartClassful):
     @jwt_required
     async def get_livestream(self, event_id):
         try:
-            stream_info = await self.livestream.get_stream(event_id)
-            if not isinstance(stream_info, dict):
-                return jsonify(stream_info), HTTPStatus.NOT_FOUND
+            vod = request.args.get("vod", False)
+            if vod:
+                stream_info = await self.scenes_client.get_vods(event_id)
+            else:
+                stream_info = await self.scenes_client.get_live(event_id)
+
             return jsonify(stream_info), HTTPStatus.OK
         except:
             return (
@@ -87,10 +91,10 @@ class BaseView(QuartClassful):
     @route("/scenes/<event_id>", methods=["DELETE"])
     async def end_livestream(self, event_id):
         try:
-            stream_info = await self.livestream.end_stream(event_id)
-            if not isinstance(stream_info, dict):
-                return jsonify(stream_info), HTTPStatus.NOT_FOUND
-            return jsonify(stream_info), HTTPStatus.NO_CONTENT
+            stream_deleted = await self.scenes_client.delete_stream(event_id)
+            if stream_deleted:
+                return jsonify(stream_info), HTTPStatus.NO_CONTENT
+            return jsonify(stream_info), HTTPStatus.NOT_FOUND
         except:
             return (
                 jsonify({"error": "Failed to get livestream"}),
@@ -100,14 +104,20 @@ class BaseView(QuartClassful):
     @route("/scenes/<event_id>", methods=["POST"])
     async def create_livestream(self, event_id):  # Renamed from index to manage_stream
         """
-        Create a livestream for a given event using the GCP Livestream API.
+        Create a livestream for a given event using the GCP or Cloudflare Livestream API.
 
-        This method follows a comprehensive livestream creation workflow:
+        This method follows a comprehensive livestream creation workflow (for GCP):
         1. Create a Stream: Initializes a new livestream for the specified event
         2. Create Input: Sets up the input configuration for the livestream
         3. Record Input: Prepares the livestream to start recording
         4. Store Output: Saves the livestream configuration and metadata
         5. Connect to Output: Establishes the output streaming destination
+
+        And for cloudflare, this method follows a comprehensive livestream creation workflow:
+        1. Create a Stream Input: Initializes a new livestream for the specified event
+        2. Store Stream Input for Creators: Stores the stream input for streaming by creators
+        3. Retrieve VODs: Retrieves the VODs for the specified input [live/vod]
+        4. Delete Input: Deletes the stream input
 
         Args:
             event_id (str): Unique identifier for the event to create a livestream for
@@ -120,10 +130,21 @@ class BaseView(QuartClassful):
         Raises:
             Exception: If any step in the livestream creation process fails
         """
+        # try:
+        #     stream_create_resp = await self.livestream.start_stream(event_id)
+        #     if stream_create_resp:
+        #         stream_info = await self.livestream.get_stream(event_id)
+        #         return jsonify(stream_info), HTTPStatus.CREATED
+        # except:
+        #     return (
+        #         jsonify({"error": "Failed to create livestream"}),
+        #         HTTPStatus.INTERNAL_SERVER_ERROR,
+        #     )
+
         try:
-            stream_create_resp = await self.livestream.start_stream(event_id)
+            stream_create_resp = await self.scenes_client.create_stream(event_id)
             if stream_create_resp:
-                stream_info = await self.livestream.get_stream(event_id)
+                stream_info = await self.scenes_client.fetch_stream(event_id)
                 return jsonify(stream_info), HTTPStatus.CREATED
         except:
             return (

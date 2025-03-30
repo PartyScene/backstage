@@ -62,8 +62,9 @@ class PostsDB:
             Returns:
                 dict: A dictionary containing the result of the comment fetch query.
         """
-        query = """ SELECT ->comments.* FROM users WHERE ->comments[WHERE out = type::thing('posts', $post_id)];"""
-        params = {"post_id": post_id}
+        post = RecordID("posts", post_id)
+        query = """ SELECT ->comments.* AS comments FROM users WHERE ->comments[WHERE out = $post];"""
+        params = {"post": post}
         async with self.pool.acquire() as conn:
             result = await conn.query(query, params)
         return record_id_to_json(result)

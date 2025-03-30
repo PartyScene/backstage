@@ -83,7 +83,7 @@ class EventsDB:
         """
         async with self.pool.acquire() as conn:
             result = await conn.delete(RecordID("events", event_id))
-            if "ERR" in result:
+            if "err" in result:
                 raise Exception(f"Error deleting event: {result}")  # Handle error case
         return record_id_to_json(result)
 
@@ -106,7 +106,7 @@ class EventsDB:
                 result = await conn.query(
                     """
                 SELECT 
-                    *,
+                    *, media.*.*,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count,
                     geo::distance(coordinates, $coordinates) as distance
@@ -139,7 +139,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                     SELECT *,
+                     SELECT *, media.*.*,
                         <-attends<-users AS attendees,
                         array::len(<-attends<-users) as attendees_count
                     FROM events ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
@@ -170,7 +170,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                     SELECT *,
+                     SELECT *, media.*.*,
                         <-attends<-users AS attendees,
                         array::len(<-attends<-users) as attendees_count
                     FROM events WHERE is_private = false ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
@@ -198,7 +198,7 @@ class EventsDB:
                 result = await conn.query(
                     """
                 SELECT
-                    *,
+                    *, media.*.*,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
                 FROM ONLY type::thing('events', $event_id);
@@ -319,9 +319,9 @@ class EventsDB:
                 RELATE $user -> attends -> $event SET status = $status;
                 """
                 result = await conn.query(query, {"status": data["status"]})
-            if result[0]["status"] == "ERR":
+            if 'err' in result:
                 raise Exception(
-                    f"Error creating attendance: {result[0]['result']}"
+                    f"Error creating attendance: {result}"
                 )  # Handle error case
         except Exception as e:
             self.logger.error(f"Failed to create attendance: {str(e)}")
