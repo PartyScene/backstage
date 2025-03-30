@@ -1,7 +1,11 @@
 import os
 import novu_py
 import logging
+import httpx
+
+from datetime import datetime
 from novu_py import Novu, TriggerEventRequestDto, To
+from typing import Tuple
 from typing import Dict, List, Union, Optional
 
 logger = logging.getLogger(__name__)
@@ -13,6 +17,24 @@ class NotificationManager:
         Initialize Novu client with secret key from environment
         """
         self.novu_client = Novu(secret_key=os.getenv("NOVU_SECRET_KEY", ""))
+
+    async def get_ip_location(self, ip_address: str) -> Tuple[str, str]:
+        """Get the Location from an IP Address
+
+        Args:
+            ip_address (str): _description_
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(f"https://ipapi.co/{ip_address}/json/")
+                r.raise_for_status()
+                json_data = r.json()
+                return json_data["city"], json_data["country"]
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Failed to get Location from IP {e}")
+        except httpx.RequestError as e:
+            logger.error(f"Failed to get Location from IP {e}")
 
     async def create_subscriber(
         self,
@@ -56,11 +78,15 @@ class NotificationManager:
                 create_subscriber_request_dto=subscriber_data
             )
         except Exception as e:
-            logger.info(f"Subscriber creation error: {e}")
+            logger.error(f"Subscriber creation error: {e}")
             raise
 
     async def send_otp_notification(
-        self, user_id: str, otp: str, workflow_id: str = "one-time-password"
+        self,
+        user_id: str,
+        ip_address: str,
+        otp: str,
+        workflow_id: str = "email-verification-flow",
     ):
         """
         Send OTP notification to a user
@@ -78,15 +104,28 @@ class NotificationManager:
                 trigger_event_request_dto=TriggerEventRequestDto(
                     workflow_id=workflow_id,
                     to={"subscriber_id": user_id},
-                    payload={"otp": otp},
+                    payload={
+                        "data": {
+                            "app_name": "Scenes",
+                            "requested_by": ip_address,
+                            "requested_at": ", ".join(
+                                await self.get_ip_location(ip_address)
+                            ),
+                            "otp_code": otp,
+                        }
+                    },
                 )
             )
         except Exception as e:
-            logger.info(f"OTP notification error: {e}")
+            logger.error(f"OTP notification error: {e}")
             raise
 
     async def recent_login_notification(
-        self, user_id: str, payload: Dict, workflow_id: str = "recent-login"
+        self,
+        user_id: str,
+        ip_address: str,
+        timestamp: str = None,
+        workflow_id: str = "recent-login",
     ):
         """
         Send recent login notification to a user
@@ -104,11 +143,14 @@ class NotificationManager:
                 trigger_event_request_dto=TriggerEventRequestDto(
                     workflow_id=workflow_id,
                     to={"subscriber_id": user_id},
-                    payload=payload,
+                    payload={
+                        "ip_address": ip_address,
+                        "timestamp": timestamp or datetime.now().isoformat(),
+                    },
                 )
             )
         except Exception as e:
-            logger.info(f"Recent Login notification error: {e}")
+            logger.error(f"Recent Login notification error: {e}")
             raise
 
     async def send_friend_request_notification(
@@ -134,7 +176,7 @@ class NotificationManager:
                 )
             )
         except Exception as e:
-            logger.info(f"Friend request notification error: {e}")
+            logger.error(f"Friend request notification error: {e}")
             raise
 
     async def send_event_invitation(

@@ -7,6 +7,7 @@ from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 import json
 
+
 class UsersDB:
     def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
         self.pool = pool
@@ -161,7 +162,8 @@ class UsersDB:
                 {"id": id},
             )
         self.logger.info(json.dumps(result, indent=4, default=str))
-        result.pop("password"); result.pop("bio")
+        result.pop("password")
+        result.pop("bio")
         return record_id_to_json(result)
 
     async def delete(self, id: str) -> Optional[dict]:
@@ -177,10 +179,10 @@ class UsersDB:
         async with self.pool.acquire() as conn:
             result = await conn.delete(RecordID("users", id))
         return result
-    
+
     def subset(self, d, keys):
         return {k: d[k] for k in keys if k in d}
-    
+
     async def update(self, data: dict) -> dict:
         """
         Update user data
@@ -192,13 +194,19 @@ class UsersDB:
             dict: Updated user data
         """
 
-        if 'filename' in data:
+        if "filename" in data:
             async with self.pool.acquire() as conn:
-                data['creator'] = RecordID('users', data['creator'])
-                media_query_result = (await conn.create("media", self.subset(data, ['filename', 'type', 'creator'])))
-                self.logger.warning(json.dumps(media_query_result, indent=4, default=str))
+                data["creator"] = RecordID("users", data["creator"])
+                media_query_result = await conn.create(
+                    "media", self.subset(data, ["filename", "type", "creator"])
+                )
+                self.logger.warning(
+                    json.dumps(media_query_result, indent=4, default=str)
+                )
 
-                avatar_media = RecordID("media", record_id_to_json(media_query_result)['id'])
+                avatar_media = RecordID(
+                    "media", record_id_to_json(media_query_result)["id"]
+                )
 
                 data["avatar"] = avatar_media
 

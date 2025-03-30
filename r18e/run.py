@@ -1,4 +1,3 @@
-
 from shared.microservice import client
 
 from r18e.src.internals.connector import init_db

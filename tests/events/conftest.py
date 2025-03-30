@@ -20,6 +20,7 @@ import io
 from unittest.mock import MagicMock
 from dotenv import load_dotenv
 from shared.workers import rmq
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

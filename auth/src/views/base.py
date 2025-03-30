@@ -106,10 +106,7 @@ class BaseView(QuartClassful):
             access_token = self.generate_jwt_secret(result["id"])
             await self.__notification_manager.recent_login_notification(
                 user_id=result["id"],
-                payload={
-                    "ip_address": request.remote_addr,
-                    "timeStamp": datetime.now().isoformat(),
-                },
+                ip_address=request.remote_addr,
             )
             return (
                 jsonify(access_token=access_token, token_type="bearer"),
@@ -147,7 +144,7 @@ class BaseView(QuartClassful):
 
             # Send OTP via Novu
             await self.__notification_manager.send_otp_notification(
-                user_id=user_id, otp=otp
+                user_id=user_id, ip_address=request.remote_addr, otp=otp
             )
 
             return {"message": "OTP sent successfully"}

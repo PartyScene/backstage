@@ -13,6 +13,7 @@ class MediaDB:
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
+
     async def fetch_media(self, data) -> dict:
         """
         Fetch media record from the database by its unique ID.
@@ -46,7 +47,7 @@ class MediaDB:
 
             if isinstance(result, dict):
                 return record_id_to_json(result)
-            
+
             else:
                 raise Exception(
                     f"Error creating media record: {result}"

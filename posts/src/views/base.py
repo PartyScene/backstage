@@ -28,7 +28,7 @@ class BaseView(QuartClassful):
     @cached(ttl=60 * 60 * 72)
     async def index(self):
         return await self.healthcheck()
-        
+
     @route("/posts/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
@@ -147,22 +147,24 @@ class BaseView(QuartClassful):
         """"""
         data = (await request.form).to_dict()
         files = await request.files
+        user_id = get_jwt_identity()
         content = data.get("content")
 
         if not content:
             return jsonify({"error": "Content is required"}), 400
-        
-        for file in files.values():
-            data['filename'] = file.filename
-            data['type'] = file.content_type
+
+        data["filenames"] = [
+            f"posts/{user_id}/{file.filename}" for file in files.values()
+        ]
+        data["types"] = [file.content_type for file in files.values()]
+
+        for i, file in enumerate(files.values()):
+            data["filename"] = data["filenames"][i]
+            data["type"] = data["types"][i]
             await app.RMQ._publish_media(data, file.stream)
 
-        data['filenames'] = [file.filename for file in files.values()]
-        
         # Push post media to RMQ after creating post
-        result = await self.__posts_handler.create_post(
-            data=data, author=get_jwt_identity()
-        )
+        result = await self.__posts_handler.create_post(data=data, author=user_id)
 
         if isinstance(result, str):
             return result, HTTPStatus.BAD_REQUEST

@@ -58,7 +58,6 @@ fake = Faker()
 async def auth_app():
     """Create a session-scoped auth app"""
 
-
     from auth.run import app
     from auth.src.connectors import init_db
 
@@ -145,6 +144,7 @@ def mock_user():
 
 
 from werkzeug.datastructures import MultiDict
+
 
 @pytest.fixture(scope="session")
 def mock_event():

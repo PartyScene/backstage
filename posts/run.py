@@ -1,4 +1,3 @@
-
 from shared.microservice import client
 
 from posts.src.connectors import init_db

@@ -6,6 +6,7 @@ from surrealdb import AsyncSurreal, RecordID
 from shared.utils import record_id_to_json
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
+
 class PostsDB:
     def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
         self.pool = pool
@@ -14,7 +15,7 @@ class PostsDB:
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
-        
+
     async def fetch_event_posts(self, id: str) -> dict:
         """
         Asynchronously fetches all posts associated with the given event.
@@ -95,14 +96,25 @@ class PostsDB:
             await conn.let("users", RecordID("users", author))
             media_ids = []
 
-            data['creator'] = RecordID("users", author)
-            data['event'] = RecordID("events", data["event"])
-            
-            for filename in data['filenames']:
-                data['filename'] = filename
-                media_id = (await conn.create("media", data))
-                self.logger.warning(json.dumps(media_id, indent=4, default=str))
-                media_ids.append(RecordID("media", record_id_to_json(media_id)['id']))
+            data["creator"] = RecordID("users", author)
+            data["event"] = RecordID("events", data["event"])
+
+            for i, filename in enumerate(data["filenames"]):
+                media_query_result = await conn.create(
+                    "media",
+                    {
+                        "filename": filename,
+                        "type": data["types"][i],
+                        "event": data["event"],
+                        "creator": data["creator"],
+                    },
+                )
+                self.logger.warning(
+                    json.dumps(media_query_result, indent=4, default=str)
+                )
+                media_ids.append(
+                    RecordID("media", record_id_to_json(media_query_result)["id"])
+                )
 
             await conn.let("media", media_ids)
             query = """

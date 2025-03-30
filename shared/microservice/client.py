@@ -14,7 +14,7 @@ from quart_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from .enum import Microservice
 from typing import Callable
 from shared.classful import QuartClassful
-from purreal import SurrealDBPoolManager
+from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
 
 # Configure logging
 dictConfig(
@@ -40,7 +40,7 @@ dictConfig(
     }
 )
 
- 
+
 ######## METRICS
 
 import time
@@ -49,11 +49,19 @@ from quart import request, current_app
 from prometheus_client import Counter, Histogram, Gauge, Summary
 
 # Define metrics
-REQUEST_COUNT = Counter('request_count', 'App Request Count', ['method', 'endpoint', 'status'])
-REQUEST_LATENCY = Histogram('request_latency_seconds', 'Request latency', ['method', 'endpoint'])
-REQUESTS_IN_PROGRESS = Gauge('requests_in_progress', 'Requests in progress', ['method', 'endpoint'])
-DB_QUERY_LATENCY = Histogram('db_query_latency_seconds', 'Database query latency')
-REDIS_OPERATION_LATENCY = Histogram('redis_operation_latency_seconds', 'Redis operation latency')
+REQUEST_COUNT = Counter(
+    "request_count", "App Request Count", ["method", "endpoint", "status"]
+)
+REQUEST_LATENCY = Histogram(
+    "request_latency_seconds", "Request latency", ["method", "endpoint"]
+)
+REQUESTS_IN_PROGRESS = Gauge(
+    "requests_in_progress", "Requests in progress", ["method", "endpoint"]
+)
+DB_QUERY_LATENCY = Histogram("db_query_latency_seconds", "Database query latency")
+REDIS_OPERATION_LATENCY = Histogram(
+    "redis_operation_latency_seconds", "Redis operation latency"
+)
 
 
 logger = logging.getLogger(__name__)
@@ -76,7 +84,7 @@ class MicroService(Quart):
         self.views = views
         self.initialize_database = initialize_database
         self.microservice_instance = Microservice(instance)
-        
+
         # Set dev environment settings
         if os.getenv("ENVIRONMENT") == "dev":
             self.config["DEBUG"] = True
@@ -100,10 +108,10 @@ class MicroService(Quart):
             await self.init_services()
             self.setup_metrics()
             self.register_routes()
-            
+
             if self.microservice_instance == Microservice.EVENTS:
                 self.register_websocket_routes()
-            
+
             if self.microservice_instance.needs_rmq():
                 self.RMQ = rmq.RMQBroker(self)
                 await self.RMQ.start()
@@ -113,7 +121,6 @@ class MicroService(Quart):
             """Cleanup resources after app is being stopped."""
             logger.warning("Cleaning up resources...")
             await self.clean_up()
-
 
     async def init_redis(self):
         """Initialize Redis connection"""
@@ -179,7 +186,7 @@ class MicroService(Quart):
 
     async def get_shared_secret(self):
         """Get JWT secret from Redis"""
-        
+
         if self.config["DEBUG"]:
             self.config["SECRET_KEY"] = "test-secret-key"
             self.config["JWT_SECRET_KEY"] = "test-secret-key"
@@ -241,7 +248,7 @@ class MicroService(Quart):
                 exc_info=True,
             )
             raise
-    
+
     def setup_metrics(self):
         """
         Setup metrics collection for a Quart app
@@ -250,23 +257,31 @@ class MicroService(Quart):
         @self.before_serving
         async def register_metrics_endpoint():
             from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-            
-            @self.route(f'/{self.microservice_instance.lower()}/metrics')
+
+            @self.route(f"/{self.microservice_instance.lower()}/metrics")
             async def metrics():
-                return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
-        
+                return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
+
+            @self.route(f"/{self.microservice_instance.lower()}/conn")
+            async def conn_stats():
+                return self.conn.pool.get_stats(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
+
         @self.before_request
         async def before_request():
             request.start_time = time.time()
             endpoint = request.path
             REQUESTS_IN_PROGRESS.labels(method=request.method, endpoint=endpoint).inc()
-            
+
         @self.after_request
         async def after_request(response):
             endpoint = request.path
             resp_time = time.time() - request.start_time
-            REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint).observe(resp_time)
-            REQUEST_COUNT.labels(method=request.method, endpoint=endpoint, status=response.status_code).inc()
+            REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint).observe(
+                resp_time
+            )
+            REQUEST_COUNT.labels(
+                method=request.method, endpoint=endpoint, status=response.status_code
+            ).inc()
             REQUESTS_IN_PROGRESS.labels(method=request.method, endpoint=endpoint).dec()
             return response
 

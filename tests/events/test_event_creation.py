@@ -26,7 +26,6 @@ class TestEventCreation(TestEventsBase):
         assert "id" in created_event
         assert response.status_code == 201
 
-
         mock_event["id"] = created_event["id"]
 
         assert created_event["host"] == mock_event["host"]
@@ -52,6 +51,7 @@ class TestEventCreation(TestEventsBase):
         response = await self.create_event(event_client, invalid_data, files, bearer)
 
         assert response.status_code == 400
+
 
 # @pytest.mark.performance
 # def test_event_creation_performance(benchmark, event_client):

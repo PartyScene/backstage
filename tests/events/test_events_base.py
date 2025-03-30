@@ -6,8 +6,9 @@ from PIL import Image
 import io
 from typing import IO
 
+
 class TestEventsBase:
-    def generate_random_image(self, color = "blue") -> IO[bytes]:
+    def generate_random_image(self, color="blue") -> IO[bytes]:
         image = Image.new("RGB", (100, 100), color=color)
         # image.tobytes()
         img_bytes = io.BytesIO()
@@ -18,7 +19,10 @@ class TestEventsBase:
     async def create_event(self, client: QuartClient, event_data: dict, files, bearer):
         """Helper method to create an event"""
         return await client.post(
-            "/events", form=event_data, files=files, headers={"Authorization": f"Bearer {bearer}"}
+            "/events",
+            form=event_data,
+            files=files,
+            headers={"Authorization": f"Bearer {bearer}"},
         )
 
     async def update_event(

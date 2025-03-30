@@ -11,9 +11,7 @@ fake = Faker()
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestMLOperations(TestR18EBase):
-    async def test_extract_features(
-        self, r18e_client, bearer
-    ):
+    async def test_extract_features(self, r18e_client, bearer):
         """Test extracting features."""
         files = {
             "file": FileStorage(
@@ -22,7 +20,7 @@ class TestMLOperations(TestR18EBase):
                 content_type="image/jpeg",
             )
         }
-        
+
         response = await self.extract_features(r18e_client, files, bearer)
         assert response.status_code == 200
         features = await response.get_json()

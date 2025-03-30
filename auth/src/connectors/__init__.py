@@ -49,7 +49,7 @@ class AuthDB:
                 {"password": data["password"], "email": data["email"]},
             )
             logger.info(json.dumps(result, indent=4, default=str))
-            
+
             if not result or not result[0]:
                 logger.warning(
                     f"Wrong password or non-existent credentials for email {data.get('email')}"

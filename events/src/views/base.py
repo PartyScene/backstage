@@ -28,13 +28,13 @@ from shared.utils import create_media_client, MediaClient
 
 from shared.workers.rmq import RMQBroker
 
+
 class BaseView(QuartClassful):
 
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
         app.logger = app.logger
-
 
     async def _store_live_query(self, event_id: str, live_id: str):
         """Store live query ID in Redis"""
@@ -145,23 +145,32 @@ class BaseView(QuartClassful):
     async def create_event(self):
         """Create an event"""
         try:
-            form = (await request.form)
+            form = await request.form
             files = await request.files
-            
+
             media_links = []
 
             data = form.to_dict()
-            data['coordinates'] = form.getlist("coordinates[]", type=float)
-            data['categories'] = form.getlist("categories[]")
-            data['host'] = get_jwt_identity()
-            data['creator'] = get_jwt_identity()
-            data['filenames'] = [file.filename for file in files.values()]
-            data['degree_of_freedom'] = form.get('degree_of_freedom', 1, type=int)
-            
-            for file in files.values():
-                data['filename'] = file.filename
-                data['type'] = file.content_type
-                app.logger.warning(f"Uploading new event media to GCP: {file.filename}")
+            data["coordinates"] = form.getlist("coordinates[]", type=float)
+            data["categories"] = form.getlist("categories[]")
+            data["host"] = get_jwt_identity()
+            data["creator"] = get_jwt_identity()
+            data["filenames"] = [
+                f"events/{data['host']}/{file.filename}" for file in files.values()
+            ]
+            data["types"] = [file.content_type for file in files.values()]
+
+            data["degree_of_freedom"] = form.get("degree_of_freedom", 1, type=int)
+            data["is_private"] = (
+                form.get("is_private", "false") == "true"
+            )  # Default to False if not specified
+
+            for i, file in enumerate(files.values()):
+                data["filename"] = data["filenames"][i]
+                data["type"] = data["types"][i]1
+                app.logger.warning(
+                    f"Uploading new event media to GCP: {data['filename']}"
+                )
                 await app.RMQ._publish_media(data, file.stream)
 
             app.logger.debug(f"Creating event data: {data}")
@@ -169,7 +178,7 @@ class BaseView(QuartClassful):
                 data
             ):  # Pass the raw data to the database method
                 return jsonify(result), HTTPStatus.CREATED
-                
+
             app.logger.error("Failed to create event")
             return {"error": "Failed to create event"}, HTTPStatus.BAD_REQUEST
         except Exception as e:
@@ -216,7 +225,7 @@ class BaseView(QuartClassful):
     async def update_event_status(self, event_id: str) -> Tuple[Dict[str, Any], int]:
         """Update event status"""
         try:
-            user_id = get_jwt_identity() 
+            user_id = get_jwt_identity()
             data = await request.get_json()
 
             # Verify user has permission to update this event
@@ -358,4 +367,3 @@ class BaseView(QuartClassful):
                 f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
             )
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-

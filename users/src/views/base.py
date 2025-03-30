@@ -15,6 +15,7 @@ import json
 from aiocache import cached
 from shared.workers.rmq import RMQBroker
 
+
 class BaseView(QuartClassful):
     def __init__(self):
         self.conn: UsersDB = app.conn
@@ -140,14 +141,12 @@ class BaseView(QuartClassful):
             return user, HTTPStatus.OK
         except Exception as e:
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-        
-    
+
     @route("/users/search", methods=["GET"])
     @jwt_required
     async def search_user(self):
         username = request.args.get("username")
         ...
-
 
     @route("/friends", methods=["GET"])
     @jwt_required
@@ -233,10 +232,10 @@ class BaseView(QuartClassful):
 
             if not file:
                 return {"error": "No file provided"}, HTTPStatus.BAD_REQUEST
-            
-            data['filename'] = file.filename
-            data['type'] = file.content_type
-            data['creator'] = user_id
+
+            data["filename"] = f"users/{user_id}/{file.filename}"
+            data["type"] = file.content_type
+            data["creator"] = user_id
             app.logger.warning(f"Uploading new event media to GCP: {file.filename}")
 
             await app.RMQ._publish_media(data, file.stream)

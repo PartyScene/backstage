@@ -8,6 +8,7 @@ from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 from typing import Tuple
 
+
 class R18E:
     def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
         self.pool = pool
@@ -23,15 +24,18 @@ class R18E:
         # self.logger.warning(f"Storing embedding for event {event_id} -- {embedding}")
 
         data = dict()
-        data['embeddings']['media'] = embedding
+        data["embeddings"]["media"] = embedding
         async with self.pool.acquire() as conn:
-            result = await conn.merge(RecordID('events', event_id), data)
+            result = await conn.merge(RecordID("events", event_id), data)
         return result
 
     async def fetch_embedding(self, event_id: str) -> dict:
         """Fetch an embedding for an event."""
         self.logger.warning(f"Fetching embedding for event {event_id}")
-        return await self.pool.execute_query(f"SELECT * FROM embeddings WHERE id = $id", {"id": event_id})
+        return await self.pool.execute_query(
+            f"SELECT * FROM embeddings WHERE id = $id", {"id": event_id}
+        )
+
 
 async def init_db(app: Quart) -> Tuple[R18E, SurrealDBPoolManager]:
     """

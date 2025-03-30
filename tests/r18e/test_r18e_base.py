@@ -7,8 +7,9 @@ from quart.testing import QuartClient
 from typing import IO
 from PIL import Image
 
+
 class TestR18EBase:
-    def generate_random_image(self, color = "blue") -> IO[bytes]:
+    def generate_random_image(self, color="blue") -> IO[bytes]:
         image = Image.new("RGB", (100, 100), color=color)
         # image.tobytes()
         img_bytes = io.BytesIO()

@@ -8,7 +8,9 @@ class MediaClient:
     def __init__(self, media_service_url: str) -> None:
         self.media_service_url = media_service_url.rstrip("/")
 
-    async def upload_media(self, request: Request, file: FileStorage, data_to_use: dict = None) -> Dict[str, Any]:
+    async def upload_media(
+        self, request: Request, file: FileStorage, data_to_use: dict = None
+    ) -> Dict[str, Any]:
         """
         Upload media file to the media microservice
 

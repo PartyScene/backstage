@@ -15,12 +15,11 @@ class EventsDB:
     def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
         self.pool = pool
         self.logger = logger
-    
+
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
-    
     def subset(self, d, keys):
         return {k: d[k] for k in keys if k in d}
 
@@ -33,19 +32,31 @@ class EventsDB:
                 data["host"] = RecordID("users", data["host"])
                 data["location"] = {
                     "address": data.get("location"),
-                    "coordinates": { "type": "Point", "coordinates": coordinates },
+                    "coordinates": {"type": "Point", "coordinates": coordinates},
                 }
-                data['creator'] = data['host']
+                data["creator"] = data["host"]
 
                 media_ids = []
 
                 subset = lambda d, keys: {k: d[k] for k in keys if k in d}
-                
-                for filename in data['filenames']:
-                    data['filename'] = filename
-                    media_query_result = (await conn.create("media", self.subset(data, ['filename', 'type', 'creator'])))
-                    self.logger.warning(json.dumps(media_query_result, indent=4, default=str))
-                    media_ids.append(RecordID("media", record_id_to_json(media_query_result)['id']))
+
+                for i, filename in enumerate(data["filenames"]):
+                    data["filename"] = filename
+                    data["type"] = data["types"][i]
+                    media_query_result = await conn.create(
+                        "media",
+                        {
+                            "filename": filename,
+                            "type": data["types"][i],
+                            "creator": data["creator"],
+                        },
+                    )
+                    self.logger.warning(
+                        json.dumps(media_query_result, indent=4, default=str)
+                    )
+                    media_ids.append(
+                        RecordID("media", record_id_to_json(media_query_result)["id"])
+                    )
 
                 data["media"] = media_ids
 
@@ -105,7 +116,11 @@ class EventsDB:
                     AND geo::distance(coordinates, $coordinates) <= $distance
                 ORDER BY distance ASC;
                 """,
-                    {"live": live, "distance": distance, "coordinates": GeometryPoint.parse_coordinates(coordinates)},
+                    {
+                        "live": live,
+                        "distance": distance,
+                        "coordinates": GeometryPoint.parse_coordinates(coordinates),
+                    },
                 )
             return record_id_to_json(result)
 
@@ -243,7 +258,7 @@ class EventsDB:
         async with self.pool.acquire() as conn:
             result = await conn.merge(RecordID("events", event_id), data)
             if result and "ERR" in result:
-                raise Exception(f"Error updating event: {result}")  # Handle error case 
+                raise Exception(f"Error updating event: {result}")  # Handle error case
             self.logger.debug(json.dumps(result, indent=4, default=str))
             return record_id_to_json(result)
 
