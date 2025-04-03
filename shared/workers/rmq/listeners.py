@@ -23,6 +23,8 @@ class RMQBroker(RabbitBroker):
 
     def __init__(self, app, *args, **kwargs):
         self.RABBITMQ_MEDIA_QUEUE = RabbitQueue(os.environ["RABBITMQ_MEDIA_QUEUE"])
+        self.RABBITMQ_R18E_QUEUE = RabbitQueue(os.environ["RABBITMQ_R18E_QUEUE"])
+
         self.logger = app.logger
 
         if app.microservice_instance.needs_rmq():
