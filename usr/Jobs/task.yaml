@@ -1,0 +1,41 @@
+taskGroups:
+- taskSpec:
+    runnables:
+    - script:
+        text: |
+          #!/bin/bash
+          apt install -y python3-pip
+          pip3 install torch transformers
+    - script:
+        text: |
+          #!/bin/bash
+          python3 $SCRIPTS_DIR/download-model.py --output $WORK_DIR
+    - script:
+        text: |
+          #!/bin/bash
+          python3 $SCRIPTS_DIR/fine-tune.py --input $WORK_DIR --output $RESULTS_DIR
+    # volumes:
+    # - nfs:
+    #     server: <YOUR FILESTORE IP ADDRESS>
+    #     remotePath: <YOUR FILESTORE SHARE PATH, e.g. /share>
+    #   mountPath: "/mnt/disks/llm"
+    environment:
+      variables:
+        RABBIT_URI: amqp://guest:guest@34.60.70.88:5672/
+        SURREAL_URI: /mnt/disks/llm/fine-tune-results
+        SURREAL_USER: root
+        SURREAL_PASS: rootrm
+        PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      secretVariables:
+        # HUGGING_FACE_HUB_TOKEN: projects/<YOUR PROJECT ID>/secrets/HuggingFaceHubToken/versions/1
+allocationPolicy:
+  instances:
+    - install_gpu_drivers: true
+      policy:
+        machineType: g2-standard-96
+        accelerators:
+          - type: nvidia-l4
+            count: 8
+
+logsPolicy:
+  destination: CLOUD_LOGGING

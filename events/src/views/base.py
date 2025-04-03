@@ -1,6 +1,6 @@
 from datetime import datetime
 import random
-import json
+import orjson as json
 import asyncio
 import os
 
@@ -17,7 +17,6 @@ from quart import (
     jsonify,
     websocket,
 )
-from quart_schema import validate_request, DataSource
 
 from events.src.connectors import EventsDB
 from shared.classful import route, QuartClassful
@@ -156,7 +155,7 @@ class BaseView(QuartClassful):
             data["host"] = get_jwt_identity()
             data["creator"] = get_jwt_identity()
             data["filenames"] = [
-                f"events/{data['host']}_{file.filename}" for file in files.values()
+                f"events/{data['host']}/{file.filename}" for file in files.values()
             ]
             data["types"] = [file.content_type for file in files.values()]
 
@@ -171,7 +170,7 @@ class BaseView(QuartClassful):
                 app.logger.warning(
                     f"Uploading new event media to GCP: {data['filename']}"
                 )
-                await app.RMQ._publish_media(data, file.stream)
+                await app.RMQ._publish_media(data, file)
 
             app.logger.debug(f"Creating event data: {data}")
             if result := await self.conn.create_event(

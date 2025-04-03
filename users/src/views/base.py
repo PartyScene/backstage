@@ -11,7 +11,7 @@ from shared.utils import create_media_client
 from users.src.connectors import UsersDB
 from shared.workers.novu import NotificationManager
 import os
-import json
+import orjson as json
 from aiocache import cached
 from shared.workers.rmq import RMQBroker
 
@@ -178,7 +178,7 @@ class BaseView(QuartClassful):
         data: dict = await request.get_json()
         data["origin_id"] = get_jwt_identity()
         if result := await self.conn.create_friend_relationship(data):
-            app.logger.info(json.dumps(result, indent=4, default=str))
+            app.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             await self.__notification_manager.send_friend_request_notification(
                 sender=result[0]["in"], recipient_id=result[0]["out"]
             )
@@ -238,7 +238,7 @@ class BaseView(QuartClassful):
             data["creator"] = user_id
             app.logger.warning(f"Uploading new user media to GCP: {file.filename}")
 
-            await app.RMQ._publish_media(data, file.stream)
+            await app.RMQ._publish_media(data, file)
 
             response = await self.conn.update(data)
             return response, HTTPStatus.OK

@@ -1,5 +1,5 @@
 import os
-import json
+import orjson as json
 
 from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
@@ -18,13 +18,33 @@ class R18E:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
-    async def store_embedding(self, event_id: str, embedding: list[float]) -> dict:
-        """Store an embedding for an event."""
+    
+    async def recommend_similar_events(self, event_id: str) -> list[str]:
+        """Recommend similar events based on embeddings."""
+        async with self.pool.acquire() as conn:
+            await conn.let("event", RecordID('events', event_id))
+            
+            query = "SELECT *, media.*.*, vector::distance::knn(media.embedding, $event.media.embedding) AS distance FROM events WHERE media.embeddings <|20, 40|> ORDER BY distance"
+            recommendations = await conn.query(query)
+
+    async def store_media_embeddings(self, media_id: str, embeddings: list[float]) -> dict:
+        """Store embeddings for a Media ID."""
 
         # self.logger.warning(f"Storing embedding for event {event_id} -- {embedding}")
 
         data = dict()
-        data["embeddings"]["media"] = embedding
+        data["embeddings"] = embeddings
+        async with self.pool.acquire() as conn:
+            result = await conn.merge(RecordID("media", media_id), data)
+        return result
+    
+    async def store_event_embeddings(self, event_id: str, embeddings: list[float]) -> dict:
+        """Store embeddings of metadata for an Event ID."""
+
+        # self.logger.warning(f"Storing embedding for event {event_id} -- {embedding}")
+
+        data = dict()
+        data["embeddings"]["text"] = embeddings
         async with self.pool.acquire() as conn:
             result = await conn.merge(RecordID("events", event_id), data)
         return result

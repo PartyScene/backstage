@@ -8,7 +8,7 @@ import os
 from typing import Optional, List, Dict, Any
 
 from shared.utils import record_id_to_json
-import json
+import orjson as json
 
 
 class EventsDB:
@@ -52,7 +52,7 @@ class EventsDB:
                         },
                     )
                     self.logger.warning(
-                        json.dumps(media_query_result, indent=4, default=str)
+                        json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)
                     )
                     media_ids.append(
                         RecordID("media", record_id_to_json(media_query_result)["id"])
@@ -61,7 +61,7 @@ class EventsDB:
                 data["media"] = media_ids
 
                 result = await conn.create("events", data)
-                self.logger.warning(json.dumps(result, indent=4, default=str))
+                self.logger.warning(json.dumps(result, option=json.OPT_INDENT_2, default=str))
 
                 result = await conn.select(result["id"])
                 if isinstance(result, str):
@@ -146,7 +146,7 @@ class EventsDB:
                 """,
                     {"page": page, "limit": limit},
                 )
-            self.logger.debug(json.dumps(result, indent=4, default=str))
+            self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             return record_id_to_json(result)
 
         except Exception as e:
@@ -177,7 +177,7 @@ class EventsDB:
                 """,
                     {"page": page, "limit": limit},
                 )
-            self.logger.debug(json.dumps(result, indent=4, default=str))
+            self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to fetch all public events: {str(e)}")
@@ -205,7 +205,7 @@ class EventsDB:
                 """,
                     {"event_id": event_id},
                 )
-            self.logger.debug(json.dumps(result, indent=4, default=str))
+            self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to fetch event: {str(e)}")
@@ -224,7 +224,7 @@ class EventsDB:
             """
             async with self.pool.acquire() as conn:
                 result = await conn.query(query, {"event_id": event_id})
-            self.logger.debug(json.dumps(result, indent=4, default=str))
+            self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to create live query: {str(e)}")
@@ -259,7 +259,7 @@ class EventsDB:
             result = await conn.merge(RecordID("events", event_id), data)
             if result and "ERR" in result:
                 raise Exception(f"Error updating event: {result}")  # Handle error case
-            self.logger.debug(json.dumps(result, indent=4, default=str))
+            self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             return record_id_to_json(result)
 
     async def update_event_status(

@@ -49,7 +49,7 @@ class CloudflareLSClient:
         """
         videos = await self.client.stream.list(
             account_id=self.ACCOUNT_ID,
-            search==event_id,
+            search=event_id,
             asc=False,
             status="ready",
             type="live" if live else "vod"

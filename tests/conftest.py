@@ -136,7 +136,6 @@ def mock_user():
         "email": "oyinxdoubx@gmail.com",
         "password": "testingTs",
         "confirm_password": "testingTs",
-        "avatar_url": fake.image_url(),
         "username": fake.user_name(),
         "host": "test",
         "id": "test",

@@ -1,6 +1,6 @@
 from quart import Quart
 import os
-import json
+import orjson as json
 
 from surrealdb import AsyncSurreal, RecordID
 from shared.utils import record_id_to_json
@@ -31,7 +31,7 @@ class PostsDB:
         params = {"event_id": id}
         async with self.pool.acquire() as conn:
             result = await conn.query(query, params)
-        self.logger.info(json.dumps(result, indent=4, default=str))
+        self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
     async def create_comment(self, post_id, data, author) -> dict:
@@ -111,7 +111,7 @@ class PostsDB:
                     },
                 )
                 self.logger.warning(
-                    json.dumps(media_query_result, indent=4, default=str)
+                    json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)
                 )
                 media_ids.append(
                     RecordID("media", record_id_to_json(media_query_result)["id"])
@@ -126,7 +126,7 @@ class PostsDB:
                 "event": data["event"],
             }
             result = await conn.query(query, params)
-        self.logger.info(json.dumps(result, indent=4, default=str))
+        self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
     async def delete_post(self, id: str):
@@ -155,7 +155,7 @@ class PostsDB:
         """
         async with self.pool.acquire() as conn:
             result = await conn.select(RecordID("posts", id))
-        self.logger.debug(json.dumps(result, indent=4, default=str))
+        self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
 

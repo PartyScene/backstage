@@ -1,5 +1,5 @@
 import httpx
-import json
+import orjson as json
 
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
@@ -118,7 +118,7 @@ class BaseView(QuartClassful):
                       If post ID is missing, returns a JSON error message and a status code of 400.
         """
         result = await self.__posts_handler.delete_comment(comment_id)
-        app.logger.debug(json.dumps(result, indent=4, default=str))
+        app.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         if isinstance(result, str):
             return result, HTTPStatus.BAD_REQUEST
         return result, HTTPStatus.NO_CONTENT
@@ -154,14 +154,14 @@ class BaseView(QuartClassful):
             return jsonify({"error": "Content is required"}), 400
 
         data["filenames"] = [
-            f"posts/{user_id}_{file.filename}" for file in files.values()
+            f"posts/{user_id}/{file.filename}" for file in files.values()
         ]
         data["types"] = [file.content_type for file in files.values()]
 
         for i, file in enumerate(files.values()):
             data["filename"] = data["filenames"][i]
             data["type"] = data["types"][i]
-            await app.RMQ._publish_media(data, file.stream)
+            await app.RMQ._publish_media(data, file)
 
         # Push post media to RMQ after creating post
         result = await self.__posts_handler.create_post(data=data, author=user_id)

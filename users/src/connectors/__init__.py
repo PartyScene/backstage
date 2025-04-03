@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 from shared.utils import record_id_to_json
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
-import json
+import orjson as json
 
 
 class UsersDB:
@@ -161,7 +161,7 @@ class UsersDB:
             """,
                 {"id": id},
             )
-        self.logger.info(json.dumps(result, indent=4, default=str))
+        self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
     async def delete(self, id: str) -> Optional[dict]:
@@ -199,7 +199,7 @@ class UsersDB:
                     "media", self.subset(data, ["filename", "type", "creator"])
                 )
                 self.logger.warning(
-                    json.dumps(media_query_result, indent=4, default=str)
+                    json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)
                 )
 
                 avatar_media = RecordID(
@@ -213,7 +213,7 @@ class UsersDB:
                 "UPDATE ONLY type::thing('users', $record_id) MERGE $content RETURN AFTER;",
                 {"content": data, "record_id": data["id"]},
             )
-        self.logger.info(json.dumps(result, indent=4, default=str))
+        self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
 

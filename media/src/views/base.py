@@ -119,8 +119,8 @@ class BaseView(QuartClassful):
     #     result = await self.__media_handler.create_media_metadata(data)
     #     return jsonify(result), HTTPStatus.CREATED
 
-    @route("/media/sign", methods=["GET", "POST"])
-    @jwt_required
+    @route("/media/sign", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
     async def sign(self):
         """Sign a media in the Bucket for access"""
         filename = request.args.get("filename")

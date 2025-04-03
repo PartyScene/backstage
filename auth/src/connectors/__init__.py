@@ -5,7 +5,7 @@ from surrealdb import AsyncSurreal
 from shared.utils import record_id_to_json
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
 
-import json
+import orjson as json
 import logging
 import asyncio
 
@@ -48,7 +48,7 @@ class AuthDB:
                 "SELECT * FROM users WHERE crypto::scrypt::compare(password, $password) AND email = $email;",
                 {"password": data["password"], "email": data["email"]},
             )
-            logger.info(json.dumps(result, indent=4, default=str))
+            logger.info(json.dumps(result, default=str, option=json.OPT_INDENT_2))
 
             if not result or not result[0]:
                 logger.warning(
@@ -74,7 +74,7 @@ class AuthDB:
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("users", form)
-                logger.info(json.dumps(result, indent=4, default=str))
+                logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
                 return record_id_to_json(result)
         except Exception as e:
             logger.error(f"Error creating user: {e}")

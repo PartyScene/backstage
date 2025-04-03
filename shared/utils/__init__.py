@@ -1,6 +1,6 @@
 from .client import MediaClient
 from surrealdb import AsyncSurreal, RecordID
-import json
+import orjson as json
 import os
 from typing import Optional, Any, Dict
 

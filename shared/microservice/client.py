@@ -1,7 +1,7 @@
 import logging
 import os
 import asyncio
-import json
+import orjson as json
 import secrets
 
 from logging.config import dictConfig
@@ -105,12 +105,14 @@ class MicroService(Quart):
         async def services():
             """Initialize services before app is being served."""
             logger.warning("Initializing services...")
+            
             await self.init_services()
             self.setup_metrics()
-            self.register_routes()
 
             if self.microservice_instance == Microservice.EVENTS:
                 self.register_websocket_routes()
+
+            self.register_routes()
 
             if self.microservice_instance.needs_rmq():
                 self.RMQ = rmq.RMQBroker(self)
@@ -264,7 +266,7 @@ class MicroService(Quart):
 
             @self.route(f"/{self.microservice_instance.lower()}/conn")
             async def conn_stats():
-                return self.conn.pool.get_stats(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
+                return await self.conn.pool.get_stats(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
         @self.before_request
         async def before_request():
@@ -301,13 +303,13 @@ class MicroService(Quart):
         async def event_live_updates(event_id: str):
             """Handle WebSocket connections for live event updates."""
             try:
-                user_id = await get_jwt_identity()
+                user_id = get_jwt_identity()
 
                 # Verify user has access to this event
                 event = await self.conn.fetch(event_id)
                 if not event or (
-                    event["host"]["id"] != user_id
-                    or user_id not in [a["id"] for a in event.get("attendees", [])]
+                    event["host"] != user_id
+                    # or user_id not in [a["id"] for a in event.get("attendees", [])]
                 ):
                     logger.warning(
                         f"Unauthorized WebSocket connection attempt for event {event_id}"
@@ -329,6 +331,7 @@ class MicroService(Quart):
                     )
                     while True:
                         try:
+
                             if not websocket.connected:
                                 break
 

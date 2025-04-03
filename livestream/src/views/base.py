@@ -93,8 +93,8 @@ class BaseView(QuartClassful):
         try:
             stream_deleted = await self.scenes_client.delete_stream(event_id)
             if stream_deleted:
-                return jsonify(stream_info), HTTPStatus.NO_CONTENT
-            return jsonify(stream_info), HTTPStatus.NOT_FOUND
+                return "", HTTPStatus.NO_CONTENT
+            return "", HTTPStatus.NOT_FOUND
         except:
             return (
                 jsonify({"error": "Failed to get livestream"}),
