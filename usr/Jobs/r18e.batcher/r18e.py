@@ -1,3 +1,4 @@
+
 import os
 from typing import Literal
 from importlib import util
@@ -6,6 +7,7 @@ from PIL import Image
 import requests
 from contextlib import asynccontextmanager
 
+from faststream import FastStream
 from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
 import msgpack
 from surrealdb import AsyncSurreal
@@ -15,6 +17,7 @@ import torch
 from transformers import ViTImageProcessor, ViTModel
 
 from aio_pika import IncomingMessage
+import asyncio
 
 class Job(RabbitBroker):
 
@@ -32,18 +35,18 @@ class Job(RabbitBroker):
         
         ## 
         self.conn = AsyncSurreal(os.environ["SURREAL_URI"])
-
-        @self.subscriber(self.RABBITMQ_R18E_QUEUE)
-        async def handle_r18e(message: IncomingMessage):
-            await self.process_r18e_event(message)
-            await message.ack()
-
+        
         super().__init__(
             url=os.environ["RABBITMQ_URI"],
             decoder=self.decode_message,
             *args,
             **kwargs
         )
+
+        @self.subscriber(self.RABBITMQ_R18E_QUEUE)
+        async def handle_r18e(message: IncomingMessage):
+            await self.process_r18e_event(message)
+            # await message.ack()
 
     async def save(self, filename, embeddings):
         await self.conn.signin({
@@ -64,10 +67,7 @@ class Job(RabbitBroker):
             msg.body = msgpack.loads(msg.body)
             return msg
         except:
-            try:
-                return await original_decoder(msg)
-            except:
-                return None
+            return await original_decoder(msg)
 
     async def process_r18e_event(self, message: RabbitMessage):
         option = message.headers.get('type', None)
@@ -109,3 +109,5 @@ class Job(RabbitBroker):
                 )  # (batch, seq_len, hidden_dim)
             
             return embedding.tolist()
+
+app = FastStream(Job())

@@ -71,11 +71,10 @@ FROM stage_production AS prod
 
 # Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
 CMD ["python3", "-m", "granian", \
-     "--loop", "uvloop", \
+     "--loop", "rloop", \
      "--host", "0.0.0.0", \
      "--port", "5510", \
      "--workers", "4", \
-     "--interface", "asgi", \
      "--no-log", \
      "--task-impl", "rust", \
      "--runtime-mode", "mt", \

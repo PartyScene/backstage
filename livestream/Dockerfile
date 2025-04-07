@@ -73,7 +73,7 @@ EXPOSE 5510
 # Run with Hypercorn
 CMD ["hypercorn", "run:app", \
      "--bind", "0.0.0.0:5510", \
-     "--workers", "2", \
+     "--workers", "1", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
      "--worker-class", "uvloop", \

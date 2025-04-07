@@ -24,30 +24,9 @@ class R18E:
         async with self.pool.acquire() as conn:
             await conn.let("event", RecordID('events', event_id))
             
-            query = "SELECT *, media.*.*, vector::distance::knn(media.embedding, $event.media.embedding) AS distance FROM events WHERE media.embeddings <|20, 40|> ORDER BY distance"
+            query = "SELECT *, media.*.*, vector::distance::knn(media.embeddings, $event.media.embeddings) AS distance FROM events WHERE media.embeddings <|20, 40|> ORDER BY distance"
             recommendations = await conn.query(query)
-
-    async def store_media_embeddings(self, media_id: str, embeddings: list[float]) -> dict:
-        """Store embeddings for a Media ID."""
-
-        # self.logger.warning(f"Storing embedding for event {event_id} -- {embedding}")
-
-        data = dict()
-        data["embeddings"] = embeddings
-        async with self.pool.acquire() as conn:
-            result = await conn.merge(RecordID("media", media_id), data)
-        return result
-    
-    async def store_event_embeddings(self, event_id: str, embeddings: list[float]) -> dict:
-        """Store embeddings of metadata for an Event ID."""
-
-        # self.logger.warning(f"Storing embedding for event {event_id} -- {embedding}")
-
-        data = dict()
-        data["embeddings"]["text"] = embeddings
-        async with self.pool.acquire() as conn:
-            result = await conn.merge(RecordID("events", event_id), data)
-        return result
+            return record_id_to_json(recommendations)
 
     async def fetch_embedding(self, event_id: str) -> dict:
         """Fetch an embedding for an event."""

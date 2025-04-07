@@ -1,0 +1,21 @@
+taskGroups:
+- taskSpec:
+    runnables:
+    - container: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/r18e.batcher
+    environment:
+      variables:
+        RABBITMQ_URI: amqp://guest:guest@34.60.70.88:5672/
+        SURREAL_URI: wss://test-prod-insta-06amo5vohhuqn9u9qa1lbl9rcg.aws-use1.surreal.cloud
+        SURREAL_USER: root
+        SURREAL_PASS: rootrm
+allocationPolicy:
+  instances:
+    # - install_gpu_drivers: true
+    - policy:
+        machineType: g2-standard-96
+        # accelerators:
+        #   - type: nvidia-l4
+        #     count: 1
+
+logsPolicy:
+  destination: CLOUD_LOGGING
