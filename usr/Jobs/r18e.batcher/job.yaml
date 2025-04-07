@@ -1,7 +1,8 @@
 taskGroups:
 - taskSpec:
     runnables:
-    - container: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/r18e.batcher
+    - container: 
+        imageUri: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/r18e.batcher
     environment:
       variables:
         RABBITMQ_URI: amqp://guest:guest@34.60.70.88:5672/

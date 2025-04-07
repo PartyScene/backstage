@@ -6,7 +6,7 @@ typing-extensions
 httpx
 novu-py
 surrealdb
-granian[uvloop]
+granian[rloop]
 purreal
 aiocache
 prometheus-client

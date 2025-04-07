@@ -1,13 +1,13 @@
 
 import os
-from typing import Literal
+from typing import Literal, Annotated
 from importlib import util
 import io
 from PIL import Image
 import requests
 from contextlib import asynccontextmanager
 
-from faststream import FastStream
+from faststream import FastStream, Context
 from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
 import msgpack
 from surrealdb import AsyncSurreal
@@ -32,6 +32,7 @@ class Job(RabbitBroker):
         )
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.model = self.model.to(self.device)
+        self._lock = asyncio.Lock()
         
         ## 
         self.conn = AsyncSurreal(os.environ["SURREAL_URI"])
@@ -43,23 +44,27 @@ class Job(RabbitBroker):
             **kwargs
         )
 
+        
+        HeadersAnnotation = Annotated[dict, Context("message.headers")]
+
         @self.subscriber(self.RABBITMQ_R18E_QUEUE)
-        async def handle_r18e(message: IncomingMessage):
-            await self.process_r18e_event(message)
-            # await message.ack()
+        async def handle_r18e(body, headers: HeadersAnnotation):
+            await self.process_r18e_event(headers, body)
+            # await msg.ack()
 
     async def save(self, filename, embeddings):
-        await self.conn.signin({
-            "username": os.environ['SURREAL_USER'],
-            "password": os.environ['SURREAL_PASS']
-        })
-        await self.conn.use("partyscene", "partyscene")
-        
-        await self.conn.query("UPDATE media SET embeddings = $embeddings WHERE filename = $filename",
-            {
-                "filename": filename,
-                "embeddings": embeddings
+        async with self._lock:
+            await self.conn.signin({
+                "username": os.environ['SURREAL_USER'],
+                "password": os.environ['SURREAL_PASS']
             })
+            await self.conn.use("partyscene", "partyscene")
+            
+            await self.conn.query("UPDATE media SET embeddings = $embeddings WHERE filename = $filename",
+                {
+                    "filename": filename,
+                    "embeddings": embeddings
+                })
 
     async def decode_message(self, msg: RabbitMessage, original_decoder):
         # self.logger.warning(msg)
@@ -69,20 +74,19 @@ class Job(RabbitBroker):
         except:
             return await original_decoder(msg)
 
-    async def process_r18e_event(self, message: RabbitMessage):
-        option = message.headers.get('type', None)
+    async def process_r18e_event(self, data: dict, body: bytes):
+        option = data.get('type', None)
         match option:
             case "MEDIA":
-                embeddings = await self.extract_media_embeddings(message.body)
+                embeddings = await self.extract_media_embeddings(body)
                 resp = await self.save(
-                        message.headers.get("filename"), embeddings
+                        data.get("filename"), embeddings
                     )
+                return resp
             case "POST":
                 embedding = ...
             case "EVENT":
                 embedding = ...
-
-        return resp
     
 
     async def extract_media_embeddings(self, media_bytes: bytes):

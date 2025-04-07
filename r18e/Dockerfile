@@ -77,5 +77,6 @@ CMD ["python3", "-m", "granian", \
      "--workers", "4", \
      "--no-log", \
      "--task-impl", "rust", \
+     "--interface", "asgi", \
      "--runtime-mode", "mt", \
      "run:app"]

@@ -6,10 +6,10 @@ FROM python:3.13-slim
 #     build-essential \
 #     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install rloop surrealdb transformers msgpack faststream[rabbit] faststream[clis] accelerate 
+RUN pip3 install surrealdb transformers msgpack faststream[rabbit] faststream[cli] accelerate 
 RUN pip3 install torch torchvision torchaudio
 
 
 COPY . .
 
-CMD [ "faststream", "r18e:app" ]
+CMD [ "faststream", "run", "r18e:app" ]

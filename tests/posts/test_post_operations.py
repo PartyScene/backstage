@@ -12,7 +12,7 @@ fake = Faker()
 @pytest.mark.asyncio(loop_scope="session")
 class TestPostOperations(TestPostsBase):
     async def test_create_post(
-        self, posts_client, mock_event, bearer, mock_media_client
+        self, posts_client, mock_event, bearer
     ):
         """Test creating a new post."""
         files = {
@@ -27,14 +27,6 @@ class TestPostOperations(TestPostsBase):
             "content": fake.text(),
             "event": mock_event["id"],
             "type": "image",
-        }
-
-        mock_media_client.upload_media.return_value = {
-            "type": "image/jpeg",
-            "url": "https://storage.googleapis.com/fake-bucket/test-image.jpg",
-            "creator": "xxxxx",
-            "event": "xxxxxxx",
-            "id": "test",
         }
         response = await self.create_post(posts_client, files, post_data, bearer)
         assert response.status_code == 201
