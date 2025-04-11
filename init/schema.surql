@@ -7,14 +7,25 @@ DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE username ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE option<record<media>>;
 DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
-DEFINE FIELD OVERWRITE email ON TABLE users TYPE string VALUE string::lowercase($value) ASSERT string::is::email($value);
 DEFINE INDEX emailIndex ON TABLE users COLUMNS email UNIQUE;
-DEFINE FIELD OVERWRITE password ON TABLE users TYPE string;
+DEFINE FIELD OVERWRITE hashed_password ON TABLE users TYPE string;
+DEFINE FIELD OVERWRITE hashed_email ON TABLE users TYPE string;
 
-DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET password = crypto::scrypt::generate(password)};
+DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
+DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
+
+
+DEFINE TABLE IF NOT EXISTS credentials SCHEMAFULL;
+DEFINE FIELD OVERWRITE user ON TABLE credentials TYPE record<users>;
+DEFINE FIELD OVERWRITE initialization_vector ON TABLE credentials TYPE bytes;
+DEFINE FIELD OVERWRITE encryption_key ON TABLE credentials TYPE bytes;
+DEFINE FIELD OVERWRITE encrypted_email ON TABLE credentials TYPE bytes;
+
+
+
 
 -- Let's define a relation table for users and events to record attendance
-DEFINE TABLE IF NOT EXISTS attends TYPE RELATIon IN users TO events;
+DEFINE TABLE IF NOT EXISTS attends TYPE RELATION IN users TO events;
 
 -- Now let's define the events table
 DEFINE TABLE IF NOT EXISTS events schemafull;
@@ -81,7 +92,7 @@ DEFINE TABLE IF NOT EXISTS media SCHEMAFULL;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
 
--- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', $this.filename))} ASSERT string::len($value) > 0;
+-- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', $this.filename))} ASSERT string::len($value) > 0
 
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";

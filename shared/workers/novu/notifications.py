@@ -31,10 +31,9 @@ class NotificationManager:
                 json_data = r.json()
                 return json_data["city"], json_data["country"]
 
-        except httpx.HTTPStatusError as e:
+        except Exception as e:
             logger.error(f"Failed to get Location from IP {e}")
-        except httpx.RequestError as e:
-            logger.error(f"Failed to get Location from IP {e}")
+            return "", ""
 
     async def create_subscriber(
         self,

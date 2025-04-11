@@ -2,7 +2,7 @@ import os
 from typing import Optional, Dict, Any
 
 from surrealdb import AsyncSurreal
-from shared.utils import record_id_to_json
+from shared.utils import record_id_to_json, SlimCipher
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
 
 import orjson as json
@@ -45,7 +45,7 @@ class AuthDB:
         """
         try:
             result = await self.pool.execute_query(
-                "SELECT * FROM users WHERE crypto::scrypt::compare(password, $password) AND email = $email;",
+                "SELECT * FROM users WHERE crypto::argon2::compare(hashed_password, $password) AND crypto::argon2::compare(hashed_email, $email);",
                 {"password": data["password"], "email": data["email"]},
             )
             logger.info(json.dumps(result, default=str, option=json.OPT_INDENT_2))
@@ -71,9 +71,27 @@ class AuthDB:
         Returns:
             dict: Created user data or None if creation failed
         """
+        # Let's rewrite the form to fit the schema
+        data = {
+            "first_name": form.get("first_name", ""),
+            "last_name": form.get("last_name", ""),
+            "hashed_password": form.get("password", ""),
+            "hashed_email": form.get("email", ""),
+        }
+        # Generate Crypto credentials
+        cipher = SlimCipher()
+        encrypted_email, encryption_key, initialization_vector = cipher.encrypt(form.get("email").encode())
+        
+        credentials = {}
+        credentials["encrypted_email"] = encrypted_email
+        credentials["encryption_key"] = encryption_key
+        credentials["initialization_vector"] = initialization_vector
+        
         try:
             async with self.pool.acquire() as conn:
-                result = await conn.create("users", form)
+                result = await conn.create("users", data)
+                await conn.create("credentials", {**credentials, "user": result['id']})
+                
                 logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
                 return record_id_to_json(result)
         except Exception as e:

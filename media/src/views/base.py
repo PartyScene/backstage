@@ -125,6 +125,9 @@ class BaseView(QuartClassful):
         """Sign a media in the Bucket for access"""
         filename = request.args.get("filename")
 
+        if not filename:
+            return "Filename missing", HTTPStatus.BAD_REQUEST
+
         media_url = await obs.sign_async(
             self.OBS_STORE, "GET", filename, timedelta(days=1)
         )

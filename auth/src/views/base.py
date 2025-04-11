@@ -88,8 +88,8 @@ class BaseView(QuartClassful):
         if not created_acct:
             return "Invalid Request Body or User already exists", HTTPStatus.CONFLICT
         try:
-            await self.__n_register_user(created_acct)
-            await self.__n_generate_otp(created_acct["id"], created_acct["email"])
+            await self.__n_register_user(created_acct['id'], data.get('email'), created_acct)
+            await self.__n_generate_otp(created_acct["id"], data.get('email'))
         except Exception as e:
             logger.error(f"Registration error: {e}")
             raise
@@ -114,16 +114,16 @@ class BaseView(QuartClassful):
             )
         return "Bad username or password", HTTPStatus.UNAUTHORIZED
 
-    async def __n_register_user(self, user_data: dict):
+    async def __n_register_user(self, user_id: str, email: str, user_data: dict):
         """
-        Register a new user and create Novu subscriber
+        Create a new user in the Novu subscriber database.
         """
         try:
 
             # Create Novu subscriber
             return await self.__notification_manager.create_subscriber(
-                user_id=user_data["id"],
-                email=user_data["email"],
+                user_id=user_id,
+                email=email,
                 first_name=user_data.get("first_name"),
                 last_name=user_data.get("last_name"),
             )
@@ -144,7 +144,7 @@ class BaseView(QuartClassful):
 
             # Send OTP via Novu
             await self.__notification_manager.send_otp_notification(
-                user_id=user_id, ip_address=request.remote_addr, otp=otp
+                user_id=user_id, ip_address=request.headers.get('REMOTE_ADDR') or request.headers.get('HTTP_X_FORWARDED_FOR') or request.headers.get('HTTP_X_REAL_IP') or request.remote_addr, otp=otp
             )
 
             return {"message": "OTP sent successfully"}
