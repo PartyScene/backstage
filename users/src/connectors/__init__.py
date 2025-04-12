@@ -199,7 +199,9 @@ class UsersDB:
                     "media", self.subset(data, ["filename", "type", "creator"])
                 )
                 self.logger.warning(
-                    json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)
+                    json.dumps(
+                        media_query_result, option=json.OPT_INDENT_2, default=str
+                    )
                 )
 
                 avatar_media = RecordID(

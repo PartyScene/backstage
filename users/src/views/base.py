@@ -6,8 +6,6 @@ from typing import Tuple, Dict, Any
 
 from shared.classful import route, QuartClassful
 from datetime import datetime
-from shared.utils import create_media_client
-
 from users.src.connectors import UsersDB
 from shared.workers.novu import NotificationManager
 import os
@@ -21,7 +19,6 @@ class BaseView(QuartClassful):
         self.conn: UsersDB = app.conn
         self.redis = app.redis
 
-        # self.__media_client = create_media_client(os.environ["MEDIA_MICROSERVICE_URL"])
         self.__notification_manager = NotificationManager()
 
     @route("/", methods=["GET"])

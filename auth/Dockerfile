@@ -18,7 +18,8 @@ COPY tests/requirements-test.txt /tests/requirements-test.txt
 
 # Install dependencies
 RUN pip install --no-cache-dir -r /shared/requirements.txt \
-    && pip install --no-cache-dir -r /tests/requirements-test.txt
+    && pip install --no-cache-dir -r /tests/requirements-test.txt \
+    && pip install --no-cache-dir -r ./requirements.txt
 
 # Copy requirements files
 COPY auth/ .

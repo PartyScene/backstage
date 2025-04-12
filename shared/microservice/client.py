@@ -105,7 +105,7 @@ class MicroService(Quart):
         async def services():
             """Initialize services before app is being served."""
             logger.warning("Initializing services...")
-            
+
             await self.init_services()
             self.setup_metrics()
 
@@ -266,7 +266,11 @@ class MicroService(Quart):
 
             @self.route(f"/{self.microservice_instance.lower()}/conn")
             async def conn_stats():
-                return await self.conn.pool.get_stats(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
+                return (
+                    await self.conn.pool.get_stats(),
+                    200,
+                    {"Content-Type": CONTENT_TYPE_LATEST},
+                )
 
         @self.before_request
         async def before_request():
@@ -308,7 +312,8 @@ class MicroService(Quart):
                 # Verify user has access to this event
                 event = await self.conn.fetch(event_id)
                 if not event or (
-                    event["host"] != user_id
+                    event["host"]
+                    != user_id
                     # or user_id not in [a["id"] for a in event.get("attendees", [])]
                 ):
                     logger.warning(

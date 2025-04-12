@@ -11,9 +11,7 @@ fake = Faker()
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestPostOperations(TestPostsBase):
-    async def test_create_post(
-        self, posts_client, mock_event, bearer
-    ):
+    async def test_create_post(self, posts_client, mock_event, bearer):
         """Test creating a new post."""
         files = {
             "file": FileStorage(

@@ -1,4 +1,3 @@
-
 import os
 from typing import Literal, Annotated
 from importlib import util
@@ -19,6 +18,7 @@ from transformers import ViTImageProcessor, ViTModel
 from aio_pika import IncomingMessage
 import asyncio
 
+
 class Job(RabbitBroker):
 
     def __init__(self, *args, **kwargs):
@@ -33,18 +33,14 @@ class Job(RabbitBroker):
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.model = self.model.to(self.device)
         self._lock = asyncio.Lock()
-        
-        ## 
+
+        ##
         self.conn = AsyncSurreal(os.environ["SURREAL_URI"])
-        
+
         super().__init__(
-            url=os.environ["RABBITMQ_URI"],
-            decoder=self.decode_message,
-            *args,
-            **kwargs
+            url=os.environ["RABBITMQ_URI"], decoder=self.decode_message, *args, **kwargs
         )
 
-        
         HeadersAnnotation = Annotated[dict, Context("message.headers")]
 
         @self.subscriber(self.RABBITMQ_R18E_QUEUE)
@@ -54,17 +50,18 @@ class Job(RabbitBroker):
 
     async def save(self, filename, embeddings):
         async with self._lock:
-            await self.conn.signin({
-                "username": os.environ['SURREAL_USER'],
-                "password": os.environ['SURREAL_PASS']
-            })
-            await self.conn.use("partyscene", "partyscene")
-            
-            await self.conn.query("UPDATE media SET embeddings = $embeddings WHERE filename = $filename",
+            await self.conn.signin(
                 {
-                    "filename": filename,
-                    "embeddings": embeddings
-                })
+                    "username": os.environ["SURREAL_USER"],
+                    "password": os.environ["SURREAL_PASS"],
+                }
+            )
+            await self.conn.use("partyscene", "partyscene")
+
+            await self.conn.query(
+                "UPDATE media SET embeddings = $embeddings WHERE filename = $filename",
+                {"filename": filename, "embeddings": embeddings},
+            )
 
     async def decode_message(self, msg: RabbitMessage, original_decoder):
         # self.logger.warning(msg)
@@ -75,19 +72,16 @@ class Job(RabbitBroker):
             return await original_decoder(msg)
 
     async def process_r18e_event(self, data: dict, body: bytes):
-        option = data.get('type', None)
+        option = data.get("type", None)
         match option:
             case "MEDIA":
                 embeddings = await self.extract_media_embeddings(body)
-                resp = await self.save(
-                        data.get("filename"), embeddings
-                    )
+                resp = await self.save(data.get("filename"), embeddings)
                 return resp
             case "POST":
                 embedding = ...
             case "EVENT":
                 embedding = ...
-    
 
     async def extract_media_embeddings(self, media_bytes: bytes):
         if util.find_spec("torch"):
@@ -111,7 +105,8 @@ class Job(RabbitBroker):
                 embedding = torch.stack(last_4_layers).mean(
                     dim=0
                 )  # (batch, seq_len, hidden_dim)
-            
+
             return embedding.tolist()
+
 
 app = FastStream(Job())

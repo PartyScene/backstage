@@ -5,6 +5,7 @@ import logging
 from cloudflare import AsyncCloudflare
 from cloudflare.types import stream
 
+
 class CloudflareLSClient:
     def __init__(self, app, *args, **kwargs):
         """
@@ -18,11 +19,15 @@ class CloudflareLSClient:
         self.app = app
         self.logger = app.logger
         self.client = AsyncCloudflare(
-            api_email=os.environ.get("CLOUDFLARE_EMAIL"),  # This is the default and can be omitted
-            api_key=os.environ.get("CLOUDFLARE_API_KEY"),  # This is the default and can be omitted
+            api_email=os.environ.get(
+                "CLOUDFLARE_EMAIL"
+            ),  # This is the default and can be omitted
+            api_key=os.environ.get(
+                "CLOUDFLARE_API_KEY"
+            ),  # This is the default and can be omitted
         )
         self.ACCOUNT_ID = ""
-    
+
     async def retrieve_account(self):
         """
         Retrieve the Cloudflare account ID for the 'Partyscene' account.
@@ -34,8 +39,10 @@ class CloudflareLSClient:
             if account.name == "Partyscene":
                 self.ACCOUNT_ID = account.id
                 break
-    
-    async def _retrieve_video(self, event_id, live: bool = False, retrieve_all: bool = False):
+
+    async def _retrieve_video(
+        self, event_id, live: bool = False, retrieve_all: bool = False
+    ):
         """
         Retrieve video(s) associated with a specific event.
 
@@ -52,11 +59,14 @@ class CloudflareLSClient:
             search=event_id,
             asc=False,
             status="ready",
-            type="live" if live else "vod"
+            type="live" if live else "vod",
         )
-        return videos.result if retrieve_all else (videos.result[0].to_json() if videos.result else None)
+        return (
+            videos.result
+            if retrieve_all
+            else (videos.result[0].to_json() if videos.result else None)
+        )
 
-    
     async def _create_input(self, event_id):
         """
         Create a new Cloudflare live input for streaming.
@@ -70,15 +80,15 @@ class CloudflareLSClient:
         input = await self.client.stream.live_inputs.create(
             account_id=self.ACCOUNT_ID,
             delete_recording_after_days=90.0,
-            meta={'name': event_id},
+            meta={"name": event_id},
             recording={
-                'mode': 'automatic',
-                'require_signed_urls': True,
-                'allowed_origins': ['*']
-            }
+                "mode": "automatic",
+                "require_signed_urls": True,
+                "allowed_origins": ["*"],
+            },
         )
         return input
-    
+
     async def _delete_input(self, input_id):
         """
         Delete a Cloudflare live input.
@@ -90,7 +100,7 @@ class CloudflareLSClient:
             live_input_identifier=input_id,
             account_id=self.ACCOUNT_ID,
         )
-    
+
     async def fetch_stream(self, event_id):
         """
         Fetch stream information for a specific event from the application's connection.
@@ -144,7 +154,9 @@ class CloudflareLSClient:
         if scene_info:
             await self._delete_input(scene_info["input_uid"])
             # await self.app.conn.delete_cloudflare_input(event_id)
-        self.logger.warning("DONE DELETING INPUT FOR LIVESTREAM FOR EVENT %s" % event_id)
+        self.logger.warning(
+            "DONE DELETING INPUT FOR LIVESTREAM FOR EVENT %s" % event_id
+        )
         return True
 
     async def get_vods(self, event_id):

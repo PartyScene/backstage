@@ -15,3 +15,7 @@ class TestAuthBase:
     async def health_check(self, client: QuartClient):
         """Helper method to check service health"""
         return await client.get("/auth/health")
+    
+    async def lead_generation(self, client: QuartClient, data):
+        """Helper method to generate a lead"""
+        return await client.post("/lead", json=data)

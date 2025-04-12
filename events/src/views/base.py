@@ -23,7 +23,6 @@ from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
-from shared.utils import create_media_client, MediaClient
 
 from shared.workers.rmq import RMQBroker
 

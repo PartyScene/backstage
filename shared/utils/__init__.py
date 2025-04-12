@@ -1,4 +1,4 @@
-from .crypto import SlimCipher
+from .crypto import AsyncEnvelopeCipherService
 
 from surrealdb import AsyncSurreal, RecordID
 import orjson as json

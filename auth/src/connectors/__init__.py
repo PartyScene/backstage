@@ -2,7 +2,7 @@ import os
 from typing import Optional, Dict, Any
 
 from surrealdb import AsyncSurreal
-from shared.utils import record_id_to_json, SlimCipher
+from shared.utils import record_id_to_json, AsyncEnvelopeCipherService
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
 
 import orjson as json
@@ -28,10 +28,42 @@ class AuthDB:
         """
         self.pool = pool
         self.db = None  # For compatibility with existing code
+        self.envelope_service = AsyncEnvelopeCipherService()
 
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
+    
+    async def _create_lead(self, email: str, usecase: str) -> dict:
+        """
+        Create a new lead in the database.
+
+        Args:
+            email (str): Email address of the lead
+            usecase (str): Use case of the lead
+
+        Returns:
+            dict: Created lead data or None if creation failed
+        """
+        # Generate Crypto credentials
+        encrypted_email, encryption_key, initialization_vector = (await self.envelope_service.encrypt(
+            email.encode()
+        )).values()
+
+        credentials = {}
+        credentials["encrypted_email"] = encrypted_email
+        credentials["encryption_key"] = encryption_key
+        credentials["initialization_vector"] = initialization_vector
+        credentials['usecase'] = usecase
+
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.create("leads", credentials)
+                logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                return record_id_to_json(result)
+        except Exception as e:
+            logger.error(f"Error creating lead: {e}")
+            return None
 
     async def _login(self, data) -> dict:
         """
@@ -79,19 +111,20 @@ class AuthDB:
             "hashed_email": form.get("email", ""),
         }
         # Generate Crypto credentials
-        cipher = SlimCipher()
-        encrypted_email, encryption_key, initialization_vector = cipher.encrypt(form.get("email").encode())
-        
+        encrypted_email, encryption_key, initialization_vector = (await self.envelope_service.encrypt(
+            form.get("email").encode()
+        )).values()
+
         credentials = {}
         credentials["encrypted_email"] = encrypted_email
         credentials["encryption_key"] = encryption_key
         credentials["initialization_vector"] = initialization_vector
-        
+
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("users", data)
-                await conn.create("credentials", {**credentials, "user": result['id']})
-                
+                await conn.create("credentials", {**credentials, "user": result["id"]})
+
                 logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
                 return record_id_to_json(result)
         except Exception as e:

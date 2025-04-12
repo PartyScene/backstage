@@ -41,23 +41,26 @@ class RMQBroker(RabbitBroker):
 
             # self.OBS_STORE = GCSStore(os.environ["GCS_BUCKET_NAME"])
             credential_provider = GoogleCredentialProvider()
-            self.logger.warning("USING OBS WITH GCS_BUCKET_URI: %s ", os.environ['GCS_BUCKET_URI'])
-            self.OBS_STORE = store.from_url(os.environ['GCS_BUCKET_URI'], credential_provider=credential_provider)
+            self.logger.warning(
+                "USING OBS WITH GCS_BUCKET_URI: %s ", os.environ["GCS_BUCKET_URI"]
+            )
+            self.OBS_STORE = store.from_url(
+                os.environ["GCS_BUCKET_URI"], credential_provider=credential_provider
+            )
 
             @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
             async def handle_media_upload(message):
                 await self.upload_to_bucket(message.headers, message.body)
-                name =  message.headers.get("filename", "")
-                
+                name = message.headers.get("filename", "")
+
                 if "event" in name:
                     await self._publish_r18e(name, message.body, "MEDIA")
-                elif "post" in name: 
+                elif "post" in name:
                     await self._publish_r18e(name, message.body, "POST")
                 else:
                     self.logger.warning("Unknown filename: %s", name)
-                
-                await message.ack()
 
+                await message.ack()
 
     async def decode_message(self, msg: RabbitMessage, original_decoder):
         try:
@@ -71,6 +74,7 @@ class RMQBroker(RabbitBroker):
 
     async def upload_to_bucket(self, data, image_bytes: bytes):
         import obstore as obs
+
         await obs.put_async(
             self.OBS_STORE,
             data["filename"],
@@ -78,15 +82,14 @@ class RMQBroker(RabbitBroker):
             attributes={"Content-Type": data["content-type"]},
         )
 
-    async def _publish_r18e(self, filename, file, type: Literal["MEDIA", "POST", "EVENT"]):
+    async def _publish_r18e(
+        self, filename, file, type: Literal["MEDIA", "POST", "EVENT"]
+    ):
 
         file = msgpack.dumps(file.read()) if not isinstance(file, bytes) else file
         await self.publisher(self.RABBITMQ_R18E_QUEUE).publish(
             file,
-            headers={
-                "type": type,
-                "filename": filename
-            },
+            headers={"type": type, "filename": filename},
         )
 
     async def _publish_media(self, data: dict, file: io.BytesIO):

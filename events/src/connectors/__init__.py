@@ -52,7 +52,9 @@ class EventsDB:
                         },
                     )
                     self.logger.warning(
-                        json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)
+                        json.dumps(
+                            media_query_result, option=json.OPT_INDENT_2, default=str
+                        )
                     )
                     media_ids.append(
                         RecordID("media", record_id_to_json(media_query_result)["id"])
@@ -61,7 +63,9 @@ class EventsDB:
                 data["media"] = media_ids
 
                 result = await conn.create("events", data)
-                self.logger.warning(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                self.logger.warning(
+                    json.dumps(result, option=json.OPT_INDENT_2, default=str)
+                )
 
                 result = await conn.select(result["id"])
                 if isinstance(result, str):
@@ -319,7 +323,7 @@ class EventsDB:
                 RELATE $user -> attends -> $event SET status = $status;
                 """
                 result = await conn.query(query, {"status": data["status"]})
-            if 'err' in result:
+            if "err" in result:
                 raise Exception(
                     f"Error creating attendance: {result}"
                 )  # Handle error case

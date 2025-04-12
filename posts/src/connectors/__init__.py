@@ -111,7 +111,9 @@ class PostsDB:
                     },
                 )
                 self.logger.warning(
-                    json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)
+                    json.dumps(
+                        media_query_result, option=json.OPT_INDENT_2, default=str
+                    )
                 )
                 media_ids.append(
                     RecordID("media", record_id_to_json(media_query_result)["id"])

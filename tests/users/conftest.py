@@ -40,6 +40,7 @@ fake = Faker()
 #             "tags": [fake.word() for _ in range(3)]
 #         }
 
+
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session

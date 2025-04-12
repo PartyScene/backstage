@@ -16,6 +16,13 @@ spec:
 
   - matches:
     - path:
+        value: /lead
+    backendRefs:
+    - name: auth-service
+      port: 80
+
+  - matches:
+    - path:
         value: /events
     backendRefs:
     - name: microserv-events-service

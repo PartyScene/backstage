@@ -3,7 +3,6 @@ from datetime import timedelta, datetime
 from pprint import pprint
 from http import HTTPStatus
 from quart import make_response, render_template, current_app as app, request, jsonify
-from quart_schema import validate_request, validate_response, document_querystring
 
 from ..connectors import AuthDB
 from shared.classful import route, QuartClassful
@@ -77,6 +76,19 @@ class BaseView(QuartClassful):
         )
 
         return jsonify(health_status), status_code
+    
+    @route("/leads", methods=["POST"])
+    @route("/lead", methods=["POST"])
+    async def create_lead(self):
+        """
+        Create a new lead in the database.
+        """
+        data = await request.get_json()
+        created_lead = await self.conn._create_lead(data.get("email"), data.get("usecase"))
+        if not created_lead:
+            return "Invalid Request Body or Lead already exists", HTTPStatus.CONFLICT
+        return jsonify(created_lead), HTTPStatus.CREATED
+
 
     @route("/auth/register", methods=["POST"])
     async def register_user(self):
@@ -88,8 +100,10 @@ class BaseView(QuartClassful):
         if not created_acct:
             return "Invalid Request Body or User already exists", HTTPStatus.CONFLICT
         try:
-            await self.__n_register_user(created_acct['id'], data.get('email'), created_acct)
-            await self.__n_generate_otp(created_acct["id"], data.get('email'))
+            await self.__n_register_user(
+                created_acct["id"], data.get("email"), created_acct
+            )
+            await self.__n_generate_otp(created_acct["id"], data.get("email"))
         except Exception as e:
             logger.error(f"Registration error: {e}")
             raise
@@ -144,7 +158,12 @@ class BaseView(QuartClassful):
 
             # Send OTP via Novu
             await self.__notification_manager.send_otp_notification(
-                user_id=user_id, ip_address=request.headers.get('REMOTE_ADDR') or request.headers.get('HTTP_X_FORWARDED_FOR') or request.headers.get('HTTP_X_REAL_IP') or request.remote_addr, otp=otp
+                user_id=user_id,
+                ip_address=request.headers.get("REMOTE_ADDR")
+                or request.headers.get("HTTP_X_FORWARDED_FOR")
+                or request.headers.get("HTTP_X_REAL_IP")
+                or request.remote_addr,
+                otp=otp,
             )
 
             return {"message": "OTP sent successfully"}

@@ -7,7 +7,6 @@ from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from posts.src.connectors import PostsDB
-from shared.utils import create_media_client, MediaClient
 from shared.classful import route, QuartClassful
 from http import HTTPStatus
 import os

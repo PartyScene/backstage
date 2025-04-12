@@ -18,12 +18,11 @@ class R18E:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
-    
     async def recommend_similar_events(self, event_id: str) -> list[str]:
         """Recommend similar events based on embeddings."""
         async with self.pool.acquire() as conn:
-            await conn.let("event", RecordID('events', event_id))
-            
+            await conn.let("event", RecordID("events", event_id))
+
             query = "SELECT *, media.*.*, vector::distance::knn(media.embeddings, $event.media.embeddings) AS distance FROM events WHERE media.embeddings <|20, 40|> ORDER BY distance"
             recommendations = await conn.query(query)
             return record_id_to_json(recommendations)

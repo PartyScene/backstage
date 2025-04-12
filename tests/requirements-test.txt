@@ -32,4 +32,3 @@ purreal
 aiocache
 prometheus-client
 faststream[rabbit]
-cryptography

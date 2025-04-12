@@ -46,8 +46,7 @@ class LiveStreamDB:
                 },
             )
         return record_id_to_json(result[0])
-        
-    
+
     async def store_cloudflare_scene(self, input_response, event_id: str):
         """
         Store the ingest url / playback url / from Cloudflare and attach it to the event.
