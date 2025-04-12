@@ -33,7 +33,7 @@ class AuthDB:
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
-    
+
     async def _create_lead(self, email: str, usecase: str) -> dict:
         """
         Create a new lead in the database.
@@ -46,20 +46,14 @@ class AuthDB:
             dict: Created lead data or None if creation failed
         """
         # Generate Crypto credentials
-        encrypted_email, encryption_key, initialization_vector = (await self.envelope_service.encrypt(
-            email.encode()
-        )).values()
 
-        credentials = {}
-        credentials["encrypted_email"] = encrypted_email
-        credentials["encryption_key"] = encryption_key
-        credentials["initialization_vector"] = initialization_vector
-        credentials['usecase'] = usecase
+        credentials = await self.envelope_service.encrypt(email.encode())
+        credentials["usecase"] = usecase
 
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("leads", credentials)
-                logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                logger.debug(result)
                 return record_id_to_json(result)
         except Exception as e:
             logger.error(f"Error creating lead: {e}")
@@ -111,14 +105,7 @@ class AuthDB:
             "hashed_email": form.get("email", ""),
         }
         # Generate Crypto credentials
-        encrypted_email, encryption_key, initialization_vector = (await self.envelope_service.encrypt(
-            form.get("email").encode()
-        )).values()
-
-        credentials = {}
-        credentials["encrypted_email"] = encrypted_email
-        credentials["encryption_key"] = encryption_key
-        credentials["initialization_vector"] = initialization_vector
+        credentials = await self.envelope_service.encrypt(form.get("email").encode())
 
         try:
             async with self.pool.acquire() as conn:

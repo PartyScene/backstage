@@ -18,12 +18,19 @@ class TestAuthentication(TestAuthBase):
         assert response.status_code in (201, 409)
         # data = await response.get_json()
         # assert "id" in data
-    
+
     async def test_lead_generation(self, auth_client):
         """Test lead generation"""
-        response = await self.lead_generation(auth_client, {"email": "test@gmail.com", "usecase": "early access tester"})
+        response = await self.lead_generation(
+            auth_client,
+            {
+                "email": "test@gmail.com",
+                "usecase": "early access tester",
+                "first_name": "John",
+                "last_name": "Doe",
+            },
+        )
         assert response.status_code == 201
-        data = await response.get_json()
 
     # @pytest.mark.asyncio(loop_scope="session")
     async def test_user_login(self, auth_client, mock_user):

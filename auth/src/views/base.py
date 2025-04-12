@@ -8,6 +8,8 @@ from ..connectors import AuthDB
 from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import create_access_token
+
+from shared.workers.brevo import Brevo
 from shared.workers.novu import NotificationManager
 from redis.asyncio import Redis
 from aiocache import cached, RedisCache, Cache
@@ -25,6 +27,7 @@ class BaseView(QuartClassful):
         self.conn: AuthDB = app.conn
         self.redis: Redis = app.redis
         self.__notification_manager = NotificationManager()
+        self.__brevo_client = Brevo()
 
     def generate_jwt_secret(self, identity):
         return create_access_token(identity=identity, expires_delta=timedelta(days=1))
@@ -76,7 +79,7 @@ class BaseView(QuartClassful):
         )
 
         return jsonify(health_status), status_code
-    
+
     @route("/leads", methods=["POST"])
     @route("/lead", methods=["POST"])
     async def create_lead(self):
@@ -84,11 +87,22 @@ class BaseView(QuartClassful):
         Create a new lead in the database.
         """
         data = await request.get_json()
-        created_lead = await self.conn._create_lead(data.get("email"), data.get("usecase"))
+
+        brevo_resp = await self.__brevo_client.create_contact(
+            email=data.get("email"),
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+        )
+        if not brevo_resp:
+            return "Failed to create lead in Brevo or Contact already exists.", HTTPStatus.INTERNAL_SERVER_ERROR
+
+        created_lead = await self.conn._create_lead(
+            data.get("email"), data.get("usecase")
+        )
         if not created_lead:
             return "Invalid Request Body or Lead already exists", HTTPStatus.CONFLICT
-        return jsonify(created_lead), HTTPStatus.CREATED
 
+        return created_lead, HTTPStatus.CREATED
 
     @route("/auth/register", methods=["POST"])
     async def register_user(self):

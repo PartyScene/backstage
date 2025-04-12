@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # These dependencies should exist at the top layer for best caching practices
 COPY shared/ /shared/
+
+# Copy requirements files
+COPY auth/ .
 COPY init/schema.surql /home/schema.surql
 COPY tests/requirements-test.txt /tests/requirements-test.txt
 
@@ -20,9 +23,6 @@ COPY tests/requirements-test.txt /tests/requirements-test.txt
 RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt \
     && pip install --no-cache-dir -r ./requirements.txt
-
-# Copy requirements files
-COPY auth/ .
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py

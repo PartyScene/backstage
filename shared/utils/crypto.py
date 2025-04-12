@@ -1,11 +1,9 @@
-
-
-
 from cryptography.hazmat.primitives import ciphers, padding
 from cryptography.hazmat.backends import default_backend
 from .secrets import SecretManager
 
 import os
+
 
 class AsyncEnvelopeCipherService:
 
@@ -13,9 +11,14 @@ class AsyncEnvelopeCipherService:
         kek = await SecretManager().get_kek_secret()
         return EnvelopeCipher(kek).encrypt(plaintext)
 
-    async def decrypt(self, encrypted_data: bytes, encrypted_dek: bytes, iv_data: bytes, iv_kek: bytes) -> bytes:
+    async def decrypt(
+        self, encrypted_data: bytes, encrypted_dek: bytes, iv_data: bytes, iv_kek: bytes
+    ) -> bytes:
         kek = await SecretManager().get_kek_secret()
-        return EnvelopeCipher(kek).decrypt(encrypted_data, encrypted_dek, iv_data, iv_kek)
+        return EnvelopeCipher(kek).decrypt(
+            encrypted_data, encrypted_dek, iv_data, iv_kek
+        )
+
 
 class EnvelopeCipher:
     """
@@ -39,15 +42,17 @@ class EnvelopeCipher:
     """
 
     def __init__(self, kek: bytes):
-        assert isinstance(kek, bytes) and len(kek) in [16, 24, 32], "KEK must be a valid AES key"
+        assert isinstance(kek, bytes) and len(kek) in [
+            16,
+            24,
+            32,
+        ], "KEK must be a valid AES key"
         self.kek = kek
         self.backend = default_backend()
 
     def _get_cipher(self, key: bytes, iv: bytes):
         return ciphers.Cipher(
-            ciphers.algorithms.AES(key),
-            ciphers.modes.CBC(iv),
-            backend=self.backend
+            ciphers.algorithms.AES(key), ciphers.modes.CBC(iv), backend=self.backend
         )
 
     def encrypt(self, plaintext: bytes):
@@ -64,28 +69,45 @@ class EnvelopeCipher:
                 - iv_data (bytes): IV used for encrypting the data.
                 - iv_kek (bytes): IV used for encrypting the DEK.
         """
-        dek = os.urandom(32)
-        iv_data = os.urandom(16)
+        decryption_key = os.urandom(32)
+        data_initialization_vector = os.urandom(16)
 
+        # Pad the data
         padder = padding.PKCS7(128).padder()
         padded_data = padder.update(plaintext) + padder.finalize()
 
-        cipher_data = self._get_cipher(dek, iv_data).encryptor()
-        encrypted_data = cipher_data.update(padded_data) + cipher_data.finalize()
+        # Encrypt the data
+        cipher_context = self._get_cipher(
+            decryption_key, data_initialization_vector
+        ).encryptor()
+        encrypted_data = cipher_context.update(padded_data) + cipher_context.finalize()
 
-        iv_kek = os.urandom(16)
-        cipher_kek = self._get_cipher(self.kek, iv_kek).encryptor()
-        padded_dek = padder.update(dek) + padder.finalize()
-        encrypted_dek = cipher_kek.update(padded_dek) + cipher_kek.finalize()
+        # Encrypt the DEK
+        decryption_key_initialization_vector = os.urandom(16)
+        cipher_context = self._get_cipher(
+            self.kek, decryption_key_initialization_vector
+        ).encryptor()
+
+        padder = padding.PKCS7(128).padder()
+        padded_dek = padder.update(decryption_key) + padder.finalize()
+        encrypted_decryption_key = (
+            cipher_context.update(padded_dek) + cipher_context.finalize()
+        )
 
         return {
             "encrypted_data": encrypted_data,
-            "encrypted_dek": encrypted_dek,
-            "iv_data": iv_data,
-            "iv_kek": iv_kek,
+            "encrypted_decryption_key": encrypted_decryption_key,
+            "data_initialization_vector": data_initialization_vector,
+            "decryption_key_initialization_vector": decryption_key_initialization_vector,
         }
 
-    def decrypt(self, encrypted_data: bytes, encrypted_dek: bytes, iv_data: bytes, iv_kek: bytes):
+    def decrypt(
+        self,
+        encrypted_data: bytes,
+        encrypted_dek: bytes,
+        data_initialization_vector: bytes,
+        decryption_key_initialization_vector: bytes,
+    ):
         """
         Decrypts the provided encrypted data using envelope decryption.
 
@@ -98,14 +120,17 @@ class EnvelopeCipher:
         Returns:
             bytes: The original plaintext.
         """
-        cipher_kek = self._get_cipher(self.kek, iv_kek).decryptor()
+        cipher_kek = self._get_cipher(
+            self.kek, decryption_key_initialization_vector
+        ).decryptor()
         padded_dek = cipher_kek.update(encrypted_dek) + cipher_kek.finalize()
 
         unpadder = padding.PKCS7(128).unpadder()
         dek = unpadder.update(padded_dek) + unpadder.finalize()
 
-        cipher_data = self._get_cipher(dek, iv_data).decryptor()
+        cipher_data = self._get_cipher(dek, data_initialization_vector).decryptor()
         padded_data = cipher_data.update(encrypted_data) + cipher_data.finalize()
 
+        unpadder = padding.PKCS7(128).unpadder()
         plaintext = unpadder.update(padded_data) + unpadder.finalize()
         return plaintext

@@ -30,6 +30,12 @@ Classes
     :special-members: __init__
 """
 
+import httpx
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class Brevo:
 

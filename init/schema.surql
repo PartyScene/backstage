@@ -17,16 +17,17 @@ DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UP
 
 DEFINE TABLE IF NOT EXISTS credentials SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE credentials TYPE record<users>;
-DEFINE FIELD OVERWRITE initialization_vector ON TABLE credentials TYPE bytes;
-DEFINE FIELD OVERWRITE encryption_key ON TABLE credentials TYPE bytes;
-DEFINE FIELD OVERWRITE encrypted_email ON TABLE credentials TYPE bytes;
-
+DEFINE FIELD OVERWRITE encrypted_data ON TABLE credentials TYPE bytes;
+DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE credentials TYPE bytes;
+DEFINE FIELD OVERWRITE encrypted_decryption_key ON TABLE credentials TYPE bytes;
+DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE credentials TYPE bytes;
 
 DEFINE TABLE IF NOT EXISTS leads SCHEMAFULL;
 DEFINE FIELD OVERWRITE usecase ON TABLE leads TYPE string;
-DEFINE FIELD OVERWRITE initialization_vector ON TABLE leads TYPE bytes;
-DEFINE FIELD OVERWRITE encryption_key ON TABLE leads TYPE bytes;
-DEFINE FIELD OVERWRITE encrypted_email ON TABLE leads TYPE bytes;
+DEFINE FIELD OVERWRITE encrypted_data ON TABLE leads TYPE bytes;
+DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE leads TYPE bytes;
+DEFINE FIELD OVERWRITE encrypted_decryption_key ON TABLE leads TYPE bytes;
+DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE leads TYPE bytes;
 
 
 -- Let's define a relation table for users and events to record attendance
