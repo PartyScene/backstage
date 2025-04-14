@@ -66,7 +66,7 @@ EXPOSE 5510
 
 # Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
 CMD ["python3", "-m", "granian", \
-     "--loop", "rloop", \
+     "--loop", "uvloop", \
      "--host", "0.0.0.0", \
      "--port", "5510", \
      "--workers", "1", \

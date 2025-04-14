@@ -25,24 +25,24 @@ class EventsDB:
 
     async def create_event(self, data: Dict[str, Any]):
         """Create a new event"""
-        async with self.pool.acquire() as conn:
-            coordinates = data.pop("coordinates")
+        coordinates = data.pop("coordinates")
 
-            try:
-                data["host"] = RecordID("users", data["host"])
-                data["location"] = {
-                    "address": data.get("location"),
-                    "coordinates": {"type": "Point", "coordinates": coordinates},
-                }
-                data["creator"] = data["host"]
+        try:
+            data["host"] = RecordID("users", data["host"])
+            data["location"] = {
+                "address": data.get("location"),
+                "coordinates": {"type": "Point", "coordinates": coordinates},
+            }
+            data["creator"] = data["host"]
 
-                media_ids = []
+            media_ids = []
 
-                subset = lambda d, keys: {k: d[k] for k in keys if k in d}
+            subset = lambda d, keys: {k: d[k] for k in keys if k in d}
 
-                for i, filename in enumerate(data["filenames"]):
-                    data["filename"] = filename
-                    data["type"] = data["types"][i]
+            for i, filename in enumerate(data["filenames"]):
+                data["filename"] = filename
+                data["type"] = data["types"][i]
+                async with self.pool.acquire() as conn:
                     media_query_result = await conn.create(
                         "media",
                         {
@@ -51,32 +51,33 @@ class EventsDB:
                             "creator": data["creator"],
                         },
                     )
-                    self.logger.warning(
-                        json.dumps(
-                            media_query_result, option=json.OPT_INDENT_2, default=str
-                        )
+                self.logger.warning(
+                    json.dumps(
+                        media_query_result, option=json.OPT_INDENT_2, default=str
                     )
-                    media_ids.append(
-                        RecordID("media", record_id_to_json(media_query_result)["id"])
-                    )
+                )
+                media_ids.append(
+                    RecordID("media", record_id_to_json(media_query_result)["id"])
+                )
 
-                data["media"] = media_ids
-
+            data["media"] = media_ids
+            
+            async with self.pool.acquire() as conn:
                 result = await conn.create("events", data)
                 self.logger.warning(
                     json.dumps(result, option=json.OPT_INDENT_2, default=str)
                 )
 
                 result = await conn.select(result["id"])
-                if isinstance(result, str):
-                    raise Exception(
-                        f"Error creating event: {result}"
-                    )  # Handle error case
-                return record_id_to_json(result)
+            if isinstance(result, str):
+                raise Exception(
+                    f"Error creating event: {result}"
+                )  # Handle error case
+            return record_id_to_json(result)
 
-            except Exception as e:
-                self.logger.error(f"Failed to create event: {str(e)}")
-                raise
+        except Exception as e:
+            self.logger.error(f"Failed to create event: {str(e)}")
+            raise
 
     async def delete_event(self, event_id: str):
         """

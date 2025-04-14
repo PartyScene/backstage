@@ -12,7 +12,7 @@ from http import HTTPStatus
 import os
 import io
 import werkzeug
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiocache import cached
 
 from obstore.store import GCSStore
@@ -22,8 +22,8 @@ import obstore as obs
 class BaseView(QuartClassful):
 
     def __init__(self):
-        # self.GCP_client = storage.Client(os.getenv("GOOGLE_CLOUD_PROJECT"))
-        # self.bucket = self.GCP_client.bucket("partyscene")
+        self.GCP_client = storage.Client(os.getenv("GOOGLE_CLOUD_PROJECT"))
+        self.bucket = self.GCP_client.bucket(os.getenv("GCS_BUCKET_NAME"))
         # Try something new
         self.OBS_STORE = GCSStore(os.environ["GCS_BUCKET_NAME"])
         self.logger = logging.create_logger(app)
@@ -128,8 +128,29 @@ class BaseView(QuartClassful):
         if not filename:
             return "Filename missing", HTTPStatus.BAD_REQUEST
 
-        media_url = await obs.sign_async(
-            self.OBS_STORE, "GET", filename, timedelta(days=1)
-        )
+        # media_url = await obs.sign_async(
+        #     self.OBS_STORE, "GET", filename, timedelta(days=1)
+        # )
+
+        media_url = await self.generate_download_signed_url_v4(filename)
 
         return media_url, HTTPStatus.OK
+
+    
+    async def generate_download_signed_url_v4(self, blob_name):
+        """Generates a v4 signed URL for downloading a blob.
+
+        Note that this method requires a service account key file. You can not use
+        this if you are using Application Default Credentials from Google Compute
+        Engine or from the Google Cloud SDK.
+        """
+        blob = self.bucket.blob(blob_name)
+
+        url = blob.generate_signed_url(
+            version="v4",
+            # This URL is valid for 15 minutes
+            expiration=timedelta(days=1),
+            # Allow GET requests using this URL.
+            method="GET",
+        )
+        return url

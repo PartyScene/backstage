@@ -17,7 +17,8 @@ class TestUserManagement(TestUsersBase):
 
         assert response.status_code == 200
         profile = await response.get_json()
-        assert "email" in profile
+        assert "first_name" in profile
+        assert "username" in profile
 
     async def test_update_user_profile(self, users_client, mock_user, bearer):
         """Test updating user profile information."""

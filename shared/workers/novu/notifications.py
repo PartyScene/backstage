@@ -10,6 +10,7 @@ from typing import Dict, List, Union, Optional
 
 logger = logging.getLogger(__name__)
 
+import ipinfo
 
 class NotificationManager:
     def __init__(self):
@@ -17,6 +18,7 @@ class NotificationManager:
         Initialize Novu client with secret key from environment
         """
         self.novu_client = Novu(secret_key=os.getenv("NOVU_SECRET_KEY", ""))
+        self.handler = ipinfo.getHandlerAsync(os.getenv("IPINFO_TOKEN", ""))
 
     async def get_ip_location(self, ip_address: str) -> Tuple[str, str]:
         """Get the Location from an IP Address
@@ -24,16 +26,19 @@ class NotificationManager:
         Args:
             ip_address (str): _description_
         """
-        try:
-            async with httpx.AsyncClient() as client:
-                r = await client.get(f"https://ipapi.co/{ip_address}/json/")
-                r.raise_for_status()
-                json_data = r.json()
-                return json_data["city"], json_data["country"]
+        details = await self.handler.getDetails(ip_address)
+        return details.city, details.country
 
-        except Exception as e:
-            logger.error(f"Failed to get Location from IP {e}")
-            return "", ""
+        # try:
+        #     async with httpx.AsyncClient() as client:
+        #         r = await client.get(f"https://ipapi.co/{ip_address}/json/")
+        #         r.raise_for_status()
+        #         json_data = r.json()
+        #         return json_data["city"], json_data["country"]
+
+        # except Exception as e:
+        #     logger.error(f"Failed to get Location from IP {e}")
+        #     return "", ""
 
     async def create_subscriber(
         self,
@@ -69,9 +74,7 @@ class NotificationManager:
                     logger.info(exists.result)
                     return await self.novu_client.subscribers.patch_async(
                         subscriber_id=exists.result.data[0].subscriber_id,
-                        patch_subscriber_request_dto={
-                            "email": subscriber_data["email"]
-                        },
+                        patch_subscriber_request_dto=subscriber_data
                     )
             return await self.novu_client.subscribers.create_async(
                 create_subscriber_request_dto=subscriber_data

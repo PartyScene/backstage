@@ -84,8 +84,9 @@ class Brevo:
                 "attributes": {"FNAME": first_name, "LNAME": last_name},
             }
             response = await self.client.post(f"{self.base_url}/contacts", json=payload)
+            if response.status_code in (400, 201):
+                return response.json()
             response.raise_for_status()
-            return response.json()
         except Exception as e:
             logger.error(f"Failed to create contact: {e}")
             return None

@@ -12,11 +12,18 @@ class AsyncEnvelopeCipherService:
         return EnvelopeCipher(kek).encrypt(plaintext)
 
     async def decrypt(
-        self, encrypted_data: bytes, encrypted_dek: bytes, iv_data: bytes, iv_kek: bytes
+        self,
+        encrypted_data: bytes,
+        encrypted_dek: bytes,
+        data_initialization_vector: bytes,
+        decryption_key_initialization_vector: bytes,
     ) -> bytes:
         kek = await SecretManager().get_kek_secret()
         return EnvelopeCipher(kek).decrypt(
-            encrypted_data, encrypted_dek, iv_data, iv_kek
+            encrypted_data,
+            encrypted_dek,
+            data_initialization_vector,
+            decryption_key_initialization_vector,
         )
 
 

@@ -16,7 +16,7 @@ spec:
 
   - matches:
     - path:
-        value: /lead
+        value: /leads
     backendRefs:
     - name: auth-service
       port: 80

@@ -109,7 +109,7 @@ class AuthDB:
 
         try:
             async with self.pool.acquire() as conn:
-                result = await conn.create("users", data)
+                result = await conn.create("users", {**form, **data})
                 await conn.create("credentials", {**credentials, "user": result["id"]})
 
                 logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))

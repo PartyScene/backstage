@@ -81,7 +81,6 @@ class BaseView(QuartClassful):
         return jsonify(health_status), status_code
 
     @route("/leads", methods=["POST"])
-    @route("/lead", methods=["POST"])
     async def create_lead(self):
         """
         Create a new lead in the database.
@@ -102,7 +101,7 @@ class BaseView(QuartClassful):
         if not created_lead:
             return "Invalid Request Body or Lead already exists", HTTPStatus.CONFLICT
 
-        return created_lead, HTTPStatus.CREATED
+        return f"Created Lead {data.get('email')} in Brevo and SurrealDB", HTTPStatus.CREATED
 
     @route("/auth/register", methods=["POST"])
     async def register_user(self):

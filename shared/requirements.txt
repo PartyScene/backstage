@@ -6,9 +6,11 @@ typing-extensions
 httpx
 novu-py
 surrealdb
-granian[rloop]
+granian[uvloop]
 purreal
 aiocache
 prometheus-client
 faststream[rabbit]
 orjson
+cryptography
+google-cloud-secret-manager
