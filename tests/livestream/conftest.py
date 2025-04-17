@@ -33,7 +33,7 @@ fake = Faker()
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session
-async def livestream_app():
+async def livestream_app(redis_connection):
     from livestream.run import app
     from livestream.src.connectors import init_db
 
@@ -70,7 +70,7 @@ async def livestream_app():
         async def close(self):
             pass
 
-    app.redis = AsyncRedisMock()
+    app.redis = redis_connection
     app.conn, app.pool_manager = await init_db(app)
     try:
         async with app.app_context():

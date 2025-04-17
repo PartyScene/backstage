@@ -3,6 +3,7 @@ import random
 import orjson as json
 import asyncio
 import os
+import uuid
 
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
@@ -154,11 +155,14 @@ class BaseView(QuartClassful):
             data["host"] = get_jwt_identity()
             data["creator"] = get_jwt_identity()
             data["filenames"] = [
-                f"events/{data['host']}/{file.filename}" for file in files.values()
+                f"events/{data['host']}/{str(uuid.uuid4())[:5]}/{file.filename}" for file in files.values()
             ]
             data["types"] = [file.content_type for file in files.values()]
 
             data["degree_of_freedom"] = form.get("degree_of_freedom", 1, type=int)
+            
+            data['time'] = datetime.fromisoformat(form.get("time").replace("Z", "+00:00"))
+
             data["is_private"] = (
                 form.get("is_private", "false") == "true"
             )  # Default to False if not specified

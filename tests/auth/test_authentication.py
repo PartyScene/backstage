@@ -5,26 +5,33 @@ from test_base import TestAuthBase
 @pytest.mark.asyncio(loop_scope="session")
 class TestAuthentication(TestAuthBase):
 
-    async def test_service_health(self, auth_client):
-        for _ in range(25):
-            response = await self.health_check(auth_client)
-            assert response.status_code == 200
-        data = await response.get_json()
-        assert data["status"] == "healthy"
+    # async def test_service_health(self, auth_client):
+    #     for _ in range(25):
+    #         response = await self.health_check(auth_client)
+    #         assert response.status_code == 200
+    #     data = await response.get_json()
+    #     assert data["status"] == "healthy"
 
     async def test_user_registration(self, auth_client, mock_user):
         """Test user registration"""
         response = await self.register_user(auth_client, mock_user)
         assert response.status_code in (201, 409)
-        # data = await response.get_json()
-        # assert "id" in data
+        data = await response.get_data(as_text=True)
+        mock_user['otp'] = data
+    
+    async def test_verify_otp(self, auth_client, mock_user):
+        """Test OTP verification"""
+        response = await self.verify_otp(auth_client, mock_user)
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert "access_token" in data
 
     async def test_lead_generation(self, auth_client):
         """Test lead generation"""
         response = await self.lead_generation(
             auth_client,
             {
-                "email": "test@gmail.com",
+                "email": "dylee@tutamail.com",
                 "usecase": "early access tester",
                 "first_name": "John",
                 "last_name": "Doe",

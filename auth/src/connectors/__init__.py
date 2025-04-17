@@ -86,10 +86,30 @@ class AuthDB:
         except Exception as e:
             logger.error(f"Login error: {e}")
             return False
-
-    async def _create_user(self, form):
+    
+    async def _create_pending_user(self, form):
         """
-        Create a new user in the database.
+        Create a new pending user in the database.
+
+        Args:
+            form: Form data to create the pending user
+
+        Returns:
+            dict: Created pending user data or None if creation failed
+        """
+
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.create("pending_users", form)
+                logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                return record_id_to_json(result)
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            return None
+
+    async def _verify_and_store(self, form):
+        """
+        Create a new user in the database after verifying the user's email.
 
         Args:
             form: User data to create

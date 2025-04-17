@@ -51,7 +51,7 @@ DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
 DEFINE FIELD OVERWRITE media ON TABLE events TYPE array<record<media>> DEFAULT [];
 
-DEFINE FIELD OVERWRITE embeddings ON TABLE events FLEXIBLE TYPE object DEFAULT {}; 
+DEFINE FIELD OVERWRITE embeddings ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT array::range(1, 512);
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
 -- Define a vector index on the events table for embedding field
@@ -97,8 +97,7 @@ DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();
 DEFINE TABLE IF NOT EXISTS media SCHEMAFULL;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
-
--- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', $this.filename))} ASSERT string::len($value) > 0
+DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))} ASSERT string::len($value) > 0;
 
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
@@ -109,5 +108,8 @@ DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();
 -- Relations
 DEFINE FIELD OVERWRITE creator ON media TYPE record<users>;
 DEFINE FIELD OVERWRITE event ON media TYPE option<record<events>>;
-DEFINE FIELD OVERWRITE embeddings ON media TYPE array DEFAULT array::range(1, 512);
-DEFINE INDEX hnsw_media_embeddings ON media FIELDS embeddings HNSW DIMENSION 512 M 16 EFC 200;
+
+-- Define embedding fields for events
+DEFINE FIELD OVERWRITE embeddings ON TABLE media FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE embeddings.media ON TABLE media TYPE array DEFAULT array::range(1, 512);
+DEFINE INDEX hnsw_media__embeddings ON TABLE media FIELDS embeddings.media HNSW DIMENSION 512 M 16 EFC 200;

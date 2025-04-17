@@ -7,6 +7,9 @@ class TestAuthBase:
     async def register_user(self, client: QuartClient, user_data: dict):
         """Helper method to register a user"""
         return await client.post("/auth/register", json=user_data)
+    
+    async def verify_otp(self, client: QuartClient, user_data: dict):
+        return await client.post("/auth/verify", json={"email": user_data['email'], "otp": user_data["otp"]})
 
     async def login_user(self, client: QuartClient, credentials: dict):
         """Helper method to login a user"""

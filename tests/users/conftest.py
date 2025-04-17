@@ -44,7 +44,7 @@ fake = Faker()
 @pytest_asyncio.fixture(
     scope="session", loop_scope="session"
 )  # Changed from module to session
-async def users_app():
+async def users_app(redis_connection):
     from users.run import app
     from users.src.connectors import init_db
 
@@ -81,7 +81,7 @@ async def users_app():
         async def close(self):
             pass
 
-    app.redis = AsyncRedisMock()
+    app.redis = redis_connection
     app.conn, app.pool_manager = await init_db(app)
     app.RMQ = rmq.RMQBroker(app)
     await app.RMQ.start()

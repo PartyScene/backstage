@@ -1,7 +1,8 @@
-from quart import current_app as app, request, jsonify, logging
+from quart import current_app as app, request, jsonify, logging, Response
 from quart.datastructures import FileStorage
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from google.cloud import storage
+import google.auth
 from datetime import timedelta
 import werkzeug.datastructures
 
@@ -13,6 +14,7 @@ import os
 import io
 import werkzeug
 from datetime import datetime, timedelta
+import redis.exceptions
 from aiocache import cached
 
 from obstore.store import GCSStore
@@ -120,7 +122,7 @@ class BaseView(QuartClassful):
     #     return jsonify(result), HTTPStatus.CREATED
 
     @route("/media/sign", methods=["GET"])
-    @cached(ttl=60 * 60 * 72)
+    # @cached(ttl=60 * 60 * 72)
     async def sign(self):
         """Sign a media in the Bucket for access"""
         filename = request.args.get("filename")
@@ -128,13 +130,59 @@ class BaseView(QuartClassful):
         if not filename:
             return "Filename missing", HTTPStatus.BAD_REQUEST
 
-        # media_url = await obs.sign_async(
-        #     self.OBS_STORE, "GET", filename, timedelta(days=1)
-        # )
+        # Define a specific cache key prefix for this endpoint
+        cache_key = f"media:signed_url:{filename}"
+        # Define TTL for the cache (e.g., 1 hour = 3600 seconds)
+        # Should be less than the signed URL validity (1 day)
+        cache_ttl = 3600
 
-        media_url = await self.generate_download_signed_url_v4(filename)
+        cached_url = None
+        try:
+            # 1. Check Redis cache first
+            cached_url = await self.redis.get(cache_key)
+            if cached_url:
+                self.logger.info(f"Cache HIT for signed URL: {filename}")
+                # Return cached URL - use Response object to add headers
+                response = Response(cached_url, status=HTTPStatus.OK, content_type="text/plain")
+                response.headers['X-Cache-Status'] = 'HIT'
+                return response
 
-        return media_url, HTTPStatus.OK
+            self.logger.info(f"Cache MISS for signed URL: {filename}")
+
+        except redis.exceptions.RedisError as e:
+            self.logger.error(f"Redis GET error for key {cache_key}: {e}. Proceeding without cache.")
+            # Fallback: If Redis GET fails, generate a new URL without caching
+
+        # --- Cache MISS or Redis GET Error ---
+        self.logger.warning(f"Generating new signed URL for Filename: {filename}")
+
+        try:
+            # 2. Generate the signed URL (original logic)
+            media_url = await obs.sign_async(
+                self.OBS_STORE, "GET", filename, timedelta(days=1)
+            )
+            # Alternative method call if needed:
+            # media_url = await self.generate_download_signed_url_v4(filename)
+
+        except Exception as e:
+             # Handle potential errors during URL signing
+             self.logger.error(f"Error generating signed URL for {filename}: {e}", exc_info=True)
+             return f"Failed to generate signed URL for {filename}", HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+        # 3. Store the newly generated URL in Redis (if cache wasn't hit and GET didn't fail)
+        if cached_url is None: # Only store if it was a definite miss (and GET didn't error)
+             try:
+                await self.redis.set(cache_key, media_url, ex=cache_ttl)
+                self.logger.info(f"Stored signed URL in cache for {filename} with TTL {cache_ttl}s")
+             except redis.exceptions.RedisError as e:
+                self.logger.error(f"Redis SET error for key {cache_key}: {e}. Serving URL without caching.")
+                # If SET fails, we still return the generated URL, just don't cache it
+
+        # Return the newly generated URL - use Response object to add headers
+        response = Response(media_url, status=HTTPStatus.OK, content_type="text/plain")
+        response.headers['X-Cache-Status'] = 'MISS'
+        return response
 
     
     async def generate_download_signed_url_v4(self, blob_name):
@@ -145,8 +193,11 @@ class BaseView(QuartClassful):
         Engine or from the Google Cloud SDK.
         """
         blob = self.bucket.blob(blob_name)
+        creds = await self.get_impersonated_credentials()
 
         url = blob.generate_signed_url(
+            service_account_email=creds.service_account_email,
+            access_token=creds.token,
             version="v4",
             # This URL is valid for 15 minutes
             expiration=timedelta(days=1),
@@ -154,3 +205,23 @@ class BaseView(QuartClassful):
             method="GET",
         )
         return url
+
+    async def get_impersonated_credentials(self):
+        scopes = ['https://www.googleapis.com/auth/cloud-platform']
+
+        credentials, project = google.auth.default(scopes=None)
+
+        if credentials.token is None:
+            credentials.refresh(google.auth.transport.requests.Request())
+
+        self.logger.warning(credentials.service_account_email)
+        return credentials
+
+        signing_credentials = google.auth.impersonated_credentials.Credentials(
+            source_credentials=credentials,
+            target_principal=credentials.service_account_email,
+            target_scopes=scopes,
+            lifetime=datetime.timedelta(seconds=3600),
+            delegates=[credentials.service_account_email]
+        )
+        return signing_credentials

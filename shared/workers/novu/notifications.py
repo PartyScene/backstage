@@ -6,6 +6,7 @@ import httpx
 from datetime import datetime
 from novu_py import Novu, TriggerEventRequestDto, To
 from typing import Tuple
+import uuid
 from typing import Dict, List, Union, Optional
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,11 @@ class NotificationManager:
         Args:
             ip_address (str): _description_
         """
-        details = await self.handler.getDetails(ip_address)
-        return details.city, details.country
+        try:
+            details = await self.handler.getDetails(ip_address)
+            return details.city, details.country
+        except:
+            return "", ""
 
         # try:
         #     async with httpx.AsyncClient() as client:
@@ -42,8 +46,8 @@ class NotificationManager:
 
     async def create_subscriber(
         self,
-        user_id: str,
         email: str,
+        user_id: str = None,
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
     ):
@@ -61,7 +65,7 @@ class NotificationManager:
         """
         try:
             subscriber_data = {
-                "subscriber_id": user_id,
+                "subscriber_id": user_id or str(uuid.uuid4())[:8],
                 "email": email,
                 "firstName": first_name,
                 "lastName": last_name,

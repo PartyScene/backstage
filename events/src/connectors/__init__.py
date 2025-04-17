@@ -115,6 +115,7 @@ class EventsDB:
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count,
                     geo::distance(coordinates, $coordinates) as distance
+                OMIT embeddings
                 FROM events 
                 WHERE 
                     is_live = $live 
@@ -147,6 +148,7 @@ class EventsDB:
                      SELECT *, media.*.*,
                         <-attends<-users AS attendees,
                         array::len(<-attends<-users) as attendees_count
+                    OMIT embeddings
                     FROM events ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
                 """,
                     {"page": page, "limit": limit},
@@ -178,6 +180,7 @@ class EventsDB:
                      SELECT *, media.*.*,
                         <-attends<-users AS attendees,
                         array::len(<-attends<-users) as attendees_count
+                    OMIT embeddings
                     FROM events WHERE is_private = false ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
                 """,
                     {"page": page, "limit": limit},
@@ -206,6 +209,7 @@ class EventsDB:
                     *, media.*.*,
                     <-attends<-users AS attendees,
                     array::len(<-attends<-users) as attendees_count
+                OMIT embeddings
                 FROM ONLY type::thing('events', $event_id);
                 """,
                     {"event_id": event_id},
@@ -224,6 +228,7 @@ class EventsDB:
                 *,
                 <-attends<-users AS attendees,
                 array::len(<-attends<-users) as attendees_count
+            OMIT embeddings
             FROM type::thing('events', $event_id)
             FETCH host, attendees;
             """

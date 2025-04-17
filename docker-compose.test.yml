@@ -97,4 +97,4 @@ services:
 
   redis:
     image: redis
-    command: sh -c "redis-server & sleep 80; kill $!"
+    command: sh -c "redis-server & sleep 180; kill $!"

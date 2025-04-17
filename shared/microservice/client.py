@@ -134,6 +134,7 @@ class MicroService(Quart):
             # Test connection
             await self.redis.ping()
             logger.info("Redis connection established")
+            return self.redis
         except Exception as e:
             logger.error(f"Failed to initialize Redis: {str(e)}")
             raise
@@ -164,6 +165,13 @@ class MicroService(Quart):
 
     async def set_shared_secret(self):
         """Set JWT secret in Redis if it doesn't exist"""
+        if self.config["DEBUG"]:
+            self.config["SECRET_KEY"] = "test-secret-key"
+            self.config["JWT_SECRET_KEY"] = "test-secret-key"
+            self.jwt = JWTManager(self)
+            logger.info("JWT manager initialized in DEBUG mode")
+            return
+            
         try:
             # Check if secret already exists
             existing_secret = await self.redis.get("SECRET_KEY")

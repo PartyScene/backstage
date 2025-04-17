@@ -53,9 +53,26 @@ fake = Faker()
 #     yield db
 #     await db.close()
 
+from redis.asyncio import Redis
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def auth_app():
+async def redis_connection():
+    """Fixture to set up Redis connection for testing."""
+    redis_uri = os.getenv("REDIS_URI", "redis://localhost:6379")  # Set the URI if not already set
+    redis = Redis.from_url(redis_uri, decode_responses=True, encoding="utf-8")
+    
+    # Test Redis connection (ping)
+    try:
+        await redis.ping()
+        yield redis  # Return the redis object to tests
+    except Exception as e:
+        pytest.fail(f"Redis connection failed: {str(e)}")
+    finally:
+        # Close connection after test completion
+        await redis.close()
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def auth_app(redis_connection):
     """Create a session-scoped auth app"""
 
     from auth.run import app
@@ -86,7 +103,7 @@ async def auth_app():
             async def close(self):
                 pass
 
-        app.redis = AsyncRedisMock()
+        app.redis = redis_connection
         app.conn, app.pool_manager = await init_db(app)
 
         async with app.app_context():
@@ -133,7 +150,7 @@ def mock_user():
     return {
         "first_name": "John",
         "last_name": "Doe",
-        "email": "oyinxdoubx@gmail.com",
+        "email": "dylee@tutamail.com",
         "password": "testingTs",
         "confirm_password": "testingTs",
         "username": fake.user_name(),
@@ -155,6 +172,7 @@ def mock_event():
         "price": fake.numerify("##"),
         "host": "test",
         "id": "test",
+        "time": (datetime.utcnow() + timedelta(days=1)).isoformat() + "Z"
     }
     event = MultiDict(event)
     event.add("coordinates[]", str(fake.latitude()))

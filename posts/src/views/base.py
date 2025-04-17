@@ -1,5 +1,6 @@
 import httpx
 import orjson as json
+import uuid
 
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
@@ -153,7 +154,7 @@ class BaseView(QuartClassful):
             return jsonify({"error": "Content is required"}), 400
 
         data["filenames"] = [
-            f"posts/{user_id}/{file.filename}" for file in files.values()
+            f"posts/{user_id}/{str(uuid.uuid4())[:5]}/{file.filename}" for file in files.values()
         ]
         data["types"] = [file.content_type for file in files.values()]
 
