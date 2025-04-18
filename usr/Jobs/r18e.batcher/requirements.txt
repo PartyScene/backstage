@@ -1,0 +1,10 @@
+# requirements.txt
+faststream[cli, rabbit]
+surrealdb
+transformers
+torch
+torchvision
+torchaudio
+Pillow
+msgpack
+accelerate

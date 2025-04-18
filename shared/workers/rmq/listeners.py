@@ -86,7 +86,7 @@ class RMQBroker(RabbitBroker):
         self, filename, file, type: Literal["MEDIA", "POST", "EVENT"]
     ):
 
-        file = msgpack.dumps(file.read()) if not isinstance(file, bytes) else file
+        file = msgpack.dumps(file.read()) if not isinstance(file, bytes) else msgpack.dumps(file)
         await self.publisher(self.RABBITMQ_R18E_QUEUE).publish(
             file,
             headers={"type": type, "filename": filename},
