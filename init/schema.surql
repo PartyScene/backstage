@@ -49,10 +49,11 @@ DEFINE FIELD OVERWRITE location.address ON TABLE events TYPE string;
 DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE object;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
-DEFINE FIELD OVERWRITE media ON TABLE events TYPE array<record<media>> DEFAULT [];
+-- DEFINE FIELD OVERWRITE media ON TABLE events TYPE array<record<media>> DEFAULT [];
 -- DEFINE FIELD OVERWRITE embeddings ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
+DEFINE INDEX hnsw_event_media_embeddings ON TABLE events FIELDS media.*.embeddings HNSW DIMENSION 768 M 16 EFC 200;
 -- Define a vector index on the events table for embedding field
 
 -- Let's define a table for livestreams
@@ -102,7 +103,7 @@ DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('ht
 
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
-
+``
 -- Metadata fields
 DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();
 
