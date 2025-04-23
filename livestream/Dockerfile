@@ -2,7 +2,7 @@
 # ENV GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
 
 # Test stage
-FROM python:3.11-slim AS test
+FROM python:3.12-slim AS test
 
 WORKDIR /livestream
 
@@ -36,7 +36,7 @@ COPY tests/pytest.ini /tests/pytest.ini
 CMD ["pytest", "--disable-warnings", "/tests", "-v"]
 
 # Main stage
-FROM python:3.11-slim AS prod
+FROM python:3.13-slim AS prod
 
 WORKDIR /livestream
 

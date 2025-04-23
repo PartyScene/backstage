@@ -1,0 +1,10 @@
+#V2
+use ns partyscene
+use ns idk
+use db us
+exit
+exit;
+use ns idk
+use ns partyscene;
+use db partyscene;
+use ns idk

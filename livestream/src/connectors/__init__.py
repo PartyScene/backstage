@@ -9,6 +9,11 @@ from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 class LiveStreamDB:
     def __init__(self, pool: SurrealDBConnectionPool) -> None:
         self.pool: SurrealDBConnectionPool = pool
+        
+    async def _info(self):
+        """Get database information."""
+        return await self.pool.execute_query("INFO FOR DB")
+
 
     async def fetch_livestream(self, event_id: str):
         """
@@ -58,15 +63,16 @@ class LiveStreamDB:
             result = await conn.query(
                 """
                 INSERT INTO scenes 
-                    (input_uid, srt, event) VALUES ($input_uid, $srt, type::thing("events", $event_id))
+                    (input_uid, srt, srtPlayback, event) VALUES ($input_uid, $srt, $srtPlayback, type::thing("events", $event_id))
                 """,
                 {
                     "input_uid": input_response.uid,
                     "srt": input_response.srt,
+                    "srtPlayback": input_response.srtPlayback,
                     "event_id": event_id,
                 },
             )
-        return record_id_to_json(result[0])
+        return record_id_to_json(result)
 
     async def fetch_cloudflare_scene(self, event_id: str):
         """
@@ -111,7 +117,7 @@ class LiveStreamDB:
     #     return result
 
 
-async def init_db(app) -> LiveStreamDB:
+async def init_db(app) -> tuple[LiveStreamDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an LiveStreamDB instance.
 

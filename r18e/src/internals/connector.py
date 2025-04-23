@@ -23,7 +23,7 @@ class R18E:
         async with self.pool.acquire() as conn:
             await conn.let("event", RecordID("events", event_id))
 
-            query = "SELECT *, media.*.*, vector::distance::knn(media.embeddings, $event.media.embeddings) AS distance FROM events WHERE media.embeddings <|20, 40|> ORDER BY distance"
+            query = "SELECT vector::distance::knn(media.embeddings, $event.media.embeddihelmngs) AS distance FROM media WHERE embeddings <|20, 40|> ORDER BY distance"
             recommendations = await conn.query(query)
             return record_id_to_json(recommendations)
 

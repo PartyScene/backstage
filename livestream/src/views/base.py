@@ -8,7 +8,6 @@ from quart import (
     logging,
 )
 from quart.datastructures import FileStorage
-from ..lib import create_livestream_client
 
 from quart_jwt_extended import jwt_required
 from http import HTTPStatus
@@ -16,17 +15,21 @@ from shared.classful import route, QuartClassful
 from shared.workers import cloudflare_stream
 from datetime import datetime
 from aiocache import cached
-
+from livestream.src.connectors import LiveStreamDB
 
 class BaseView(QuartClassful):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.redis = app.redis
-        self.livestream = create_livestream_client(app.conn, self.logger)
+        self.redis = app.redis # type: ignore
+        self.conn : LiveStreamDB = app.conn
         self.scenes_client = cloudflare_stream.create_livestream_client(app, app.logger)
 
     @route("/", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
+    async def index(self):
+        return await self.healthcheck()
+    
     @route("/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
@@ -43,10 +46,10 @@ class BaseView(QuartClassful):
 
         # Check database connection
         try:
-            db_info = await self.livestream.db.db.info()
+            db_info = await self.conn._info()
             health_status["dependencies"]["database"] = "healthy"
         except Exception as e:
-            self.logger.error(f"Database health check failed: {e}")
+            app.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
 
@@ -59,7 +62,7 @@ class BaseView(QuartClassful):
             if not redis_ping:
                 health_status["status"] = "degraded"
         except Exception as e:
-            self.logger.error(f"Redis health check failed: {e}")
+            app.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
 

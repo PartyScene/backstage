@@ -59,11 +59,15 @@ class EventsDB:
                 media_ids.append(
                     RecordID("media", record_id_to_json(media_query_result)["id"])
                 )
-
-            data["media"] = media_ids
             
             async with self.pool.acquire() as conn:
                 result = await conn.create("events", data)
+                
+                await conn.query("RELATE $event -> has_media -> $media_ids", {
+                    "event": result["id"],
+                    "media_ids": media_ids,
+                })
+                
                 self.logger.warning(
                     json.dumps(result, option=json.OPT_INDENT_2, default=str)
                 )
@@ -273,7 +277,7 @@ class EventsDB:
             return record_id_to_json(result)
 
     async def update_event_status(
-        self, event_id: str, status: str, metadata: dict = None
+        self, event_id: str, status: str, metadata: dict = {}
     ) -> Dict[str, Any]:
         """
         Update the status of an event and optionally add metadata
@@ -338,7 +342,7 @@ class EventsDB:
             raise
 
 
-async def init_db(app) -> EventsDB:
+async def init_db(app) -> tuple[EventsDB,SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an EventsDBa instance.
 

@@ -4,6 +4,7 @@ import logging
 
 from cloudflare import AsyncCloudflare
 from cloudflare.types import stream
+from livestream.src.connectors import LiveStreamDB
 
 
 class CloudflareLSClient:
@@ -17,10 +18,11 @@ class CloudflareLSClient:
             **kwargs: Additional keyword arguments
         """
         self.app = app
+        self.conn : LiveStreamDB = app.conn
         self.logger = app.logger
         self.client = AsyncCloudflare(
             api_email=os.environ.get(
-                "CLOUDFLARE_EMAIL"
+                "CLOUDFLARE_ACCOUNT_EMAIL"
             ),  # This is the default and can be omitted
             api_key=os.environ.get(
                 "CLOUDFLARE_API_KEY"
@@ -35,10 +37,15 @@ class CloudflareLSClient:
         Sets the `ACCOUNT_ID` attribute with the found account's identifier.
         """
         accounts = await self.client.accounts.list()
-        for account in accounts:
-            if account.name == "Partyscene":
-                self.ACCOUNT_ID = account.id
-                break
+        self.ACCOUNT_ID = accounts.result[0].id
+        if not accounts.result:
+            self.logger.warning("CLOUDFLARE ACCOUNT ID NOT FOUND")
+            return
+        # Find the account with the name 'Partyscene'
+        # for account in accounts.result:
+        #     if account.name == "Partyscene":
+        #         self.ACCOUNT_ID = account.id
+                # break
 
     async def _retrieve_video(
         self, event_id, live: bool = False, retrieve_all: bool = False
@@ -77,13 +84,17 @@ class CloudflareLSClient:
         Returns:
             stream.LiveInput: Created live input configuration
         """
+        if not self.ACCOUNT_ID:
+            self.logger.warning("CLOUDFLARE ACCOUNT ID NOT FOUND, FETCHING...")
+            await self.retrieve_account()
+            
         input = await self.client.stream.live_inputs.create(
             account_id=self.ACCOUNT_ID,
             delete_recording_after_days=90.0,
             meta={"name": event_id},
             recording={
                 "mode": "automatic",
-                "require_signed_urls": True,
+                "require_signed_urls": False,
                 "allowed_origins": ["*"],
             },
         )
@@ -111,7 +122,7 @@ class CloudflareLSClient:
         Returns:
             Dict: Stream information or None if not found
         """
-        return await self.app.conn.fetch_cloudflare_scene(event_id)
+        return await self.conn.fetch_cloudflare_scene(event_id)
 
     async def create_stream(self, event_id):
         """
@@ -132,9 +143,9 @@ class CloudflareLSClient:
         # self.logger.info("CREATING CHANNEL FOR LIVESTREAM FOR EVENT %s" % event)
         # channel_response = await self._create_channel(input_response.name)
 
-        await self.app.conn.store_cloudflare_scene(input_response, event_id)
+        await self.conn.store_cloudflare_scene(input_response, event_id)
         # await self._start_channel(channel_response.name)
-        self.logger.warning("DONE LIVESTREAM FOR EVENT %s" % event_id)
+        self.logger.warning("CREATED LIVESTREAM FOR EVENT %s" % event_id)
         return True
 
     async def delete_stream(self, event_id):

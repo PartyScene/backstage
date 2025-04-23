@@ -1,0 +1,1 @@
+[{"kind":2,"language":"surrealql","value":"USE NS partyscene;\nUSE DB partyscene;\n\nDEFINE TABLE OVERWRITE has_media TYPE RELATION IN events TO media;\nCREATE has_media SET in = \"events:test\", out = \"media:test\";\nSELECT * FROM has_media;"}]
