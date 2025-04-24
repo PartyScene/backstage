@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 import ipinfo
 
+
 class NotificationManager:
     def __init__(self):
         """
@@ -78,7 +79,7 @@ class NotificationManager:
                     logger.info(exists.result)
                     return await self.novu_client.subscribers.patch_async(
                         subscriber_id=exists.result.data[0].subscriber_id,
-                        patch_subscriber_request_dto=subscriber_data
+                        patch_subscriber_request_dto=subscriber_data,
                     )
             return await self.novu_client.subscribers.create_async(
                 create_subscriber_request_dto=subscriber_data

@@ -26,6 +26,9 @@ from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
 
 from shared.workers.rmq import RMQBroker
+import uuid_utils as ruuid
+
+from surrealdb import RecordID
 
 
 class BaseView(QuartClassful):
@@ -150,18 +153,22 @@ class BaseView(QuartClassful):
             media_links = []
 
             data = form.to_dict()
+            data["event_id"] = RecordID("events", str(ruuid.uuid4()).split("-")[-1])
             data["coordinates"] = form.getlist("coordinates[]", type=float)
             data["categories"] = form.getlist("categories[]")
             data["host"] = get_jwt_identity()
             data["creator"] = get_jwt_identity()
             data["filenames"] = [
-                f"events/{data['host']}/{str(uuid.uuid4())[:5]}/{file.filename}" for file in files.values()
+                f"events/{data['host']}/{data['event_id'].id}/{file.filename}"
+                for file in files.values()
             ]
             data["types"] = [file.content_type for file in files.values()]
 
             data["degree_of_freedom"] = form.get("degree_of_freedom", 1, type=int)
-            
-            data['time'] = datetime.fromisoformat(form.get("time").replace("Z", "+00:00"))
+
+            data["time"] = datetime.fromisoformat(
+                form.get("time", type=str).replace("Z", "+00:00")
+            )
 
             data["is_private"] = (
                 form.get("is_private", "false") == "true"

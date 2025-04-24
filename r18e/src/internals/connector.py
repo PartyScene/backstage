@@ -20,11 +20,60 @@ class R18E:
 
     async def recommend_similar_events(self, event_id: str) -> list[str]:
         """Recommend similar events based on embeddings."""
+
+        # The flow will include us specifying an event to lookup, and then
+        # Search for similar media relations and similar descriptions to the event
+        # For the media, we get the mean media embedding
+        # To get the mean media embeddings, let's get all media related to an event
+        # LET $media_embeddings = (SELECT VALUE embeddings from media WHERE event = $event);
+
+        # Then we can get the mean of the embeddings
+        # Find the summ
+        # LET $sum = $emb.reduce(|$a, $b| vector::add($a, $b));
+
+        # Get the mean
+        # LET $average_media_embedding = vector::scale($sum, <float> 1 / $emb.len() );
+        # Then we can get the mean of the embeddings
+
+        # next up we search for similar media
+        # SELECT *, vector::distance::knn() as distance FROM media WHERE embeddings <|20, 40|> $average_media_embeddings
+
+        # For the text, we only have one embedding.
+        # LET $text_emb = (SELECT VALUE embeddings.text FROM $event);
+        # SELECT vector::distance::knn() + vector::similarity::cosine(event.embeddings.text, $text_emb) as distance FROM media WHERE embeddings <|20, 40|> $average_media_embeddings
+
+        #
+
         async with self.pool.acquire() as conn:
             await conn.let("event", RecordID("events", event_id))
 
-            query = "SELECT vector::distance::knn(media.embeddings, $event.media.embeddihelmngs) AS distance FROM media WHERE embeddings <|20, 40|> ORDER BY distance"
-            recommendations = await conn.query(query)
+            result = await conn.query_raw(
+                """
+                            -- LET $media_embeddings = (SELECT VALUE embeddings from media WHERE event = $event);
+                            LET $media_embeddings = SELECT VALUE (->has_media->media.embeddings) FROM $event;
+                            
+                            LET $sum = $media_embeddings.reduce(
+                                |$a, $b| vector::add($a, $b)
+                                );
+                                
+                            LET $average_media_embeddings = vector::scale(
+                                $sum, <float> 1 / $emb.len() 
+                                );
+                            
+                            LET $text_emb = (SELECT VALUE embeddings.text FROM $event);
+                            
+                            SELECT event.*, vector::distance::knn() + vector::similarity::cosine(event.embeddings.text, $text_emb[0]) AS distance 
+                            OMIT event.embeddings 
+                            FROM media WHERE embeddings <|20, 40|> $average_media_embeddings 
+                            ORDER BY distance;
+                            
+                             """
+            )
+            data = result['result'][-1]
+            if data['status'] == 'ERR':
+                raise Exception(f"Error fetching recommendations: {data['result']}")
+            
+            recommendations = data['result']
             return record_id_to_json(recommendations)
 
     async def fetch_embedding(self, event_id: str) -> dict:

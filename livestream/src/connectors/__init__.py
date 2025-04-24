@@ -9,11 +9,10 @@ from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 class LiveStreamDB:
     def __init__(self, pool: SurrealDBConnectionPool) -> None:
         self.pool: SurrealDBConnectionPool = pool
-        
+
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
-
 
     async def fetch_livestream(self, event_id: str):
         """

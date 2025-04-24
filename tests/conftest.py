@@ -55,12 +55,15 @@ fake = Faker()
 
 from redis.asyncio import Redis
 
+
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def redis_connection():
     """Fixture to set up Redis connection for testing."""
-    redis_uri = os.getenv("REDIS_URI", "redis://localhost:6379")  # Set the URI if not already set
+    redis_uri = os.getenv(
+        "REDIS_URI", "redis://localhost:6379"
+    )  # Set the URI if not already set
     redis = Redis.from_url(redis_uri, decode_responses=True, encoding="utf-8")
-    
+
     # Test Redis connection (ping)
     try:
         await redis.ping()
@@ -70,6 +73,7 @@ async def redis_connection():
     finally:
         # Close connection after test completion
         await redis.close()
+
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def auth_app(redis_connection):
@@ -172,7 +176,7 @@ def mock_event():
         "price": fake.numerify("##"),
         "host": "test",
         "id": "test",
-        "time": (datetime.utcnow() + timedelta(days=1)).isoformat() + "Z"
+        "time": (datetime.utcnow() + timedelta(days=1)).isoformat() + "Z",
     }
     event = MultiDict(event)
     event.add("coordinates[]", str(fake.latitude()))

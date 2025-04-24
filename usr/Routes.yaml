@@ -62,3 +62,27 @@ spec:
     backendRefs:
     - name: microserv-media-service
       port: 80
+
+  
+  - matches:
+    - path:
+        value: /r18e
+    backendRefs:
+    - name: microserv-r18e-service
+      port: 80
+
+  
+  - matches:
+    - path:
+        value: /report
+    backendRefs:
+    - name: microserv-admin-service
+      port: 80
+
+  
+  - matches:
+    - path:
+        value: /scenes
+    backendRefs:
+    - name: microserv-scenes-service
+      port: 80

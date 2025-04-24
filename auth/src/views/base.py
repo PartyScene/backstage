@@ -96,7 +96,10 @@ class BaseView(QuartClassful):
             last_name=data.get("last_name"),
         )
         if not brevo_resp:
-            return "Failed to create lead in Brevo or Contact already exists.", HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                "Failed to create lead in Brevo or Contact already exists.",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
 
         created_lead = await self.conn._create_lead(
             data.get("email"), data.get("usecase")
@@ -104,20 +107,25 @@ class BaseView(QuartClassful):
         if not created_lead:
             return "Invalid Request Body or Lead already exists", HTTPStatus.CONFLICT
 
-        return f"Created Lead {data.get('email')} in Brevo and SurrealDB", HTTPStatus.CREATED
-    
+        return (
+            f"Created Lead {data.get('email')} in Brevo and SurrealDB",
+            HTTPStatus.CREATED,
+        )
+
     @route("/auth/verify", methods=["POST"])
     async def verify(self):
-        """Verify a provided OTP.
-        """
+        """Verify a provided OTP."""
         data = await request.get_json()
         if not data.get("email") or not data.get("otp"):
             return "Invalid Request Body", HTTPStatus.BAD_REQUEST
-        
+
         if result := await self.verify_otp(data.get("email"), data.get("otp")):
             await self.conn._verify_and_store(result)
             access_token = self.generate_jwt_secret(result["id"])
-            return jsonify(access_token=access_token, token_type="bearer"), HTTPStatus.OK
+            return (
+                jsonify(access_token=access_token, token_type="bearer"),
+                HTTPStatus.OK,
+            )
         return "Invalid OTP", HTTPStatus.UNAUTHORIZED
 
     @route("/auth/register", methods=["POST"])
@@ -126,7 +134,7 @@ class BaseView(QuartClassful):
         Register a user account into the SurrealDB.
         """
         data = await request.get_json()
-        data['id'] = str(uuid.uuid4())[:8]
+        data["id"] = str(uuid.uuid4())[:8]
         # created_acct = await self.conn._create_user(data)
         # Let's store the info pending in redis until they verify.
 
@@ -134,9 +142,7 @@ class BaseView(QuartClassful):
         #     return "Invalid Request Body or User already exists", HTTPStatus.CONFLICT
         try:
             await self.__n_register_user(
-                email=data.get("email"),
-                user_data=data,
-                user_id=data['id']
+                email=data.get("email"), user_data=data, user_id=data["id"]
             )
         except Exception as e:
             logger.error(f"Registration error: {e}")
@@ -146,7 +152,6 @@ class BaseView(QuartClassful):
             return result, HTTPStatus.CREATED
         else:
             return "Existing OTP, please verify", HTTPStatus.CONFLICT
-        
 
     @route("/auth/login", methods=["POST"])
     async def _login_user(self):
@@ -195,12 +200,14 @@ class BaseView(QuartClassful):
             existing_otp = await self.redis.get(f"otp:{email}")
             if existing_otp:
                 return False
-            
+
             # Store OTP in Redis or, and then store the temporary data
             key = f"otp:{email}"
             await self.redis.set(key, otp, ex=600)  # 10 minutes expiration
 
-            await self.redis.set(f"users:pending:{email}", json.dumps(data), ex=800)  # Expire a little later
+            await self.redis.set(
+                f"users:pending:{email}", json.dumps(data), ex=800
+            )  # Expire a little later
 
             # Send OTP via Novu
             await self.__notification_manager.send_otp_notification(

@@ -2,6 +2,7 @@ apiVersion: pingcap.com/v1alpha1
 kind: TidbCluster
 metadata:
   name: sdb-datastore
+  namespace: tidb
 spec:
   version: v8.5.0
   timezone: UTC
@@ -15,7 +16,6 @@ spec:
   helper:
     image: alpine:3.16.0
   pd:
-    priorityClassName: system-cluster-critical
     baseImage: pingcap/pd
     maxFailoverCount: 0
     replicas: 3
@@ -46,7 +46,6 @@ spec:
               - pd
           topologyKey: kubernetes.io/hostname
   tikv:
-    priorityClassName: system-cluster-critical
     baseImage: pingcap/tikv
     maxFailoverCount: 0
     replicas: 3
@@ -85,13 +84,29 @@ spec:
   tidb:
     replicas: 0
 
-# # ----
-# apiVersion: policy/v1
-# kind: PodDisruptionBudget
-# metadata:
-#   name: pd-pdb
-# spec:
-#   minAvailable: 2
-#   selector:
-#     matchLabels:
-#       app.kubernetes.io/component: pd
+
+apiVersion: pingcap.com/v1alpha1
+kind: TidbMonitor
+metadata:
+  name: sdb-monitor
+  namespace: tidb
+spec:
+  replicas: 1
+  clusters:
+  - name: sdb-monitor
+  prometheus:
+    baseImage: prom/prometheus
+    version: v2.27.1
+  grafana:
+    baseImage: grafana/grafana
+    version: 7.5.11
+  initializer:
+    baseImage: pingcap/tidb-monitor-initializer
+    version: v8.5.0
+  reloader:
+    baseImage: pingcap/tidb-monitor-reloader
+    version: v1.0.1
+  prometheusReloader:
+    baseImage: quay.io/prometheus-operator/prometheus-config-reloader
+    version: v0.49.0
+  imagePullPolicy: IfNotPresent

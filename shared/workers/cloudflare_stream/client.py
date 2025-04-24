@@ -18,7 +18,7 @@ class CloudflareLSClient:
             **kwargs: Additional keyword arguments
         """
         self.app = app
-        self.conn : LiveStreamDB = app.conn
+        self.conn: LiveStreamDB = app.conn
         self.logger = app.logger
         self.client = AsyncCloudflare(
             api_email=os.environ.get(
@@ -45,7 +45,7 @@ class CloudflareLSClient:
         # for account in accounts.result:
         #     if account.name == "Partyscene":
         #         self.ACCOUNT_ID = account.id
-                # break
+        # break
 
     async def _retrieve_video(
         self, event_id, live: bool = False, retrieve_all: bool = False
@@ -87,7 +87,7 @@ class CloudflareLSClient:
         if not self.ACCOUNT_ID:
             self.logger.warning("CLOUDFLARE ACCOUNT ID NOT FOUND, FETCHING...")
             await self.retrieve_account()
-            
+
         input = await self.client.stream.live_inputs.create(
             account_id=self.ACCOUNT_ID,
             delete_recording_after_days=90.0,

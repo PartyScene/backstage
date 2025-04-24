@@ -86,7 +86,7 @@ class AuthDB:
         except Exception as e:
             logger.error(f"Login error: {e}")
             return False
-    
+
     async def _create_pending_user(self, form):
         """
         Create a new pending user in the database.

@@ -47,7 +47,7 @@ spec:
     maxFailoverCount: 0
     replicas: 3
     requests:
-      storage: "100Gi"
+      storage: "10Gi"
     annotations:
       tidb.pingcap.com/sysctl-init: "true"
     podSecurityContext:
@@ -75,41 +75,41 @@ spec:
   tidb:
     baseImage: pingcap/tidb
     maxFailoverCount: 0
-    replicas: 2
-    service:
-      annotations:
-        cloud.google.com/load-balancer-type: "Internal"
-      exposeStatus: true
-      externalTrafficPolicy: Local
-      type: LoadBalancer
-    config: |
-      [performance]
-        tcp-keep-alive = true
-    annotations:
-      tidb.pingcap.com/sysctl-init: "true"
-    podSecurityContext:
-      sysctls:
-      - name: net.ipv4.tcp_keepalive_time
-        value: "300"
-      - name: net.ipv4.tcp_keepalive_intvl
-        value: "75"
-      - name: net.core.somaxconn
-        value: "32768"
-    separateSlowLog: true
-    nodeSelector:
-      dedicated: tidb
-    tolerations:
-    - effect: NoSchedule
-      key: dedicated
-      operator: Equal
-      value: tidb
-    affinity:
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchExpressions:
-            - key: app.kubernetes.io/component
-              operator: In
-              values:
-              - tidb
-          topologyKey: kubernetes.io/hostname
+    replicas: 0 # 2
+    # service:
+    #   annotations:
+    #     cloud.google.com/load-balancer-type: "Internal"
+    #   exposeStatus: true
+    #   externalTrafficPolicy: Local
+    #   type: LoadBalancer
+    # config: |
+    #   [performance]
+    #     tcp-keep-alive = true
+    # annotations:
+    #   tidb.pingcap.com/sysctl-init: "true"
+    # podSecurityContext:
+    #   sysctls:
+    #   - name: net.ipv4.tcp_keepalive_time
+    #     value: "300"
+    #   - name: net.ipv4.tcp_keepalive_intvl
+    #     value: "75"
+    #   - name: net.core.somaxconn
+    #     value: "32768"
+    # separateSlowLog: true
+    # nodeSelector:
+    #   dedicated: tidb
+    # tolerations:
+    # - effect: NoSchedule
+    #   key: dedicated
+    #   operator: Equal
+    #   value: tidb
+    # affinity:
+    #   podAntiAffinity:
+    #     requiredDuringSchedulingIgnoredDuringExecution:
+    #     - labelSelector:
+    #         matchExpressions:
+    #         - key: app.kubernetes.io/component
+    #           operator: In
+    #           values:
+    #           - tidb
+    #       topologyKey: kubernetes.io/hostname

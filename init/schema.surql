@@ -81,6 +81,8 @@ DEFINE FIELD OVERWRITE created_at ON TABLE posts TYPE datetime DEFAULT time::now
 DEFINE FIELD OVERWRITE metadata ON TABLE posts FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE event ON TABLE posts TYPE record<events>;
 DEFINE INDEX hnsw_post_content_embeddings ON TABLE posts FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
+
+DEFINE INDEX unique_posts ON TABLE posts COLUMNS in, out UNIQUE;
 -- Define a vector index on the posts table for embedding field
 
 -- A table for comments
@@ -89,12 +91,15 @@ DEFINE FIELD OVERWRITE out ON TABLE comments TYPE record<posts>;
 DEFINE FIELD OVERWRITE in ON TABLE comments TYPE record<users>;
 DEFINE FIELD OVERWRITE content ON TABLE comments TYPE string;
 DEFINE FIELD OVERWRITE created_at ON TABLE comments TYPE datetime DEFAULT time::now();
+DEFINE INDEX unique_comments ON TABLE comments COLUMNS in, out UNIQUE;
 
 -- A table for friends
 DEFINE TABLE OVERWRITE friends TYPE RELATION IN users to users;
 DEFINE FIELD OVERWRITE out ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE in ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();
+
+DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 
 -- & Finally? A table for media
 DEFINE TABLE OVERWRITE media SCHEMALESS;
@@ -116,3 +121,16 @@ DEFINE FIELD OVERWRITE event ON media TYPE option<record<events>>;
 -- DEFINE FIELD OVERWRITE embeddings ON TABLE media FLEXIBLE TYPE object DEFAULT {};
 -- DEFINE FIELD OVERWRITE embeddings.media ON TABLE media TYPE array DEFAULT array::range(1, 512);
 DEFINE INDEX hnsw_media_embeddings ON TABLE media FIELDS embeddings HNSW DIMENSION 768 M 16 EFC 200;
+
+
+
+DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id) {
+    RETURN ( SELECT
+        *,
+        (->has_media->media.{creator, metadata, miedou, filename}) AS media,
+        <-attends<-users AS attendees,
+        array::len(<-attends<-users) as attendees_count
+    OMIT embeddings
+    FROM ONLY type::thing('events', $event_id);
+    );
+};

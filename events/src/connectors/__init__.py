@@ -28,14 +28,11 @@ class EventsDB:
         coordinates = data.pop("coordinates")
 
         try:
-            data["host"] = RecordID("users", data["host"])
+            data["creator"] = data["host"] = RecordID("users", data["host"])
             data["location"] = {
                 "address": data.get("location"),
                 "coordinates": {"type": "Point", "coordinates": coordinates},
             }
-            data["creator"] = data["host"]
-
-            media_ids = []
 
             subset = lambda d, keys: {k: d[k] for k in keys if k in d}
 
@@ -49,6 +46,7 @@ class EventsDB:
                             "filename": filename,
                             "type": data["types"][i],
                             "creator": data["creator"],
+                            "event": data["event_id"],
                         },
                     )
                 self.logger.warning(
@@ -56,27 +54,17 @@ class EventsDB:
                         media_query_result, option=json.OPT_INDENT_2, default=str
                     )
                 )
-                media_ids.append(
-                    RecordID("media", record_id_to_json(media_query_result)["id"])
-                )
-            
+
             async with self.pool.acquire() as conn:
-                result = await conn.create("events", data)
-                
-                await conn.query("RELATE $event -> has_media -> $media_ids", {
-                    "event": result["id"],
-                    "media_ids": media_ids,
-                })
-                
+                result = await conn.create(data["event_id"], data)
+
                 self.logger.warning(
                     json.dumps(result, option=json.OPT_INDENT_2, default=str)
                 )
 
                 result = await conn.select(result["id"])
             if isinstance(result, str):
-                raise Exception(
-                    f"Error creating event: {result}"
-                )  # Handle error case
+                raise Exception(f"Error creating event: {result}")  # Handle error case
             return record_id_to_json(result)
 
         except Exception as e:
@@ -342,7 +330,7 @@ class EventsDB:
             raise
 
 
-async def init_db(app) -> tuple[EventsDB,SurrealDBPoolManager]:
+async def init_db(app) -> tuple[EventsDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an EventsDBa instance.
 

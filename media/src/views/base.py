@@ -143,14 +143,18 @@ class BaseView(QuartClassful):
             if cached_url:
                 self.logger.info(f"Cache HIT for signed URL: {filename}")
                 # Return cached URL - use Response object to add headers
-                response = Response(cached_url, status=HTTPStatus.OK, content_type="text/plain")
-                response.headers['X-Cache-Status'] = 'HIT'
+                response = Response(
+                    cached_url, status=HTTPStatus.OK, content_type="text/plain"
+                )
+                response.headers["X-Cache-Status"] = "HIT"
                 return response
 
             self.logger.info(f"Cache MISS for signed URL: {filename}")
 
         except redis.exceptions.RedisError as e:
-            self.logger.error(f"Redis GET error for key {cache_key}: {e}. Proceeding without cache.")
+            self.logger.error(
+                f"Redis GET error for key {cache_key}: {e}. Proceeding without cache."
+            )
             # Fallback: If Redis GET fails, generate a new URL without caching
 
         # --- Cache MISS or Redis GET Error ---
@@ -165,26 +169,35 @@ class BaseView(QuartClassful):
             # media_url = await self.generate_download_signed_url_v4(filename)
 
         except Exception as e:
-             # Handle potential errors during URL signing
-             self.logger.error(f"Error generating signed URL for {filename}: {e}", exc_info=True)
-             return f"Failed to generate signed URL for {filename}", HTTPStatus.INTERNAL_SERVER_ERROR
-
+            # Handle potential errors during URL signing
+            self.logger.error(
+                f"Error generating signed URL for {filename}: {e}", exc_info=True
+            )
+            return (
+                f"Failed to generate signed URL for {filename}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
 
         # 3. Store the newly generated URL in Redis (if cache wasn't hit and GET didn't fail)
-        if cached_url is None: # Only store if it was a definite miss (and GET didn't error)
-             try:
+        if (
+            cached_url is None
+        ):  # Only store if it was a definite miss (and GET didn't error)
+            try:
                 await self.redis.set(cache_key, media_url, ex=cache_ttl)
-                self.logger.info(f"Stored signed URL in cache for {filename} with TTL {cache_ttl}s")
-             except redis.exceptions.RedisError as e:
-                self.logger.error(f"Redis SET error for key {cache_key}: {e}. Serving URL without caching.")
+                self.logger.info(
+                    f"Stored signed URL in cache for {filename} with TTL {cache_ttl}s"
+                )
+            except redis.exceptions.RedisError as e:
+                self.logger.error(
+                    f"Redis SET error for key {cache_key}: {e}. Serving URL without caching."
+                )
                 # If SET fails, we still return the generated URL, just don't cache it
 
         # Return the newly generated URL - use Response object to add headers
         response = Response(media_url, status=HTTPStatus.OK, content_type="text/plain")
-        response.headers['X-Cache-Status'] = 'MISS'
+        response.headers["X-Cache-Status"] = "MISS"
         return response
 
-    
     async def generate_download_signed_url_v4(self, blob_name):
         """Generates a v4 signed URL for downloading a blob.
 
@@ -207,7 +220,7 @@ class BaseView(QuartClassful):
         return url
 
     async def get_impersonated_credentials(self):
-        scopes = ['https://www.googleapis.com/auth/cloud-platform']
+        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
 
         credentials, project = google.auth.default(scopes=None)
 
@@ -222,6 +235,6 @@ class BaseView(QuartClassful):
             target_principal=credentials.service_account_email,
             target_scopes=scopes,
             lifetime=datetime.timedelta(seconds=3600),
-            delegates=[credentials.service_account_email]
+            delegates=[credentials.service_account_email],
         )
         return signing_credentials

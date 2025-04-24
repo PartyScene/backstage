@@ -171,7 +171,7 @@ class MicroService(Quart):
             self.jwt = JWTManager(self)
             logger.info("JWT manager initialized in DEBUG mode")
             return
-            
+
         try:
             # Check if secret already exists
             existing_secret = await self.redis.get("SECRET_KEY")

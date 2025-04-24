@@ -15,6 +15,7 @@ from datetime import datetime
 from aiocache import cached
 
 from shared.workers.rmq import RMQBroker
+import uuid_utils as ruuid
 
 
 class BaseView(QuartClassful):
@@ -153,8 +154,10 @@ class BaseView(QuartClassful):
         if not content:
             return jsonify({"error": "Content is required"}), 400
 
+        data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
         data["filenames"] = [
-            f"posts/{user_id}/{str(uuid.uuid4())[:5]}/{file.filename}" for file in files.values()
+            f"posts/{user_id}/{data['post_id']}/{file.filename}"
+            for file in files.values()
         ]
         data["types"] = [file.content_type for file in files.values()]
 

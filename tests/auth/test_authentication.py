@@ -17,8 +17,8 @@ class TestAuthentication(TestAuthBase):
         response = await self.register_user(auth_client, mock_user)
         assert response.status_code in (201, 409)
         data = await response.get_data(as_text=True)
-        mock_user['otp'] = data
-    
+        mock_user["otp"] = data
+
     async def test_verify_otp(self, auth_client, mock_user):
         """Test OTP verification"""
         response = await self.verify_otp(auth_client, mock_user)

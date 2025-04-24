@@ -17,19 +17,20 @@ from datetime import datetime
 from aiocache import cached
 from livestream.src.connectors import LiveStreamDB
 
+
 class BaseView(QuartClassful):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.redis = app.redis # type: ignore
-        self.conn : LiveStreamDB = app.conn
+        self.redis = app.redis  # type: ignore
+        self.conn: LiveStreamDB = app.conn
         self.scenes_client = cloudflare_stream.create_livestream_client(app, app.logger)
 
     @route("/", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def index(self):
         return await self.healthcheck()
-    
+
     @route("/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
