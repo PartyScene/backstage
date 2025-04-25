@@ -9,7 +9,7 @@ from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 from typing import Tuple
 
 
-class R18E:
+class R18EDB:
     def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
         self.pool = pool
         self.logger = logger
@@ -62,8 +62,7 @@ class R18E:
                             
                             LET $text_emb = (SELECT VALUE embeddings.text FROM $event);
                             
-                            SELECT event.*, vector::distance::knn() + vector::similarity::cosine(event.embeddings.text, $text_emb[0]) AS distance 
-                            OMIT event.embeddings 
+                            SELECT fn::fetch_event(event), vector::distance::knn() - vector::similarity::cosine(event.embeddings.text, $text_emb[0]) AS distance 
                             FROM media WHERE embeddings <|20, 40|> $average_media_embeddings 
                             ORDER BY distance;
                             
@@ -76,12 +75,12 @@ class R18E:
             recommendations = data['result']
             return record_id_to_json(recommendations)
 
-    async def fetch_embedding(self, event_id: str) -> dict:
-        """Fetch an embedding for an event."""
-        self.logger.warning(f"Fetching embedding for event {event_id}")
-        return await self.pool.execute_query(
-            f"SELECT * FROM embeddings WHERE id = $id", {"id": event_id}
-        )
+    # async def fetch_embedding(self, event_id: str) -> dict:
+    #     """Fetch an embedding for an event."""
+    #     self.logger.warning(f"Fetching embedding for event {event_id}")
+    #     return await self.pool.execute_query(
+    #         f"SELECT * FROM embeddings WHERE id = $id", {"id": event_id}
+    #     )
 
 
 async def init_db(app: Quart) -> Tuple[R18E, SurrealDBPoolManager]:
@@ -125,4 +124,4 @@ async def init_db(app: Quart) -> Tuple[R18E, SurrealDBPoolManager]:
         log_queries=True,
     )
 
-    return R18E(pool, app.logger), pool_manager
+    return R18EDB(pool, app.logger), pool_manager

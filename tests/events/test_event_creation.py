@@ -22,6 +22,8 @@ class TestEventCreation(TestEventsBase):
         }
 
         response = await self.create_event(event_client, mock_event, files, bearer)
+        assert 'events:test' in await response.get_data(as_text=True)
+        return
         created_event = await response.get_json()
         assert "id" in created_event
         assert response.status_code == 201

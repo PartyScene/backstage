@@ -63,6 +63,7 @@ class PostsDB:
                 dict: A dictionary containing the result of the comment fetch query.
         """
         post = RecordID("posts", post_id)
+        # query = """SELECT <-comments.* AS comments FROM $post"""
         query = """ SELECT ->comments.* AS comments FROM users WHERE ->comments[WHERE out = $post];"""
         params = {"post": post}
         async with self.pool.acquire() as conn:
@@ -161,7 +162,7 @@ class PostsDB:
         return record_id_to_json(result)
 
 
-async def init_db(app) -> PostsDB:
+async def init_db(app) -> tuple[PostsDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an PostsDB instance.
 

@@ -35,7 +35,8 @@ class EventsDB:
             }
 
             subset = lambda d, keys: {k: d[k] for k in keys if k in d}
-
+            
+            media_ids = []
             for i, filename in enumerate(data["filenames"]):
                 data["filename"] = filename
                 data["type"] = data["types"][i]
@@ -49,14 +50,26 @@ class EventsDB:
                             "event": data["event_id"],
                         },
                     )
+                    
+                    media_ids.append(media_query_result["id"])
+                    
                 self.logger.warning(
                     json.dumps(
                         media_query_result, option=json.OPT_INDENT_2, default=str
                     )
                 )
-
+            
+            data.pop("filenames", None); data.pop("filename", None); data.pop("type", None); data.pop("categories[]", None); data.pop("coordinates[]", None)
+            
             async with self.pool.acquire() as conn:
                 result = await conn.create(data["event_id"], data)
+                
+                
+                await conn.query("RELATE $event -> has_media -> $media_ids", {
+                    "event": result["id"],
+                    "media_ids": media_ids,
+                })
+                
 
                 self.logger.warning(
                     json.dumps(result, option=json.OPT_INDENT_2, default=str)
@@ -102,17 +115,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                SELECT 
-                    *, media.*.*,
-                    <-attends<-users AS attendees,
-                    array::len(<-attends<-users) as attendees_count,
-                    geo::distance(coordinates, $coordinates) as distance
-                OMIT embeddings
-                FROM events 
-                WHERE 
-                    is_live = $live 
-                    AND geo::distance(coordinates, $coordinates) <= $distance
-                ORDER BY distance ASC;
+                RETURN fn::fetch_events_by_location($coordinates, $distance, $live);
                 """,
                     {
                         "live": live,
@@ -137,11 +140,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                     SELECT *, media.*.*,
-                        <-attends<-users AS attendees,
-                        array::len(<-attends<-users) as attendees_count
-                    OMIT embeddings
-                    FROM events ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
+                    RETURN fn::fetch_all_events($page, $limit, false);
                 """,
                     {"page": page, "limit": limit},
                 )
@@ -169,11 +168,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                     SELECT *, media.*.*,
-                        <-attends<-users AS attendees,
-                        array::len(<-attends<-users) as attendees_count
-                    OMIT embeddings
-                    FROM events WHERE is_private = false ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit;
+                    RETURN fn::fetch_all_events($page, $limit, true);
                 """,
                     {"page": page, "limit": limit},
                 )
@@ -197,12 +192,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                SELECT
-                    *, media.*.*,
-                    <-attends<-users AS attendees,
-                    array::len(<-attends<-users) as attendees_count
-                OMIT embeddings
-                FROM ONLY type::thing('events', $event_id);
+                SELECT fn::fetch_event(type::thing('events', $event_id))
                 """,
                     {"event_id": event_id},
                 )

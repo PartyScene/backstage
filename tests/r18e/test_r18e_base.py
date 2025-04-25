@@ -34,11 +34,13 @@ class TestR18EBase:
     #         headers={"Authorization": f"Bearer {bearer}"},
     #     )
 
-    # async def get_comments(self, client: QuartClient, post_id, bearer):
-    #     """Helper method to get comments for a post"""
-    #     return await client.get(
-    #         f"/posts/{post_id}/comments", headers={"Authorization": f"Bearer {bearer}"}
-    #     )
+    async def recommend_events(self, client: QuartClient, event_id, bearer):
+        """Helper method to recommend events"""        
+        params = urllib.parse.urlencode({"event": event_id})
+
+        return await client.get(
+            f"/r18e/events?{params}", headers={"Authorization": f"Bearer {bearer}"}
+        )
 
     # async def delete_comment(self, client: QuartClient, post_id, comment_id, bearer):
     #     """Helper method to delete a comment"""

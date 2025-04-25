@@ -10,14 +10,10 @@ from aiocache import cached
 
 import io
 
-import torch
-
-from transformers import ViTImageProcessor, ViTModel
-from PIL import Image
 import requests
 from contextlib import asynccontextmanager
 
-from ..internals.connector import R18E
+from ..internals.connector import R18EDB
 
 
 class BaseView(QuartClassful):
@@ -30,7 +26,7 @@ class BaseView(QuartClassful):
     # inputs = image_processor(image, return_tensors="pt")
 
     def __init__(self) -> None:
-        self.__vector_database: R18E = app.conn
+        self.__vector_database: R18EDB = app.conn
 
     @route("/", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
@@ -42,8 +38,8 @@ class BaseView(QuartClassful):
     async def healthcheck(self):
         return jsonify({"status": "healthy"}), HTTPStatus.OK
 
-    @route("/r18e/features/extract", methods=["POST"])
-    async def extract_features(self):
+    @route("/r18e/events", methods=["GET"])
+    async def recommend_events(self):
         """
         Extract deep learning features from an uploaded image for event analysis.
 
@@ -81,4 +77,6 @@ class BaseView(QuartClassful):
         Content-Type: multipart/form-data
         file: <image_file>
         """
-        return "Ok", HTTPStatus.OK
+        event_id = request.args.get('event')
+        resp = await self.__vector_database.recommend_similar_events(event_id)
+        return resp, HTTPStatus.OK

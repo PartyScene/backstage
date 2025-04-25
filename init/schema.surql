@@ -124,13 +124,84 @@ DEFINE INDEX hnsw_media_embeddings ON TABLE media FIELDS embeddings HNSW DIMENSI
 
 
 
-DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id) {
-    RETURN ( SELECT
-        *,
-        (->has_media->media.{creator, metadata, miedou, filename}) AS media,
+
+
+
+DEFINE FUNCTION fn::fetch_events_by_location($coordinates: Point, $distance: number, $is_live: option<bool>, $page: option<number>, $limit: option<number>) {
+
+    LET $page =
+        IF (type::is::number($page))
+            $page;
+        ELSE
+            1;
+        END;
+    
+    LET $limit = 
+        IF (type::is::number($limit)) THEN
+            $limit;
+        ELSE
+            50;
+        END;
+
+    RETURN (
+
+        SELECT *,
+            (->has_media->media.{creator, metadata,  filename}) AS media,
+            <-attends<-users AS attendees,
+            array::len(<-attends<-users) as attendees_count,
+            geo::distance(coordinates, $coordinates) as distance
+        OMIT embeddings
+        FROM events
+        WHERE 
+            is_live = $live 
+            AND geo::distance(coordinates, $coordinates) <= $distance
+        ORDER BY distance ASC
+        LIMIT $limit START ($page - 1) * $limit
+    )
+    
+};
+
+
+DEFINE FUNCTION fn::fetch_all_events($page: number, $limit: number, $private: option<bool>) {
+
+
+    LET $page =
+        IF (type::is::number($page))
+            $page;
+        ELSE
+            1;
+        END;
+    
+    LET $limit = 
+        IF (type::is::number($limit)) THEN
+            $limit;
+        ELSE
+            50;
+        END;
+
+
+    RETURN (
+
+        SELECT *,
+        (->has_media->media.{creator, metadata,  filename}) AS media,
         <-attends<-users AS attendees,
         array::len(<-attends<-users) as attendees_count
     OMIT embeddings
-    FROM ONLY type::thing('events', $event_id);
-    );
+    FROM events
+    WHERE is_private = $private
+    ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
+    )
+    
+};
+
+DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
+    RETURN (
+        SELECT
+        *,
+        (->has_media->media.{creator, metadata,  filename}) AS media,
+        <-attends<-users AS attendees,
+        array::len(<-attends<-users) as attendees_count
+    OMIT embeddings
+    FROM ONLY $event_id;
+    )
 };
