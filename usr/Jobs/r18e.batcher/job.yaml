@@ -13,10 +13,16 @@ allocationPolicy:
   instances:
     # - install_gpu_drivers: true
     - policy:
-        machineType: g2-standard-8
+        machineType: c2d-highcpu-8
+        provisioningModel: SPOT
         # accelerators:
         #   - type: nvidia-l4
         #     count: 1
+      
+  network:
+    networkInterfaces:
+      - network: global/networks/default
+        subnetwork: projects/partyscene-441317/regions/us-central1/subnetworks/default
 
 logsPolicy:
   destination: CLOUD_LOGGING

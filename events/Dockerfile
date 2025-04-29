@@ -1,5 +1,5 @@
 # Test stage
-FROM python:3.11-slim AS test
+FROM python:3.13-slim AS test
 
 WORKDIR /events
 
@@ -27,10 +27,10 @@ RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt
 
 # Run tests
-CMD ["pytest", "--disable-warnings", "/tests", "-v"]
+CMD ["pytest", "--disable-warnings", "/tests", "-vs"]
 
 # Main stage
-FROM python:3.11-slim AS prod
+FROM python:3.13-slim AS prod
 
 WORKDIR /events
 
@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
-COPY --from=test /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=test /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY events/ ./
 COPY shared/ /shared/
 

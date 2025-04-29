@@ -1,5 +1,5 @@
 # requirements.txt
-faststream[cli, rabbit]
+faststream[cli, rabbit]==0.5.39
 surrealdb
 transformers
 torch

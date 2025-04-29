@@ -1,13 +1,12 @@
 import os
 from typing import Optional, Dict, Any
-
+import logging
+import typing
 from surrealdb import AsyncSurreal
 from shared.utils import record_id_to_json, AsyncEnvelopeCipherService
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
-
+from redis import Redis
 import orjson as json
-import logging
-import asyncio
 
 # Get the logger
 logger = logging.getLogger(__name__)
@@ -19,16 +18,19 @@ class AuthDB:
     to manage SurrealDB connections efficiently.
     """
 
-    def __init__(self, pool: SurrealDBConnectionPool) -> None:
+    def __init__(self, pool: SurrealDBConnectionPool, redis: Redis) -> None:
         """
         Initialize the AuthDB with a connection pool.
 
         Args:
             pool: The SurrealDB connection pool to use
+            redis: The Redis instance
         """
         self.pool = pool
         self.db = None  # For compatibility with existing code
         self.envelope_service = AsyncEnvelopeCipherService()
+        self.redis = redis
+        self.bloom_filter = self.redis.bf()
 
     async def _info(self):
         """Get database information."""
@@ -39,14 +41,13 @@ class AuthDB:
         Create a new lead in the database.
 
         Args:
-            email (str): Email address of the lead
-            usecase (str): Use case of the lead
+            email: Email address of the lead
+            usecase: Use case of the lead
 
         Returns:
-            dict: Created lead data or None if creation failed
+            dict: Created lead data or an empty dictionary if creation failed
         """
         # Generate Crypto credentials
-
         credentials = await self.envelope_service.encrypt(email.encode())
         credentials["usecase"] = usecase
 
@@ -57,7 +58,50 @@ class AuthDB:
                 return record_id_to_json(result)
         except Exception as e:
             logger.error(f"Error creating lead: {e}")
-            return None
+            return {}
+
+    async def _check_exists(self, param, type: typing.Literal["email", "username"]):
+        """
+        Check if a user with the given parameter exists in the database.
+
+        Args:
+            param: The parameter value to check
+            type: The type of parameter ('email' or 'username')
+
+        Returns:
+            bool: True if the user exists, False otherwise
+        """
+        try:
+            in_bloom = await self.bloom_filter.exists(type, param)
+
+            if bool(in_bloom):
+                return True
+
+            if type == "email":
+                result = await self.pool.execute_query(
+                    "SELECT * FROM users WHERE crypto::argon2::compare(hashed_email, $email);",
+                    {"email": param},
+                )
+                logger.debug("Bloom Miss, Result for email %s" % result)
+                if bool(result):
+                    self.bloom_filter.add("email", param)
+                    return True
+
+            elif type == "username":
+                result = await self.pool.execute_query(
+                    "SELECT * FROM users WHERE username = $username",
+                    {"username": param},
+                )
+                logger.debug("Bloom Miss, Result for username %s" % result)
+                if bool(result):
+                    self.bloom_filter.add("username", param)
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"DB Existence Check Failed: {e}")
+            return False
 
     async def _login(self, data) -> dict:
         """
@@ -74,9 +118,9 @@ class AuthDB:
                 "SELECT * FROM users WHERE crypto::argon2::compare(hashed_password, $password) AND crypto::argon2::compare(hashed_email, $email);",
                 {"password": data["password"], "email": data["email"]},
             )
-            logger.info(json.dumps(result, default=str, option=json.OPT_INDENT_2))
+            logger.debug(json.dumps(result, default=str, option=json.OPT_INDENT_2))
 
-            if not result or not result[0]:
+            if not result:
                 logger.warning(
                     f"Wrong password or non-existent credentials for email {data.get('email')}"
                 )
@@ -97,11 +141,10 @@ class AuthDB:
         Returns:
             dict: Created pending user data or None if creation failed
         """
-
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("pending_users", form)
-                logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
                 return record_id_to_json(result)
         except Exception as e:
             logger.error(f"Error creating user: {e}")
@@ -129,10 +172,14 @@ class AuthDB:
 
         try:
             async with self.pool.acquire() as conn:
+
                 result = await conn.create("users", {**form, **data})
+                await self.bloom_filter.add("email", form.get("email"))
+                await self.bloom_filter.add("username", form.get("username"))
+
                 await conn.create("credentials", {**credentials, "user": result["id"]})
 
-                logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
                 return record_id_to_json(result)
         except Exception as e:
             logger.error(f"Error creating user: {e}")
@@ -152,7 +199,7 @@ class AuthDB:
         return await self.pool.execute_query(query, params)
 
 
-async def init_db(app) -> AuthDB:
+async def init_db(app) -> tuple[AuthDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an AuthDB instance.
 
@@ -160,10 +207,10 @@ async def init_db(app) -> AuthDB:
         app: The Quart application instance
 
     Returns:
-        AuthDB: Initialized database connector
+        tuple: Initialized database connector (AuthDB) and SurrealDBPoolManager
     """
 
-    app.logger.info("Initializing SurrealDB connection...")
+    app.logger.debug("Initializing SurrealDB connection...")
 
     SCHEMA_FILE = os.getenv("SCHEMA_FILE")
     SURREAL_URI = os.getenv("SURREAL_URI")
@@ -197,7 +244,7 @@ async def init_db(app) -> AuthDB:
     )
 
     # Create AuthDB instance
-    auth_db = AuthDB(pool)
+    auth_db = AuthDB(pool, app.redis)
 
     # For backward compatibility with existing code
     # This allows code that directly accesses auth_db.db to still work

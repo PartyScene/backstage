@@ -3,7 +3,7 @@
 # --- Stage 1: Builder ---
 # Install dependencies and download the model. Depot will cache the outputs
 # of these RUN commands aggressively across builds and machines.
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -43,7 +43,7 @@ RUN python -c "from transformers import ViTImageProcessor, ViTModel; import os; 
 
 # --- Stage 2: Runtime ---
 # Create the final, smaller image using artifacts cached by Depot.
-FROM python:3.11-slim AS runtime
+FROM python:3.13-slim AS runtime
 
 # Set working directory
 WORKDIR /app
@@ -59,7 +59,7 @@ COPY --from=builder /usr/lib/x86_64-linux-gnu/libGL.so.1 /usr/lib/x86_64-linux-g
 # Add other libs if needed based on runtime errors
 
 # Copy installed Python packages from the builder stage.
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy the populated Hugging Face model cache from the builder stage.

@@ -92,6 +92,7 @@ async def users_app(redis_connection):
             yield app
             # await app.conn.db.query("REMOVE table users; REMOVE table events;")
             await app.clean_up()
+            await asyncio.sleep(10)
 
     except Exception as e:
         logger.error(f"Error in users_app fixture: {str(e)}")

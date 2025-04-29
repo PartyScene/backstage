@@ -1,4 +1,5 @@
 import pytest_asyncio
+import urllib
 import pytest
 from quart.testing import QuartClient
 
@@ -24,3 +25,17 @@ class TestAuthBase:
     async def lead_generation(self, client: QuartClient, data):
         """Helper method to generate a lead"""
         return await client.post("/leads", json=data)
+
+    async def check_username_exists(self, client: QuartClient, user_data):
+        """Helper method to recommend events"""
+        params = urllib.parse.urlencode(
+            {"type": "username", "param": user_data["username"]}
+        )
+
+        return await client.get(f"/auth/exists?{params}")
+
+    async def check_email_exists(self, client: QuartClient, user_data):
+        """Helper method to recommend events"""
+        params = urllib.parse.urlencode({"type": "email", "param": user_data["email"]})
+
+        return await client.get(f"/auth/exists?{params}")

@@ -9,9 +9,9 @@ from contextlib import asynccontextmanager
 from PIL import Image
 import torch
 from transformers import ViTImageProcessor, ViTModel
-from faststream import FastStream, Context
+from faststream import FastStream
 from faststream.rabbit import RabbitBroker, RabbitQueue, RabbitMessage
-from surrealdb import AsyncSurreal
+from surrealdb import AsyncSurreal, AsyncWsSurrealConnection
 
 # --- Configuration ---
 RABBITMQ_URI = os.environ["RABBITMQ_URI"]
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)  # Get logger for this module
 
 
 # --- Global Variables ---
-db_connection = None
+db_connection: AsyncWsSurrealConnection | None = None
 processor: ViTImageProcessor | None = None
 model: ViTModel | None = None
 device: torch.device | None = None
@@ -58,7 +58,7 @@ async def extract_embeddings(image_bytes: bytes) -> List[float]:
         ValueError: If image bytes are invalid.
         RuntimeError: If model resources are not initialized or inference fails.
     """
-    global processor, model, device, model_lock
+    # global processor, model, device, model_lock
     if not processor or not model or not device:
         # Log critical failure if resources aren't ready
         logger.critical("Model resources not initialized during embedding extraction.")
@@ -164,7 +164,7 @@ class Job(RabbitBroker):
     @asynccontextmanager
     async def db_session(self):
         """Provides a managed database session."""
-        global db_connection
+        # global db_connection
         if not db_connection:
             logger.error(
                 "Attempted to use DB session, but connection is not available."
@@ -221,7 +221,7 @@ class Job(RabbitBroker):
             )  # Use exception to include traceback
             try:
                 return await original_decoder(msg)
-            except:
+            except Exception as e:
                 return msg
 
     async def process_r18e_event(
@@ -279,7 +279,7 @@ class Job(RabbitBroker):
             body_to_publish = msgpack.dumps(image_bytes)
         except Exception as e:
             logger.error(
-                "Msgpack encoding failed during requeue attempt.", exc_info=True
+                f"Msgpack encoding failed during requeue attempt.: {e}", exc_info=True
             )
             raise  # Propagate error to _handle_retry
 
@@ -360,7 +360,7 @@ async def handle_r18e(message):
     except Exception as e:
         # Catch-all for truly unexpected errors
         logger.exception(
-            f"Unexpected error processing message {message_id} (Retry {retry_count})"
+            f"Unexpected error processing message {message_id} (Retry {retry_count}): {e}"
         )  # Use exception for traceback
         await broker._handle_retry(body, headers, message, retry_count)
 

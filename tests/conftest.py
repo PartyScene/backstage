@@ -115,6 +115,7 @@ async def auth_app(redis_connection):
             app.register_routes()
             yield app
             await app.clean_up()
+            await asyncio.sleep(10)
 
     except Exception as e:
         logger.error(f"Error in auth_app fixture: {str(e)}")
@@ -171,17 +172,14 @@ def mock_event():
     event = {
         "title": fake.catch_phrase(),
         "description": fake.text(),
-        "start_time": (datetime.now() + timedelta(days=1)).isoformat(),
         "location": fake.address(),
         "price": fake.numerify("##"),
         "host": "test",
         "id": "test",
         "time": (datetime.utcnow() + timedelta(days=1)).isoformat() + "Z",
+        "coordinates[]": [str(fake.longitude()), str(fake.latitude())],
     }
     event = MultiDict(event)
-    event.add("coordinates[]", str(fake.latitude()))
-    event.add("coordinates[]", str(fake.longitude()))
-
     event.add("categories[]", "beach")
     event.add("categories[]", "outdoor")
 

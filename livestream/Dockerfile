@@ -2,7 +2,7 @@
 # ENV GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
 
 # Test stage
-FROM python:3.12-slim AS test
+FROM python:3.13-slim AS test
 
 WORKDIR /livestream
 
@@ -49,7 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
-COPY --from=test /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=test /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY livestream/ ./
 COPY shared/ /shared/
 

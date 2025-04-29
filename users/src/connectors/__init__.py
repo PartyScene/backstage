@@ -38,13 +38,11 @@ class UsersDB:
             select_fields.append(f"{path}.* AS degree_{i}")
 
         async with self.pool.acquire() as conn:
-            await conn.let("origin", RecordID("users", origin_id))
-            query = f"""
-            SELECT 
-                {', '.join(select_fields)}
-            FROM ONLY $origin;
-            """
-            result = await conn.query(query)
+
+            result = await conn.query(
+                "RETURN fn::find_relationships($origin);",
+                {"origin": RecordID("users", origin_id)},
+            )
         return record_id_to_json(result)
 
     async def create_friend_relationship(self, data: dict):
@@ -61,35 +59,12 @@ class UsersDB:
         """
         # First check if relationship already exists
         async with self.pool.acquire() as conn:
-            await conn.let("origin", RecordID("users", data["origin_id"]))
-            await conn.let("target", RecordID("users", data["target_id"]))
 
-        query = """
-            -- Check existing relationship
-            LET $existing = (
-                SELECT VALUE <->friends.* FROM $origin
-                WHERE <->friends[WHERE out = $target OR in = $target]
-            );
-            
-            -- Create new relationship if none exists
-            LET $new = IF(array::len($existing) == 0) THEN (
-                -- Create bidirectional relationship
-                RELATE ONLY $origin -> friends -> $target SET
-                    status = $status,
-                    created_at = time::now()
-            ) ELSE $existing
-            END;
-            
-            RETURN {
-                relationship: $new,
-                is_new: array::len($existing) == 0
-            };
-        """
-        # Execute the query
-        async with self.pool.acquire() as conn:
             result = await conn.query(
-                query,
+                "RETURN fn::create_relationship($origin, $target, $status);",
                 {
+                    "origin": RecordID("users", data["origin_id"]),
+                    "target": RecordID("users", data["target_id"]),
                     "status": data.get("status", "pending"),
                 },
             )

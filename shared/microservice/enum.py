@@ -12,7 +12,6 @@ class Microservice(StrEnum):
 
     def needs_rmq(self) -> bool:
         return self in (
-            Microservice.R18E,
             Microservice.MEDIA,
             Microservice.POSTS,
             Microservice.USERS,

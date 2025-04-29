@@ -12,6 +12,7 @@ steps:
   env:
     - DB_USER=root
     - DB_PASSWORD=rootrm
+  timeout: 600s
 
 # - name: 'gcr.io/cloud-builders/docker'
 #   args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media', '-f', 'media/Dockerfile', '.']

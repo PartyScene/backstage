@@ -1,5 +1,5 @@
 # Test stage
-FROM python:3.11-slim AS test
+FROM python:3.13-slim AS test
 WORKDIR /auth
 ENV PYTHONPATH="/" 
 # Re-evaluate if "/" is correct, maybe "/auth:/shared"?
@@ -30,10 +30,10 @@ COPY tests/auth/ /tests/auth/
 COPY tests/pytest.ini /tests/pytest.ini
 
 # Run tests
-ENTRYPOINT ["pytest", "--disable-warnings", "/tests", "-v"]
+ENTRYPOINT ["pytest", "--disable-warnings", "/tests", "-vs"]
 
 # Main stage
-FROM python:3.11-slim AS prod
+FROM python:3.13-slim AS prod
 
 WORKDIR /auth
 
@@ -41,7 +41,7 @@ WORKDIR /auth
 # RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -rf /var/lib/apt/lists/*
 
 # Copy ONLY production requirements files from the source context
-COPY --from=test /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=test /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY shared/requirements.txt /shared/requirements.txt
 COPY auth/requirements.txt ./requirements.txt
 # DO NOT copy test requirements

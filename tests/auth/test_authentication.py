@@ -1,16 +1,10 @@
 import pytest
 from test_base import TestAuthBase
+import logging
 
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestAuthentication(TestAuthBase):
-
-    # async def test_service_health(self, auth_client):
-    #     for _ in range(25):
-    #         response = await self.health_check(auth_client)
-    #         assert response.status_code == 200
-    #     data = await response.get_json()
-    #     assert data["status"] == "healthy"
 
     async def test_user_registration(self, auth_client, mock_user):
         """Test user registration"""
@@ -26,6 +20,18 @@ class TestAuthentication(TestAuthBase):
         data = await response.get_json()
         assert "access_token" in data
 
+    async def test_exists(self, auth_client, mock_user):
+        """Test email and username existence"""
+        response = await self.check_email_exists(auth_client, mock_user)
+        assert response.status_code == 409
+        data = await response.get_data(as_text=True)
+        logging.info(data)
+
+        response = await self.check_username_exists(auth_client, mock_user)
+        assert response.status_code == 409
+        data = await response.get_data(as_text=True)
+        logging.info(data)
+
     async def test_lead_generation(self, auth_client):
         """Test lead generation"""
         response = await self.lead_generation(
@@ -39,11 +45,8 @@ class TestAuthentication(TestAuthBase):
         )
         assert response.status_code == 201
 
-    # @pytest.mark.asyncio(loop_scope="session")
     async def test_user_login(self, auth_client, mock_user):
         """Test user login"""
-
-        # Then try to login
         response = await self.login_user(
             auth_client,
             {"email": mock_user["email"], "password": mock_user["password"]},
@@ -52,7 +55,6 @@ class TestAuthentication(TestAuthBase):
         data = await response.get_json()
         assert "access_token" in data
 
-    # @pytest.mark.asyncio(loop_scope="session")
     @pytest.mark.parametrize(
         "invalid_data",
         [

@@ -77,6 +77,6 @@ class BaseView(QuartClassful):
         Content-Type: multipart/form-data
         file: <image_file>
         """
-        event_id = request.args.get('event')
+        event_id = request.args.get("event")
         resp = await self.__vector_database.recommend_similar_events(event_id)
         return resp, HTTPStatus.OK

@@ -1,5 +1,5 @@
 # Test stage
-FROM python:3.11-slim AS base
+FROM python:3.13-slim AS base
 
 WORKDIR /r18e
 
@@ -45,7 +45,7 @@ WORKDIR /r18e
 # ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
 # Copy application code
-COPY --from=base /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
+COPY --from=base /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY r18e/ .
 COPY shared/ /shared/
 

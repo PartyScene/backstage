@@ -11,7 +11,7 @@ services:
       dockerfile: auth/Dockerfile
       target: test
     depends_on:
-      - redis
+      - rabbitmq
     restart: on-failure
     volumes:
       - ./init/schema.surql:/home/schema.surql
@@ -95,6 +95,14 @@ services:
       microservices.media:
         condition: service_started # service_completed_successfully
 
-  redis:
-    image: redis
-    command: sh -c "redis-server & sleep 180; kill $!"
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: rabbitmq
+    ports:
+      - "15672:15672"  # RabbitMQ Management UI
+      - "5672:5672"    # RabbitMQ AMQP protocol port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    
+volumes:
+  rabbitmq_data:

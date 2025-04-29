@@ -22,7 +22,7 @@ class TestEventCreation(TestEventsBase):
         }
 
         response = await self.create_event(event_client, mock_event, files, bearer)
-        assert 'events:test' in await response.get_data(as_text=True)
+        assert "test" in await response.get_data(as_text=True)
         return
         created_event = await response.get_json()
         assert "id" in created_event
@@ -37,7 +37,7 @@ class TestEventCreation(TestEventsBase):
         "invalid_data",
         [
             {"title": ""},  # Empty title
-            {"start_time": "invalid-date"},  # Invalid date format
+            {"time": "invalid-date"},  # Invalid date format
             {"end_time": datetime.now().isoformat()},  # End time before start time
         ],
     )

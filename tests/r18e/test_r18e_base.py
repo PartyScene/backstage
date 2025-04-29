@@ -35,7 +35,7 @@ class TestR18EBase:
     #     )
 
     async def recommend_events(self, client: QuartClient, event_id, bearer):
-        """Helper method to recommend events"""        
+        """Helper method to recommend events"""
         params = urllib.parse.urlencode({"event": event_id})
 
         return await client.get(

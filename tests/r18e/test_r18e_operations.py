@@ -11,15 +11,15 @@ fake = Faker()
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestMLOperations(TestR18EBase):
-    
+
     async def test_recommended_events(self, r18e_client, mock_event, bearer):
         """Test event recommendation."""
-        response = await self.recommend_events(r18e_client, mock_event['id'], bearer)
+        response = await self.recommend_events(r18e_client, mock_event["id"], bearer)
         assert response.status_code == 200
         events = await response.get_json()
         print(events)
         # assert "id" in events
-    
+
     async def _test_extract_features(self, r18e_client, bearer):
         """Test extracting features."""
         files = {

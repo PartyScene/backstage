@@ -7,7 +7,6 @@ DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE username ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE option<record<media>>;
 DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
-DEFINE INDEX emailIndex ON TABLE users COLUMNS email UNIQUE;
 DEFINE FIELD OVERWRITE hashed_password ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE hashed_email ON TABLE users TYPE string;
 
@@ -22,12 +21,20 @@ DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE credentials TYPE byte
 DEFINE FIELD OVERWRITE encrypted_decryption_key ON TABLE credentials TYPE bytes;
 DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE credentials TYPE bytes;
 
+DEFINE FIELD OVERWRITE created_at ON TABLE credentials TYPE datetime DEFAULT time::now();
+
+
+
 DEFINE TABLE IF NOT EXISTS leads SCHEMAFULL;
 DEFINE FIELD OVERWRITE usecase ON TABLE leads TYPE string;
 DEFINE FIELD OVERWRITE encrypted_data ON TABLE leads TYPE bytes;
 DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE leads TYPE bytes;
 DEFINE FIELD OVERWRITE encrypted_decryption_key ON TABLE leads TYPE bytes;
 DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE leads TYPE bytes;
+
+DEFINE FIELD OVERWRITE created_at ON TABLE leads TYPE datetime DEFAULT time::now();
+
+
 
 
 -- Let's define a relation table for users and events to record attendance
@@ -105,7 +112,7 @@ DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
-DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))} ASSERT string::len($value) > 0;
+-- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))} ASSERT string::len($value) > 0;
 
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
@@ -130,7 +137,7 @@ DEFINE INDEX hnsw_media_embeddings ON TABLE media FIELDS embeddings HNSW DIMENSI
 DEFINE FUNCTION fn::fetch_events_by_location($coordinates: Point, $distance: number, $is_live: option<bool>, $page: option<number>, $limit: option<number>) {
 
     LET $page =
-        IF (type::is::number($page))
+        IF (type::is::number($page)) THEN
             $page;
         ELSE
             1;
@@ -149,12 +156,12 @@ DEFINE FUNCTION fn::fetch_events_by_location($coordinates: Point, $distance: num
             (->has_media->media.{creator, metadata,  filename}) AS media,
             <-attends<-users AS attendees,
             array::len(<-attends<-users) as attendees_count,
-            geo::distance(coordinates, $coordinates) as distance
+            geo::distance(location.coordinates, $coordinates) as distance
         OMIT embeddings
         FROM events
         WHERE 
             is_live = $live 
-            AND geo::distance(coordinates, $coordinates) <= $distance
+            AND geo::distance(location.coordinates, $coordinates) <= $distance
         ORDER BY distance ASC
         LIMIT $limit START ($page - 1) * $limit
     )
@@ -166,7 +173,7 @@ DEFINE FUNCTION fn::fetch_all_events($page: number, $limit: number, $private: op
 
 
     LET $page =
-        IF (type::is::number($page))
+        IF (type::is::number($page)) THEN
             $page;
         ELSE
             1;
@@ -202,6 +209,43 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         <-attends<-users AS attendees,
         array::len(<-attends<-users) as attendees_count
     OMIT embeddings
-    FROM ONLY $event_id;
+    FROM ONLY $event_id
     )
+};
+
+DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: record, $status: string) {
+    -- Check existing relationship
+    LET $existing = (
+        SELECT VALUE <->friends.* FROM $origin
+        WHERE <->friends[WHERE out = $target OR in = $target]
+    );
+    
+    -- Create new relationship if none exists
+    LET $new = IF(array::len($existing) == 0) THEN (
+        -- Create bidirectional relationship
+        RELATE ONLY $origin -> friends -> $target SET
+            status = $status,
+            created_at = time::now()
+    ) ELSE $existing
+    END;
+    
+    RETURN {
+        relationship: $new,
+        is_new: array::len($existing) == 0
+    }
+};
+
+
+
+DEFINE FUNCTION OVERWRITE fn::find_relationships($origin: record) {
+    LET $result = SELECT
+                            ->friends->users.* AS degree_1, 
+                            ->friends->users->friends->users.* AS degree_2, 
+                            ->friends->users->friends->users->friends->users.* AS degree_3,
+                            ->friends->users->friends->users->friends->users->friends->users.* AS degree_4,
+                            ->friends->users->friends->users->friends->users->friends->users->friends->users.* AS degree_5,
+                            ->friends->users->friends->users->friends->users->friends->users->friends->users->friends->users.* AS degree_6
+    
+    FROM ONLY $origin;
+    RETURN $result
 };

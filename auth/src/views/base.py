@@ -1,31 +1,26 @@
 from dataclasses import dataclass
 from datetime import timedelta, datetime
-from pprint import pprint
 from http import HTTPStatus
 from quart import make_response, render_template, current_app as app, request, jsonify
-
-import uuid
-from ..connectors import AuthDB
-from shared.classful import route, QuartClassful
-
 from quart_jwt_extended import create_access_token
-import orjson as json
-from shared.workers.brevo import Brevo
-from shared.workers.novu import NotificationManager
 from redis.asyncio import Redis
-from redis.commands.json.path import Path
 from typing import Optional, Dict
 from aiocache import cached, RedisCache, Cache
 import os
-
 import secrets
 import logging
+import asyncio
+import uuid_utils as ruuid
+import orjson as json
+from ..connectors import AuthDB
+from shared.classful import route, QuartClassful
+from shared.workers.brevo import Brevo
+from shared.workers.novu import NotificationManager
 
 logger = logging.getLogger(__name__)
 
 
 class BaseView(QuartClassful):
-
     def __init__(self):
         self.conn: AuthDB = app.conn
         self.redis: Redis = app.redis
@@ -33,19 +28,18 @@ class BaseView(QuartClassful):
         self.__brevo_client = Brevo()
 
     def generate_jwt_secret(self, identity):
+        """Generate a JWT secret for the given identity."""
         return create_access_token(identity=identity, expires_delta=timedelta(days=1))
 
     @route("/", methods=["GET"])
     async def index(self):
+        """Return the healthcheck response."""
         return await self.healthcheck()
 
     @route("/auth/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
-        """SSS
-        Simple health check endpoint that verifies service and dependency status.
-        Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
-        """
+        """Perform a health check on the service and its dependencies."""
         health_status = {
             "service": "microservices.auth",
             "status": "healthy",
@@ -85,9 +79,7 @@ class BaseView(QuartClassful):
 
     @route("/leads", methods=["POST"])
     async def create_lead(self):
-        """
-        Create a new lead in the database.
-        """
+        """Create a new lead in the database."""
         data = await request.get_json()
 
         brevo_resp = await self.__brevo_client.create_contact(
@@ -112,9 +104,21 @@ class BaseView(QuartClassful):
             HTTPStatus.CREATED,
         )
 
+    @route("/auth/exists", methods=["GET"])
+    async def check_exists(self):
+        """Verify if a user with the provided parameter already exists."""
+        type, param = request.args.get("type"), request.args.get("param")
+
+        result = await self.conn._check_exists(param, type)
+
+        if result:
+            return "Already Exists.", HTTPStatus.CONFLICT
+        else:
+            return "", HTTPStatus.OK
+
     @route("/auth/verify", methods=["POST"])
     async def verify(self):
-        """Verify a provided OTP."""
+        """Verify a provided OTP and generate an access token."""
         data = await request.get_json()
         if not data.get("email") or not data.get("otp"):
             return "Invalid Request Body", HTTPStatus.BAD_REQUEST
@@ -130,17 +134,23 @@ class BaseView(QuartClassful):
 
     @route("/auth/register", methods=["POST"])
     async def register_user(self):
-        """
-        Register a user account into the SurrealDB.
-        """
+        """Register a user account into the SurrealDB."""
         data = await request.get_json()
-        data["id"] = str(uuid.uuid4())[:8]
-        # created_acct = await self.conn._create_user(data)
-        # Let's store the info pending in redis until they verify.
+        data["id"] = (
+            str(ruuid.uuid4()).split("-")[-1]
+            if not data.get("id", None)
+            else data["id"]
+        )
 
-        # if not created_acct:
-        #     return "Invalid Request Body or User already exists", HTTPStatus.CONFLICT
         try:
+            result = await self.conn._check_exists(
+                data["email"], "email"
+            ) or await self.conn._check_exists(data["username"], "username")
+
+            logger.debug("Result for Bloom Check %s" % result)
+            if result:
+                return "Credential Already Exists.", HTTPStatus.CONFLICT
+
             await self.__n_register_user(
                 email=data.get("email"), user_data=data, user_id=data["id"]
             )
@@ -155,9 +165,7 @@ class BaseView(QuartClassful):
 
     @route("/auth/login", methods=["POST"])
     async def _login_user(self):
-        """
-        Verify user credentials
-        """
+        """Verify user credentials and generate an access token."""
         data = await request.get_json()
         if result := await self.conn._login(data):
             access_token = self.generate_jwt_secret(result["id"])
@@ -172,12 +180,8 @@ class BaseView(QuartClassful):
         return "Bad username or password", HTTPStatus.UNAUTHORIZED
 
     async def __n_register_user(self, email: str, user_data: dict, user_id: str = None):
-        """
-        Create a new user in the Novu subscriber database.
-        """
+        """Create a new user in the Novu subscriber database."""
         try:
-
-            # Create Novu subscriber
             return await self.__notification_manager.create_subscriber(
                 email=email,
                 first_name=user_data.get("first_name"),
@@ -189,19 +193,14 @@ class BaseView(QuartClassful):
             raise
 
     async def __n_generate_otp(self, user_id: str, email: str, data: dict):
-        """
-        Generate and send OTP for authentication
-        """
+        """Generate and send OTP for authentication."""
         try:
-            # Generate a 6-digit OTP
             otp = secrets.token_hex(3)[:6].upper()
 
-            # Check if otp already exists in redis
             existing_otp = await self.redis.get(f"otp:{email}")
             if existing_otp:
                 return False
 
-            # Store OTP in Redis or, and then store the temporary data
             key = f"otp:{email}"
             await self.redis.set(key, otp, ex=600)  # 10 minutes expiration
 
@@ -209,13 +208,12 @@ class BaseView(QuartClassful):
                 f"users:pending:{email}", json.dumps(data), ex=800
             )  # Expire a little later
 
-            # Send OTP via Novu
             await self.__notification_manager.send_otp_notification(
                 user_id=user_id,
                 ip_address=request.headers.get("REMOTE_ADDR")
                 or request.headers.get("HTTP_X_FORWARDED_FOR")
                 or request.headers.get("HTTP_X_REAL_IP")
-                or request.remote_addr,
+                or request.remote_addr,  # type: ignore
                 otp=otp,
             )
 
@@ -224,24 +222,21 @@ class BaseView(QuartClassful):
             logger.error(f"OTP generation error: {e}")
             raise
 
-    async def verify_otp(self, email: str, provided_otp: str) -> Optional[Dict]:
-        """
-        Verify OTP for user authentication
-        """
+    async def verify_otp(self, email: str, provided_otp: str) -> Optional[Dict] | bool:
+        """Verify OTP for user authentication."""
         try:
-            # Retrieve stored OTP
             stored_otp = await self.redis.get(f"otp:{email}")
 
             if stored_otp and stored_otp == provided_otp:
-                # Clear the OTP after successful verification
                 json_data = await self.redis.get(f"users:pending:{email}")
                 json_data = json.loads(json_data)
 
+                await asyncio.sleep(10)
                 await self.redis.delete(f"otp:{email}")
                 await self.redis.delete(f"users:pending:{email}")
                 return json_data
 
-            return {"verified": False, "message": "Invalid OTP"}
+            return False
         except Exception as e:
             logger.error(f"OTP verification error: {e}")
             raise

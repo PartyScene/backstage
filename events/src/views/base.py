@@ -36,7 +36,6 @@ class BaseView(QuartClassful):
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
-        app.logger = app.logger
 
     async def _store_live_query(self, event_id: str, live_id: str):
         """Store live query ID in Redis"""
@@ -153,7 +152,11 @@ class BaseView(QuartClassful):
             media_links = []
 
             data = form.to_dict()
-            data["event_id"] = RecordID("events", str(ruuid.uuid4()).split("-")[-1])
+            data["event_id"] = (
+                (RecordID("events", str(ruuid.uuid4()).split("-")[-1]))
+                if not data.get("id", None)
+                else RecordID("events", data["id"])
+            )
             data["coordinates"] = form.getlist("coordinates[]", type=float)
             data["categories"] = form.getlist("categories[]")
             data["host"] = get_jwt_identity()
@@ -205,12 +208,13 @@ class BaseView(QuartClassful):
             app.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
             return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
-    @route("/events/public", methods=["GET"])
-    async def fetch_public_events(self):
-        """This endpoints returns all the public events"""
+    @route("/events/private", methods=["GET"])
+    @jwt_required
+    async def fetch_private_events(self):
+        """This endpoints returns the private events"""
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 20))
-        result = await self.conn.fetch_all_public(page, limit)
+        result = await self.conn.fetch_private(page, limit)
         return result, HTTPStatus.OK
 
     @route("/events/distance", methods=["GET"])

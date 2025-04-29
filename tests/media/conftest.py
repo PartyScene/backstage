@@ -88,6 +88,7 @@ async def media_app(redis_connection):
             app.register_routes()
             yield app
             await app.clean_up()
+            await asyncio.sleep(10)
 
     except Exception as e:
         logger.error(f"Error in media_app fixture: {str(e)}")

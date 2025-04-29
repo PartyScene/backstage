@@ -57,7 +57,7 @@ class R18EDB:
                                 );
                                 
                             LET $average_media_embeddings = vector::scale(
-                                $sum, <float> 1 / $emb.len() 
+                                $sum, <float> 1 / $media_embeddings.len() 
                                 );
                             
                             LET $text_emb = (SELECT VALUE embeddings.text FROM $event);
@@ -68,11 +68,14 @@ class R18EDB:
                             
                              """
             )
-            data = result['result'][-1]
-            if data['status'] == 'ERR':
+
+            self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+
+            data = result["result"][-1]
+            if data["status"] == "ERR":
                 raise Exception(f"Error fetching recommendations: {data['result']}")
-            
-            recommendations = data['result']
+
+            recommendations = data["result"]
             return record_id_to_json(recommendations)
 
     # async def fetch_embedding(self, event_id: str) -> dict:
@@ -83,7 +86,7 @@ class R18EDB:
     #     )
 
 
-async def init_db(app: Quart) -> Tuple[R18E, SurrealDBPoolManager]:
+async def init_db(app: Quart) -> Tuple[R18EDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an instance.
 
