@@ -22,7 +22,7 @@ class TestPostsBase:
             headers={"Authorization": f"Bearer {bearer}"},
         )
 
-    async def get_comments(self, client: QuartClient, post_id, bearer):
+    async def fetch_comments(self, client: QuartClient, post_id, bearer):
         """Helper method to get comments for a post"""
         return await client.get(
             f"/posts/{post_id}/comments", headers={"Authorization": f"Bearer {bearer}"}

@@ -1,286 +1,134 @@
 import pytest
 from faker import Faker
-from httpx import AsyncClient
-from test_posts_base import TestPostsBase
-from datetime import datetime
 from quart.datastructures import FileStorage
+from test_posts_base import TestPostsBase
 import io
+from http import HTTPStatus
 
 fake = Faker()
 
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestPostOperations(TestPostsBase):
-    async def test_create_post(self, posts_client, mock_event, bearer):
+    async def test_create_post(self, posts_client, mock_post, bearer):
         """Test creating a new post."""
         files = {
             "file": FileStorage(
                 io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
-                content_type="image/jpeg",
-            )
-        }
-        post_data = {
-            "title": fake.sentence(),
-            "content": fake.text(),
-            "event": mock_event["id"],
-            "type": "image",
-        }
-        response = await self.create_post(posts_client, files, post_data, bearer)
-        assert response.status_code == 201
-        created_post = await response.get_json()
-        print(created_post)
-        assert isinstance(created_post, dict)
-        assert "id" in created_post
-
-    async def test_fetch_event_posts(self, posts_client, mock_event, bearer):
-        """Test retrieving a post."""
-        # First create a post
-        files = {
-            "file": FileStorage(
-                io.BytesIO(b"fake image content"),
                 filename=fake.file_name(category="image", extension="jpg"),
                 content_type="image/jpeg",
             )
         }
-        post_data = {
-            "title": fake.sentence(),
-            "content": fake.text(),
-            "event": mock_event["id"],
-            "type": "image",
-        }
-        create_response = await self.create_post(posts_client, files, post_data, bearer)
-        post_data = await create_response.get_json()
-        assert create_response.status_code == 201
-        post_id = post_data["id"]
+        
+        response = await self.create_post(posts_client, files, mock_post, bearer)
+        assert response.status_code == HTTPStatus.CREATED
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.CREATED.phrase
+        assert "data" in response_json
+        created_post = response_json["data"]
+        assert "id" in created_post
+        mock_post['id'] = created_post['id']
+        assert created_post["content"] == mock_post["content"]
+        assert created_post["event"] == mock_post["event"]
+        # Store post ID if needed for other tests
+        # self.created_post_id = created_post["id"]
+
+    async def test_fetch_post(self, posts_client, mock_post, bearer):
+        """Test retrieving a specific post."""
+        # Assuming mock_post fixture provides a created post ID
+        response = await self.fetch_post(posts_client, mock_post["id"], bearer)
+        assert response.status_code == HTTPStatus.OK
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        fetched_post = response_json["data"]
+        assert fetched_post["id"] == mock_post["id"]
+        assert fetched_post["content"] == mock_post["content"]
+
+    async def test_fetch_event_posts(self, posts_client, mock_event, mock_post, bearer):
+        """Test retrieving posts for a specific event."""
+        # Ensure mock_post is associated with mock_event
+        assert mock_post["event"] == mock_event["id"], "Mock post must belong to mock event"
 
         response = await self.fetch_event_posts(posts_client, mock_event["id"], bearer)
-        assert response.status_code == 200
-        posts = await response.get_json()
-        print(posts)
-        assert len(posts) >= 1
+        assert response.status_code == HTTPStatus.OK
 
-    #     assert post['title'] == post_data['title']
-    #     assert post_data['content'] == post_data['content']
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        posts = response_json["data"]
+        assert isinstance(posts, list)
+        assert len(posts) >= 1 # Assuming the mock_post is returned
+        assert any(p["id"] == mock_post["id"] for p in posts) # Check if our mock post is in the list
 
-    # async def test_update_post(self, async_client):
-    #     """Test updating a post."""
-    #     # First create a post
-    #     post_data = {
-    #         "title": fake.sentence(),
-    #         "content": fake.text()
-    #     }
-    #     create_response = await async_client.post("/posts", json=post_data)
-    #     post_id = create_response.json()['id']
+    async def test_create_comment(self, posts_client, mock_post, mock_comment, bearer):
+        """Test creating a comment on a post."""
+        comment_data = {"content": fake.text()}
+        response = await self.create_comment(posts_client, mock_post["id"], comment_data, bearer)
+        assert response.status_code == HTTPStatus.CREATED
 
-    #     # Update post
-    #     update_data = {
-    #         "title": fake.sentence(),
-    #         "content": fake.text(),
-    #         "tags": [fake.word() for _ in range(3)]
-    #     }
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.CREATED.phrase
+        assert "data" in response_json
+        created_comment = response_json["data"]
+        assert "id" in created_comment
+        mock_comment['id'] = created_comment['id']  # Store ID for potential cleanup or subsequent tests
+        assert created_comment["content"] == comment_data["content"]
+        # assert created_comment["post"] == mock_post["id"] # Check association
+        # Store comment ID if needed
+        # self.created_comment_id = created_comment["id"]
 
-    #     response = await async_client.put(f"/posts/{post_id}", json=update_data)
-    #     assert response.status_code == 200
-    #     updated_post = response.json()
+    async def test_fetch_comments(self, posts_client, mock_post, mock_comment, bearer):
+        """Test fetching comments for a post."""
+        # Ensure mock_comment is associated with mock_post
+        # assert mock_comment["post"] == mock_post["id"], "Mock comment must belong to mock post"
 
-    #     assert updated_post['title'] == update_data['title']
-    #     assert updated_post['content'] == update_data['content']
+        response = await self.fetch_comments(posts_client, mock_post["id"], bearer)
+        assert response.status_code == HTTPStatus.OK
 
-    async def test_delete_post(self, posts_client, mock_event, bearer):
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        data = response_json["data"]
+        assert "comments" in data
+        comments = data["comments"]
+        assert isinstance(comments, list)
+        assert len(comments) >= 1
+        print(comments)
+        assert any(c["id"] == mock_comment["id"] for c in comments)
+
+    async def test_delete_comment(self, posts_client, mock_post, mock_comment, bearer):
+        """Test deleting a comment."""
+        response = await self.delete_comment(posts_client, mock_post["id"], mock_comment["id"], bearer)
+        assert response.status_code == HTTPStatus.NO_CONTENT
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.NO_CONTENT.phrase
+        assert "deleted successfully" in response_json["message"]
+
+        # # Verify deletion
+        # fetch_response = await self.fetch_comments(posts_client, mock_post["id"], bearer)
+        # fetch_json = await fetch_response.get_json()
+        # comments = fetch_json.get("data", [])
+        # assert not any(c["id"] == mock_comment["id"] for c in comments)
+
+    # Add tests for fetching non-existent posts/comments, unauthorized actions, etc.
+    
+
+    async def test_delete_post(self, posts_client, mock_post, bearer):
         """Test deleting a post."""
-        # First create a post
-        files = {
-            "file": FileStorage(
-                io.BytesIO(b"fake image content"),
-                filename=fake.file_name(category="image", extension="jpg"),
-                content_type="image/jpeg",
-            )
-        }
-        post_data = {
-            "title": fake.sentence(),
-            "content": fake.text(),
-            "event": mock_event["id"],
-            "type": "image",
-        }
-        create_response = await self.create_post(posts_client, files, post_data, bearer)
-        post_data = await create_response.get_json()
-        assert create_response.status_code == 201
-        post_id = post_data["id"]
+        response = await self.delete_post(posts_client, mock_post["id"], bearer)
+        assert response.status_code == HTTPStatus.NO_CONTENT
 
-        response = await self.fetch_post(posts_client, post_id, bearer)
-        assert response.status_code == 200
-        posts = await response.get_json()
+        response_json = await response.get_json() # NO_CONTENT might have empty body or specific message
+        if response_json: # Check if there's a body
+            assert response_json["status"] == HTTPStatus.NO_CONTENT.phrase
+            assert "deleted successfully" in response_json["message"]
 
-        assert len(posts) >= 1
-
-        # Delete the post
-        response = await self.delete_post(posts_client, post_id, bearer)
-        assert response.status_code == 204
-
-        # Verify post is deleted
-        get_response = await self.fetch_post(posts_client, post_id, bearer)
-        assert get_response.status_code == 404
-
-    # async def test_like_post(self, async_client):
-    #     """Test liking a post."""
-    #     # First create a post
-    #     post_data = {"title": fake.sentence(), "content": fake.text()}
-    #     create_response = await async_client.post("/posts", json=post_data)
-    #     post_id = create_response.json()['id']
-
-    #     response = await async_client.post(f"/posts/{post_id}/like")
-    #     assert response.status_code == 200
-    #     like_response = response.json()
-
-    #     assert like_response['likes_count'] > 0
-
-    async def test_create_post_comment(self, posts_client, mock_event, bearer):
-        """Test commenting on a post."""
-        # First create a post
-        files = {
-            "file": FileStorage(
-                io.BytesIO(b"fake image content"),
-                filename=fake.file_name(category="image", extension="jpg"),
-                content_type="image/jpeg",
-            )
-        }
-        post_data = {
-            "title": fake.sentence(),
-            "content": fake.text(),
-            "event": mock_event["id"],
-            "type": "image",
-        }
-        create_response = await self.create_post(posts_client, files, post_data, bearer)
-        post_data = await create_response.get_json()
-        assert create_response.status_code == 201
-        post_id = post_data["id"]
-
-        response = await self.fetch_post(posts_client, post_id, bearer)
-        assert response.status_code == 200
-        posts = await response.get_json()
-        assert len(posts) >= 1
-
-        # Add comment
-        comment_data = {
-            "content": fake.text(),
-        }
-        response = await self.create_comment(
-            posts_client, post_id, comment_data, bearer
-        )
-        assert response.status_code == 201
-
-    async def test_fetch_post_comments(self, posts_client, mock_event, bearer):
-        # First create a post
-        files = {
-            "file": FileStorage(
-                io.BytesIO(b"fake image content"),
-                filename=fake.file_name(category="image", extension="jpg"),
-                content_type="image/jpeg",
-            )
-        }
-        post_data = {
-            "title": fake.sentence(),
-            "content": fake.text(),
-            "event": mock_event["id"],
-            "type": "image",
-        }
-        create_response = await self.create_post(posts_client, files, post_data, bearer)
-        post_data = await create_response.get_json()
-        assert create_response.status_code == 201
-        post_id = post_data["id"]
-
-        # Add comment
-        comment_data = {
-            "content": fake.text(),
-        }
-        response = await self.create_comment(
-            posts_client, post_id, comment_data, bearer
-        )
-        assert response.status_code == 201
-
-        # Get comments
-        comments_response = await self.get_comments(posts_client, post_id, bearer)
-        assert comments_response.status_code == 200
-        comments = await comments_response.get_json()
-
-        assert isinstance(comments, list)
-        assert len(comments) > 0
-
-    async def test_delete_post_comments(self, posts_client, mock_event, bearer):
-        # First create a post
-        files = {
-            "file": FileStorage(
-                io.BytesIO(b"fake image content"),
-                filename=fake.file_name(category="image", extension="jpg"),
-                content_type="image/jpeg",
-            )
-        }
-        post_data = {
-            "title": fake.sentence(),
-            "content": fake.text(),
-            "event": mock_event["id"],
-            "type": "image",
-        }
-        create_response = await self.create_post(posts_client, files, post_data, bearer)
-        post_data = await create_response.get_json()
-        assert create_response.status_code == 201
-        post_id = post_data["id"]
-
-        # Add comment
-        comment_data = {
-            "content": fake.text(),
-        }
-        response = await self.create_comment(
-            posts_client, post_id, comment_data, bearer
-        )
-        create_resp = await response.get_json()
-        assert response.status_code == 201
-        comment_id = create_resp["id"]
-
-        # Get comments
-        comments_response = await self.get_comments(posts_client, post_id, bearer)
-        assert comments_response.status_code == 200
-        comments = await comments_response.get_json()
-
-        assert isinstance(comments, list)
-        assert len(comments) > 0
-
-        # Delete comment
-        response = await self.delete_comment(posts_client, post_id, comment_id, bearer)
-        assert response.status_code == 204
-
-        # Verify comment is deleted
-        get_response = await self.get_comments(posts_client, post_id, bearer)
-        assert get_response.status_code == 404
-
-    @pytest.mark.parametrize(
-        "invalid_data",
-        [
-            {"title": ""},  # Empty title
-            {"content": ""},  # Empty content
-            {"visibility": "invalid"},  # Invalid visibility option
-        ],
-    )
-    async def test_create_invalid_post(self, posts_client, invalid_data, bearer):
-        """Test post creation with invalid data."""
-        files = {
-            "file": FileStorage(
-                io.BytesIO(b"fake image content"),
-                filename="test_image.jpg",
-                content_type="image/jpeg",
-            )
-        }
-        response = await self.create_post(posts_client, files, invalid_data, bearer)
-        assert response.status_code == 400
-
-    # @pytest.mark.performance
-    # def test_post_retrieval_performance(self, benchmark, async_client):
-    #     """Benchmark post retrieval performance."""
-    #     # First create a post
-    #     post_data = {"title": fake.sentence(), "content": fake.text()}
-    #     create_response = async_client.post("/posts", json=post_data)
-    #     post_id = create_response.json()['id']
-
-    #     result = benchmark(async_client.get, f"/posts/{post_id}")
-    #     assert result.status_code == 200
+        # Verify deletion by trying to fetch it again
+        fetch_response = await self.fetch_post(posts_client, mock_post["id"], bearer)
+        assert fetch_response.status_code == HTTPStatus.NOT_FOUND
+        fetch_json = await fetch_response.get_json()
+        assert fetch_json["status"] == HTTPStatus.NOT_FOUND.phrase

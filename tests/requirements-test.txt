@@ -31,5 +31,5 @@ Pillow
 purreal
 aiocache
 prometheus-client
-faststream[rabbit]
+faststream[rabbit]==0.5.39
 ipinfo

@@ -1,6 +1,7 @@
 import httpx
 import orjson as json
 import uuid
+import asyncio
 
 from pprint import pprint
 from quart import make_response, render_template, current_app as app, request, jsonify
@@ -22,7 +23,6 @@ class BaseView(QuartClassful):
 
     def __init__(self) -> None:
         self.__posts_handler: PostsDB = app.conn
-
         self.redis = app.redis
 
     @route("/", methods=["GET"])
@@ -43,6 +43,8 @@ class BaseView(QuartClassful):
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
         }
+        message = "Service is healthy"
+        status_code = HTTPStatus.OK
 
         # Check database connection
         try:
@@ -52,6 +54,9 @@ class BaseView(QuartClassful):
             app.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
+            message = "Service degraded: Database connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
 
         # Check Redis connection
         try:
@@ -61,144 +66,221 @@ class BaseView(QuartClassful):
             )
             if not redis_ping:
                 health_status["status"] = "degraded"
+                message = "Service degraded: Redis connection failed"
+                status_code = HTTPStatus.SERVICE_UNAVAILABLE
         except Exception as e:
             app.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
+            message = "Service degraded: Redis connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        status_code = (
-            HTTPStatus.OK
-            if health_status["status"] == "healthy"
-            else HTTPStatus.SERVICE_UNAVAILABLE
-        )
 
-        return jsonify(health_status), status_code
+        return jsonify(data=health_status, message=message, status=status_code.phrase), status_code
 
     @route("/posts/<post_id>/comments", methods=["GET"])
     @jwt_required
     async def get_comments(self, post_id):
         """
         Asynchronously gets all comments for a given post.
-        Returns:
-            Response: A JSON response containing a list of comments and a status code of 200 if successful.
-                      If post ID is missing, returns a JSON error message and a status code of 400.
         """
-        if result := await self.__posts_handler.fetch_comments(post_id):
-            return jsonify(result), HTTPStatus.OK
-        return (
-            jsonify({"error": "No Comments found or Post not found"}),
-            HTTPStatus.NOT_FOUND,
-        )
+        try:
+            if result := await self.__posts_handler.fetch_comments(post_id):
+                status_code = HTTPStatus.OK
+                return jsonify(data=result, message="Comments fetched successfully.", status=status_code.phrase), status_code
+            status_code = HTTPStatus.NOT_FOUND
+            return (
+                jsonify(message="No Comments found or Post not found", status=status_code.phrase),
+                status_code,
+            )
+        except Exception as e:
+            app.logger.error(f"Error fetching comments for post {post_id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to fetch comments: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/posts/<post_id>/comments", methods=["POST"])
     @jwt_required
     async def create_comment(self, post_id):
         """
         Asynchronously creates a new comment for a given post.
-        Returns:
-            Response: A JSON response containing the created comment and a status code of 201 if successful.
-                      If post ID is missing, returns a JSON error message and a status code of 400.
         """
-        data = await request.get_json()
-        if not data:
-            return jsonify({"error": "Content is required"}), HTTPStatus.BAD_REQUEST
-        result = await self.__posts_handler.create_comment(
-            post_id, data, get_jwt_identity()
-        )
-        if isinstance(result, str):
-            return result, HTTPStatus.BAD_REQUEST
-        return result, HTTPStatus.CREATED
+        try:
+            data = await request.get_json()
+            if not data or not data.get("content"): # Check if data exists and has content
+                status_code = HTTPStatus.BAD_REQUEST
+                return jsonify(message="Content is required", status=status_code.phrase), status_code
+
+            result = await self.__posts_handler.create_comment(
+                post_id, data, get_jwt_identity()
+            )
+            # Assuming the connector returns the created comment object on success
+            # and raises an exception or returns None/False on failure.
+            if result: # Check if result is truthy (i.e., comment created)
+                 status_code = HTTPStatus.CREATED
+                 return jsonify(data=result, message="Comment created successfully.", status=status_code.phrase), status_code
+            else: # Handle cases where connector indicates failure without exception
+                 app.logger.warning(f"Failed to create comment for post {post_id} (connector returned non-truthy)")
+                 status_code = HTTPStatus.BAD_REQUEST
+                 return jsonify(message="Failed to create comment.", status=status_code.phrase), status_code
+
+        except Exception as e: # Catch potential exceptions from connector or request processing
+            app.logger.error(f"Error creating comment for post {post_id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            # Provide a more specific error message if possible, e.g., based on exception type
+            return jsonify(message=f"Failed to create comment: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/posts/<post_id>/comments/<comment_id>", methods=["DELETE"])
     @jwt_required
     async def delete_comment(self, post_id, comment_id):
         """
         Asynchronously deletes a comment for a given post.
-        Returns:
-            Response: A JSON response containing the created comment and a status code of 201 if successful.
-                      If post ID is missing, returns a JSON error message and a status code of 400.
         """
-        result = await self.__posts_handler.delete_comment(comment_id)
-        app.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
-        if isinstance(result, str):
-            return result, HTTPStatus.BAD_REQUEST
-        return result, HTTPStatus.NO_CONTENT
+        try:
+            # Optional: Add check if the user is authorized to delete this comment
+            user_id = get_jwt_identity()
+            # comment = await self.__posts_handler.fetch_comment(comment_id) # Need a fetch_comment method
+            # if not comment:
+            #     status_code = HTTPStatus.NOT_FOUND
+            #     return jsonify(message="Comment not found", status=status_code.phrase), status_code
+            # if comment.get("author") != user_id:
+            #     status_code = HTTPStatus.FORBIDDEN
+            #     return jsonify(message="Unauthorized to delete this comment", status=status_code.phrase), status_code
 
-    @route("/posts/event/<id>", methods=["GET", "POST"])
+            result = await self.__posts_handler.delete_comment(comment_id)
+            app.logger.debug(f"Delete comment result for {comment_id}: {result}") # Log result for debugging
+
+            # Check if deletion was successful (connector might return boolean or affected count)
+            if result: # Adjust condition based on what delete_comment returns on success
+                status_code = HTTPStatus.NO_CONTENT
+                return jsonify(message="Comment deleted successfully.", status=status_code.phrase), status_code
+            else:
+                # This might mean the comment didn't exist or deletion failed for other reasons
+                app.logger.warning(f"Comment {comment_id} not found or deletion failed.")
+                status_code = HTTPStatus.NOT_FOUND
+                return jsonify(message="Comment not found or could not be deleted.", status=status_code.phrase), status_code
+
+        except Exception as e:
+            app.logger.error(f"Error deleting comment {comment_id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to delete comment: {str(e)}", status=status_code.phrase), status_code
+
+
+    @route("/posts/event/<id>", methods=["GET"])
+    @jwt_required # Added JWT requirement assuming it's needed
     async def fetch_event_posts(self, id: str):
         """Fetch all posts for a given event"""
-        return jsonify(await self.__posts_handler.fetch_event_posts(id), HTTPStatus.OK)
+        try:
+            result = await self.__posts_handler.fetch_event_posts(id)
+            status_code = HTTPStatus.OK
+            return jsonify(data=result, message="Event posts fetched successfully.", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error fetching posts for event {id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to fetch event posts: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/posts", methods=["POST"])
     @jwt_required
     async def create_post(self):
         """
         Asynchronously creates a new post with the provided content, and optionally uploads media files.
-        This function handles the following:
-        - Extracts form data from the request to get the title and content of the post.
-        - Validates that both title and content are provided.
-        - Generates a unique post ID and constructs a post dictionary with the provided data.
-        - Optionally uploads media files to a media microservice and includes the media links in the post.
-        - Returns the created post as a JSON response.
-        Returns:
-            Response: A JSON response containing the created post and a status code of 201 if successful.
-                      If title or content is missing, returns a JSON error message and a status code of 400.
-                      If media upload fails, returns a JSON error message and a status code of 500.
         """
-        """"""
-        data = (await request.form).to_dict()
-        files = await request.files
-        user_id = get_jwt_identity()
-        content = data.get("content")
+        try:
+            data = (await request.form).to_dict()
+            files = await request.files
+            user_id = get_jwt_identity()
+            content = data.get("content")
 
-        if not content:
-            return jsonify({"error": "Content is required"}), 400
+            if not content:
+                status_code = HTTPStatus.BAD_REQUEST
+                return jsonify(message="Content is required", status=status_code.phrase), status_code
 
-        data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
-        data["filenames"] = [
-            f"posts/{user_id}/{data['post_id']}/{file.filename}"
-            for file in files.values()
-        ]
-        data["types"] = [file.content_type for file in files.values()]
+            data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
+            data["filenames"] = [
+                f"posts/{user_id}/{data['post_id']}/{file.filename}"
+                for file in files.values() if file.filename # Ensure file has a name
+            ]
+            data["types"] = [file.content_type for file in files.values() if file.filename]
 
-        for i, file in enumerate(files.values()):
-            data["filename"] = data["filenames"][i]
-            data["type"] = data["types"][i]
-            await app.RMQ._publish_media(data, file)
+            # Publish media upload tasks to RMQ
+            media_publish_tasks = []
+            for i, file in enumerate(files.values()):
+                 if file.filename: # Process only if file has a name
+                    media_data = data.copy() # Avoid modifying original data dict in loop
+                    media_data["filename"] = data["filenames"][i]
+                    media_data["type"] = data["types"][i]
+                    media_publish_tasks.append(app.RMQ._publish_media(media_data, file))
 
-        # Push post media to RMQ after creating post
-        result = await self.__posts_handler.create_post(data=data, author=user_id)
+            if media_publish_tasks:
+                await asyncio.gather(*media_publish_tasks) # Upload media concurrently
 
-        if isinstance(result, str):
-            return result, HTTPStatus.BAD_REQUEST
-        return result, HTTPStatus.CREATED
+
+            # Create post in the database
+            result = await self.__posts_handler.create_post(data=data, author=user_id)
+
+            if result: # Assuming create_post returns the created post object
+                status_code = HTTPStatus.CREATED
+                return jsonify(data=result, message="Post created successfully.", status=status_code.phrase), status_code
+            else:
+                app.logger.error(f"Failed to create post in DB for user {user_id}")
+                # Attempt to clean up potentially uploaded media if post creation failed? (Complex)
+                status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+                return jsonify(message="Failed to create post.", status=status_code.phrase), status_code
+
+        except Exception as e:
+            app.logger.error(f"Error creating post for user {user_id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to create post: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/posts/<id>", methods=["GET"])
     @jwt_required
     async def fetch_post(self, id: str):
         """
         Asynchronously gets a post with the provided ID.
-        Returns:
-            Response: A JSON response containing a success message and a status code of 200 if successful.
-                      If ID is missing, returns a JSON error message and a status code of 400.
         """
-        if result := await self.__posts_handler.fetch_post(id):
-            return jsonify(result), HTTPStatus.OK
-        return jsonify({"error": "Post not found"}), HTTPStatus.NOT_FOUND
+        try:
+            if result := await self.__posts_handler.fetch_post(id):
+                status_code = HTTPStatus.OK
+                return jsonify(data=result, message="Post fetched successfully.", status=status_code.phrase), status_code
+            status_code = HTTPStatus.NOT_FOUND
+            return jsonify(message="Post not found", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error fetching post {id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to fetch post: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/posts/<id>", methods=["DELETE"])
     @jwt_required
     async def delete_post(self, id: str):
         """
         Asynchronously deletes a post with the provided ID.
-        This function handles the following:
-        - Extracts form data from the request to get the ID of the post to be deleted.
-        - Validates that the ID is provided.
-        - Deletes the post with the given ID from the database.
-        - Returns a success message as a JSON response.
-        Returns:
-            Response: A JSON response containing a success message and a status code of 200 if successful.
-                      If ID is missing, returns a JSON error message and a status code of 400.
         """
-        await self.__posts_handler.delete_post(id)
-        return jsonify("Deleted"), HTTPStatus.NO_CONTENT
+        try:
+             # Optional: Add check if the user is authorized to delete this post
+            user_id = get_jwt_identity()
+            # post = await self.__posts_handler.fetch_post(id)
+            # if not post:
+            #     status_code = HTTPStatus.NOT_FOUND
+            #     return jsonify(message="Post not found", status=status_code.phrase), status_code
+            # if post.get("author") != user_id: # Assuming author field stores user ID
+            #     status_code = HTTPStatus.FORBIDDEN
+            #     return jsonify(message="Unauthorized to delete this post", status=status_code.phrase), status_code
+
+            result = await self.__posts_handler.delete_post(id)
+            # Check if deletion was successful (adjust based on connector's return value)
+            if result:
+                 # Consider deleting associated media from storage here or via another mechanism
+                 status_code = HTTPStatus.NO_CONTENT
+                 return jsonify(message="Post deleted successfully.", status=status_code.phrase), status_code
+            else:
+                 app.logger.warning(f"Post {id} not found or deletion failed.")
+                 status_code = HTTPStatus.NOT_FOUND
+                 return jsonify(message="Post not found or could not be deleted.", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error deleting post {id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to delete post: {str(e)}", status=status_code.phrase), status_code

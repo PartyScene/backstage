@@ -52,6 +52,8 @@ class BaseView(QuartClassful):
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
         }
+        message = "Service is healthy"
+        status_code = HTTPStatus.OK
 
         # Check database connection
         try:
@@ -61,6 +63,9 @@ class BaseView(QuartClassful):
             self.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
+            message = "Service degraded: Database connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
 
         # Check Redis connection
         try:
@@ -70,18 +75,17 @@ class BaseView(QuartClassful):
             )
             if not redis_ping:
                 health_status["status"] = "degraded"
+                message = "Service degraded: Redis connection failed"
+                status_code = HTTPStatus.SERVICE_UNAVAILABLE
         except Exception as e:
             self.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
+            message = "Service degraded: Redis connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        status_code = (
-            HTTPStatus.OK
-            if health_status["status"] == "healthy"
-            else HTTPStatus.SERVICE_UNAVAILABLE
-        )
 
-        return jsonify(health_status), status_code
+        return jsonify(data=health_status, message=message, status=status_code.phrase), status_code
 
     # @route("/media/upload", methods=["GET", "POST"])
     # @jwt_required
@@ -119,16 +123,19 @@ class BaseView(QuartClassful):
     #     # # uncomment this line
     #     # # blob.make_public() # Permissions are really messed up idk -- error : google.api_core.exceptions.BadRequest: 400 GET https://storage.googleapis.com/storage/v1/b/partyscene/o/file/acl?prettyPrint=false: Cannot get legacy ACL for an object when uniform bucket-level access is enabled. Read more at https://cloud.google.com/storage/docs/uniform-bucket-level-acces
     #     result = await self.__media_handler.create_media_metadata(data)
-    #     return jsonify(result), HTTPStatus.CREATED
+    #     # Refactor this return
+    #     status_code = HTTPStatus.CREATED
+    #     return jsonify(data=result, message="Media metadata created successfully.", status=status_code.phrase), status_code
 
     @route("/media/sign", methods=["GET"])
-    # @cached(ttl=60 * 60 * 72)
+    # @cached(ttl=60 * 60 * 72) # Caching handled manually with Redis below
     async def sign(self):
         """Sign a media in the Bucket for access"""
         filename = request.args.get("filename")
 
         if not filename:
-            return "Filename missing", HTTPStatus.BAD_REQUEST
+            status_code = HTTPStatus.BAD_REQUEST
+            return jsonify(message="Filename missing", status=status_code.phrase), status_code
 
         # Define a specific cache key prefix for this endpoint
         cache_key = f"media:signed_url:{filename}"
@@ -142,12 +149,10 @@ class BaseView(QuartClassful):
             cached_url = await self.redis.get(cache_key)
             if cached_url:
                 self.logger.info(f"Cache HIT for signed URL: {filename}")
-                # Return cached URL - use Response object to add headers
-                response = Response(
-                    cached_url, status=HTTPStatus.OK, content_type="text/plain"
-                )
-                response.headers["X-Cache-Status"] = "HIT"
-                return response
+                # Return cached URL
+                status_code = HTTPStatus.OK
+                return jsonify(data={"signed_url": cached_url}, message="Signed URL retrieved from cache.", status=status_code.phrase), status_code
+
 
             self.logger.info(f"Cache MISS for signed URL: {filename}")
 
@@ -173,10 +178,8 @@ class BaseView(QuartClassful):
             self.logger.error(
                 f"Error generating signed URL for {filename}: {e}", exc_info=True
             )
-            return (
-                f"Failed to generate signed URL for {filename}",
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to generate signed URL for {filename}", status=status_code.phrase), status_code
 
         # 3. Store the newly generated URL in Redis (if cache wasn't hit and GET didn't fail)
         if (
@@ -193,10 +196,10 @@ class BaseView(QuartClassful):
                 )
                 # If SET fails, we still return the generated URL, just don't cache it
 
-        # Return the newly generated URL - use Response object to add headers
-        response = Response(media_url, status=HTTPStatus.OK, content_type="text/plain")
-        response.headers["X-Cache-Status"] = "MISS"
-        return response
+        # Return the newly generated URL
+        status_code = HTTPStatus.OK
+        return jsonify(data={"signed_url": media_url}, message="Signed URL generated successfully.", status=status_code.phrase), status_code
+
 
     async def generate_download_signed_url_v4(self, blob_name):
         """Generates a v4 signed URL for downloading a blob.
@@ -230,11 +233,12 @@ class BaseView(QuartClassful):
         self.logger.warning(credentials.service_account_email)
         return credentials
 
-        signing_credentials = google.auth.impersonated_credentials.Credentials(
-            source_credentials=credentials,
-            target_principal=credentials.service_account_email,
-            target_scopes=scopes,
-            lifetime=datetime.timedelta(seconds=3600),
-            delegates=[credentials.service_account_email],
-        )
-        return signing_credentials
+        # Impersonated credentials logic might be complex/unnecessary depending on setup
+        # signing_credentials = google.auth.impersonated_credentials.Credentials(
+        #     source_credentials=credentials,
+        #     target_principal=credentials.service_account_email,
+        #     target_scopes=scopes,
+        #     lifetime=datetime.timedelta(seconds=3600),
+        #     delegates=[credentials.service_account_email],
+        # )
+        # return signing_credentials

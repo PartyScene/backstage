@@ -93,6 +93,7 @@ class MicroService(Quart):
         @self.before_request
         async def log_request():
             logger.debug(f"Request body: {await request.data}")
+            logger.debug(f"Request args: {request.args}")
 
         @self.after_request
         async def log_response(response):

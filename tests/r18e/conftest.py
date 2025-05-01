@@ -75,7 +75,7 @@ async def r18e_app(redis_connection):
     app.redis = redis_connection
     app.conn, app.pool_manager = await init_db(app)
     app.RMQ = rmq.RMQBroker(app)
-    await app.RMQ.start()
+    # await app.RMQ.start()
     try:
         async with app.app_context():
             await app.get_shared_secret()

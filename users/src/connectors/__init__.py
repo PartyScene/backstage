@@ -68,15 +68,8 @@ class UsersDB:
                     "status": data.get("status", "pending"),
                 },
             )
-        # Get the new relationship
-        async with self.pool.acquire() as conn:
-            result = await conn.query(
-                """
-                SELECT VALUE <->friends.* FROM $origin
-                WHERE <->friends[WHERE out = $target OR in = $target]
-                """
-            )
-        return record_id_to_json(result)[0]
+            
+        return record_id_to_json(result['relationship'])
 
     async def update_friend_relationship(self, connection_id: str, data: dict):
         """

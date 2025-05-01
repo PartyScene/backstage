@@ -143,12 +143,44 @@ async def bearer(auth_client, mock_user):
     try:
         response = await auth_client.post("/auth/login", json=mock_user)
         assert response.status_code == 200
-        data = await response.get_json()
+        response_json = await response.get_json()
+        data = response_json["data"]
         return data["access_token"]
     except Exception as e:
         logger.error(f"Error generating bearer token: {str(e)}")
         raise
+    
+    
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def other_bearer(auth_client, other_mock_user):
+    """Create second test bearer token"""
+    try:
+        response = await auth_client.post("/auth/login", json=other_mock_user)
+        assert response.status_code == 200
+        response_json = await response.get_json()
+        data = response_json["data"]
+        return data["access_token"]
+    except Exception as e:
+        logger.error(f"Error generating bearer token: {str(e)}")
+        raise
+    
 
+@pytest.fixture(scope="session")
+def mock_post(mock_event):
+    return {
+            "content": fake.text(),
+            "event": mock_event["id"], # mock_event provides an event ID
+            "type": "image", # Or determine based on file
+        }
+    
+    
+@pytest.fixture(scope="session")
+def mock_comment():
+    return {
+            "content": fake.text(),
+        }
+    
+    
 
 @pytest.fixture(scope="session")
 def mock_user():
@@ -161,6 +193,21 @@ def mock_user():
         "username": fake.user_name(),
         "host": "test",
         "id": "test",
+    }
+
+
+
+@pytest.fixture(scope="session")
+def other_mock_user():
+    return {
+        "first_name": "John",
+        "last_name": "Doe",
+        "email": "dyleee@tutamail.com",
+        "password": "testingTs",
+        "confirm_password": "testingTs",
+        "username": fake.user_name(),
+        "host": "test2",
+        "id": "test2",
     }
 
 

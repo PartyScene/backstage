@@ -30,7 +30,7 @@ COPY tests/pytest.ini /tests/pytest.ini
 FROM base AS test
 
 # Run tests
-CMD ["pytest", "--disable-warnings", "/tests", "-v"]
+CMD ["pytest", "--disable-warnings", "/tests", "-vs"]
 
 # Main stage
 FROM base AS prod

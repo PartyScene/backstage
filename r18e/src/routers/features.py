@@ -79,4 +79,10 @@ class BaseView(QuartClassful):
         """
         event_id = request.args.get("event")
         resp = await self.__vector_database.recommend_similar_events(event_id)
-        return resp, HTTPStatus.OK
+        
+        if not event_id or not resp:
+            status_code = HTTPStatus.BAD_REQUEST
+            return jsonify(message="Missing event ID", status=status_code.phrase), status_code
+        
+        status_code = HTTPStatus.OK
+        return jsonify(data=resp, message=status_code.phrase), status_code

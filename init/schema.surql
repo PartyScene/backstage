@@ -35,7 +35,13 @@ DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE leads TYPE 
 DEFINE FIELD OVERWRITE created_at ON TABLE leads TYPE datetime DEFAULT time::now();
 
 
-
+DEFINE TABLE IF NOT EXISTS reports SCHEMALESS;
+DEFINE FIELD OVERWRITE user ON TABLE reports TYPE record<users>;
+DEFINE FIELD OVERWRITE report ON TABLE reports TYPE string;
+DEFINE FIELD OVERWRITE created_at ON TABLE reports TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE status ON TABLE reports TYPE string DEFAULT "pending";
+DEFINE FIELD OVERWRITE metadata ON TABLE reports FLEXIBLE TYPE option<object> DEFAULT {};
+DEFINE FIELD OVERWRITE resource ON TABLE reports TYPE option<record>;
 
 -- Let's define a relation table for users and events to record attendance
 DEFINE TABLE IF NOT EXISTS attends TYPE RELATION IN users TO events;
@@ -114,7 +120,7 @@ DEFINE TABLE OVERWRITE media SCHEMALESS;
 DEFINE FIELD OVERWRITE type ON media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
 -- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))} ASSERT string::len($value) > 0;
 
-DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
 
 -- Metadata fields
@@ -215,23 +221,15 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
 
 DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: record, $status: string) {
     -- Check existing relationship
-    LET $existing = (
-        SELECT VALUE <->friends.* FROM $origin
-        WHERE <->friends[WHERE out = $target OR in = $target]
-    );
-    
-    -- Create new relationship if none exists
-    LET $new = IF(array::len($existing) == 0) THEN (
-        -- Create bidirectional relationship
-        RELATE ONLY $origin -> friends -> $target SET
-            status = $status,
-            created_at = time::now()
-    ) ELSE $existing
+    LET $existing = (SELECT VALUE ->friends[*] FROM ONLY $origin WHERE <->friends[WHERE out = $target OR in = $target]);
+    LET $new = IF !$existing THEN
+        (RELATE ONLY $origin -> friends -> $target SET status = $status, created_at = time::now())
+    ELSE
+        $existing[0]
     END;
-    
     RETURN {
-        relationship: $new,
-        is_new: array::len($existing) == 0
+        is_new: !$existing,
+        relationship: $new
     }
 };
 
@@ -248,4 +246,26 @@ DEFINE FUNCTION OVERWRITE fn::find_relationships($origin: record) {
     
     FROM ONLY $origin;
     RETURN $result
+};
+
+
+DEFINE FUNCTION OVERWRITE fn::fetch_similar_events($event: record) {
+    -- LET $media_embeddings = (SELECT VALUE embeddings from media WHERE event = $event);
+    LET $media_embeddings = SELECT VALUE (->has_media->media.embeddings) FROM $event;
+    
+    LET $sum = $media_embeddings.reduce(
+        |$a, $b| vector::add($a, $b)
+        );
+        
+    LET $average_media_embeddings = vector::scale(
+        $sum, <float> 1 / $media_embeddings.len() 
+        );
+    
+    LET $text_emb = (SELECT VALUE embeddings.text FROM $event);
+    
+    RETURN (
+        SELECT fn::fetch_event(event), vector::distance::knn() - vector::similarity::cosine(event.embeddings.text, $text_emb[0]) AS distance 
+        FROM media WHERE embeddings <|20, 40|> $average_media_embeddings 
+        ORDER BY distance
+    )
 };

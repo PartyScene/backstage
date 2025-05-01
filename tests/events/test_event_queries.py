@@ -2,6 +2,8 @@ import pytest
 from datetime import datetime, timedelta
 from faker import Faker
 from test_events_base import TestEventsBase
+from http import HTTPStatus
+from urllib.parse import urlencode
 
 faker = Faker()
 
@@ -11,15 +13,40 @@ class TestEventQueries(TestEventsBase):
     async def test_list_events(self, event_client, bearer):
         """Test retrieving a list of events."""
         response = await self.get_events(event_client, bearer)
-        assert response.status_code == 200
+        assert response.status_code == HTTPStatus.OK
 
-        events = await response.get_json()
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        events = response_json["data"]
         assert isinstance(events, list)
+        # Optionally check if the list is not empty if events are expected
+        # assert len(events) > 0
 
     async def test_get_event(self, event_client, mock_event, bearer):
-        """Test retrieving a list of events."""
+        """Test retrieving a specific event by ID."""
+        # Ensure mock_event has an ID (created in a fixture or previous test)
+        assert "id" in mock_event, "Mock event must have an ID for this test"
         response = await self.get_event(event_client, mock_event["id"], bearer)
-        assert "id" in mock_event
+        assert response.status_code == HTTPStatus.OK
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        event = response_json["data"]
+        assert isinstance(event, dict)
+        assert event["id"] == mock_event["id"]
+        assert event["title"] == mock_event["title"] # Check other fields
+
+    async def test_get_nonexistent_event(self, event_client, bearer):
+        """Test retrieving an event that does not exist."""
+        non_existent_id = "nonexistentevent123"
+        response = await self.get_event(event_client, non_existent_id, bearer)
+        assert response.status_code == HTTPStatus.NOT_FOUND
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.NOT_FOUND.phrase
+        assert "Event not found" in response_json["message"]
 
     # async def test_filter_events_by_date(self, client):
     #     """Test filtering events by date range."""
@@ -36,9 +63,31 @@ class TestEventQueries(TestEventsBase):
 
     async def test_filter_events_by_location(self, event_client, bearer):
         """Test filtering events by distance from N meters."""
-        response = await self.get_events_distance(event_client, faker.latlng(), bearer)
+        # Use a known location or generate one
+        lat, lng = faker.latitude(), faker.longitude()
+        distance = 5000 # 5km
 
-        assert response.status_code == 200
+        response = await self.get_events_distance(event_client, [lat, lng], distance, bearer)
+        assert response.status_code == HTTPStatus.OK
 
-        filtered_events = await response.get_json()
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        filtered_events = response_json["data"]
         assert isinstance(filtered_events, list)
+        # Further assertions could involve checking distances if possible/needed
+
+    async def test_filter_events_by_location_invalid_params(self, event_client, bearer):
+        """Test filtering events by distance with invalid parameters."""
+        params = urlencode({"lat": "invalid", "lng": "invalid"})
+        response = await event_client.get(
+            f"/events?{params}", headers={"Authorization": f"Bearer {bearer}"}
+        )
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.BAD_REQUEST.phrase
+        # Add assertion for specific error message if available
+
+    # Add tests for pagination (limit, page parameters) if implemented
+    # Add tests for other filtering options (private, categories, etc.)

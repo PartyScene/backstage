@@ -25,8 +25,7 @@ class PostsDB:
                 dict: A dictionary containing the result of the post fetch query.
         """
         query = """
-                SELECT VALUE ->posts.*
-                FROM users WHERE ->posts[WHERE event == type::thing('events', $event_id)];
+                SELECT * FROM posts WHERE event == type::thing('events', $event_id);
             """
         params = {"event_id": id}
         async with self.pool.acquire() as conn:
@@ -63,8 +62,8 @@ class PostsDB:
                 dict: A dictionary containing the result of the comment fetch query.
         """
         post = RecordID("posts", post_id)
-        # query = """SELECT <-comments.* AS comments FROM $post"""
-        query = """ SELECT ->comments.* AS comments FROM users WHERE ->comments[WHERE out = $post];"""
+        query = """SELECT <-comments.* AS comments FROM ONLY $post"""
+        # query = """ SELECT ->comments.* AS comments FROM users WHERE ->comments[WHERE out = $post];"""
         params = {"post": post}
         async with self.pool.acquire() as conn:
             result = await conn.query(query, params)

@@ -11,6 +11,7 @@ from http import HTTPStatus
 from dataclasses import dataclass
 from pprint import pprint
 from quart import (
+    Response,
     make_response,
     render_template,
     current_app as app,
@@ -69,6 +70,8 @@ class BaseView(QuartClassful):
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
         }
+        message = "Service is healthy"
+        status_code = HTTPStatus.OK
 
         # Check database connection
         try:
@@ -78,6 +81,9 @@ class BaseView(QuartClassful):
             app.logger.error(f"Database health check failed: {e}")
             health_status["dependencies"]["database"] = "unhealthy"
             health_status["status"] = "degraded"
+            message = "Service degraded: Database connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
 
         # Check Redis connection
         try:
@@ -87,18 +93,17 @@ class BaseView(QuartClassful):
             )
             if not redis_ping:
                 health_status["status"] = "degraded"
+                message = "Service degraded: Redis connection failed"
+                status_code = HTTPStatus.SERVICE_UNAVAILABLE
         except Exception as e:
             app.logger.error(f"Redis health check failed: {e}")
             health_status["dependencies"]["redis"] = "unhealthy"
             health_status["status"] = "degraded"
+            message = "Service degraded: Redis connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        status_code = (
-            HTTPStatus.OK
-            if health_status["status"] == "healthy"
-            else HTTPStatus.SERVICE_UNAVAILABLE
-        )
 
-        return jsonify(health_status), status_code
+        return jsonify(data=health_status, message=message, status=status_code.phrase), status_code
 
     @route("/events/<event_id>", methods=["GET"])
     @jwt_required
@@ -113,33 +118,70 @@ class BaseView(QuartClassful):
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 20))
 
-        if event_id:
-            if result := await self.conn.fetch(event_id):
-                return result, HTTPStatus.OK
-            return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+        try:
+            if event_id:
+                if result := await self.conn.fetch(event_id):
+                    status_code = HTTPStatus.OK
+                    return jsonify(data=result, message="Event fetched successfully.", status=status_code.phrase), status_code
+                status_code = HTTPStatus.NOT_FOUND
+                return jsonify(message="Event not found", status=status_code.phrase), status_code
 
-        if any([x in request.args for x in ("lat", "lng")]):
-            # They requested for Lat Lng soo
-            location = (
-                float(request.args.get("lat", 0)),
-                float(request.args.get("lng", 0)),
-            )
-            distance = int(request.args.get("distance", 1000))
-            result = await self.conn.fetch_by_distance(location, distance)
-            return result, HTTPStatus.OK
+            if any([x in request.args for x in ("lat", "lng")]):
+                # They requested for Lat Lng soo
+                try:
+                    location = (
+                        float(request.args.get("lat", 0)),
+                        float(request.args.get("lng", 0)),
+                    )
+                    distance = int(request.args.get("distance", 1000))
+                except ValueError:
+                    status_code = HTTPStatus.BAD_REQUEST
+                    return jsonify(message="Invalid latitude, longitude, or distance parameters.", status=status_code.phrase), status_code
+                
+                result = await self.conn.fetch_by_distance(location, distance)
+                status_code = HTTPStatus.OK
+                return jsonify(data=result, message="Events fetched by distance successfully.", status=status_code.phrase), status_code
 
-        result = await self.conn.fetch_all(page, limit)
-        return result, HTTPStatus.OK
+            result = await self.conn.fetch_all(page, limit)
+            status_code = HTTPStatus.OK
+            return jsonify(data=result, message="Events fetched successfully.", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error fetching events: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to fetch events: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/events/<event_id>", methods=["PATCH"])
     @jwt_required
     async def update_event(self, event_id=None):
-        """This endpoints returns all the events"""
+        """This endpoint updates a specific event"""
         data = await request.get_json()
-        if event_id:
-            if result := await self.conn.update_event_data(event_id, data):
-                return result, HTTPStatus.OK
-            return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+        requester = get_jwt_identity()
+        if not data:
+             status_code = HTTPStatus.BAD_REQUEST
+             return jsonify(message="Request body is required.", status=status_code.phrase), status_code
+        try:
+            if event_id:
+                event_info = await self.conn.fetch(event_id)
+                if not event_info:
+                    status_code = HTTPStatus.NOT_FOUND
+                    return jsonify(message="Event not found", status=status_code.phrase), status_code
+                
+                if event_info['creator'] == requester:
+                    if result := await self.conn.update_event_data(event_id, data):
+                        status_code = HTTPStatus.OK
+                        return jsonify(data=result, message="Event updated successfully.", status=status_code.phrase), status_code
+                else:
+                    status_code = HTTPStatus.FORBIDDEN
+                    return jsonify(message="Unauthorized attempt", status=status_code.phrase), status_code
+            else:
+                 status_code = HTTPStatus.BAD_REQUEST
+                 return jsonify(message="Event ID is required in the path.", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error updating event {event_id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to update event: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/events", methods=["POST"])
     @jwt_required
@@ -177,6 +219,14 @@ class BaseView(QuartClassful):
                 form.get("is_private", "false") == "true"
             )  # Default to False if not specified
 
+            # Validate required fields
+            required_fields = ["title", "description", "location", "time", "coordinates"]
+            missing_fields = [field for field in required_fields if not data.get(field)]
+            if missing_fields:
+                status_code = HTTPStatus.BAD_REQUEST
+                return jsonify(message=f"Missing required fields: {', '.join(missing_fields)}", status=status_code.phrase), status_code
+
+
             for i, file in enumerate(files.values()):
                 data["filename"] = data["filenames"][i]
                 data["type"] = data["types"][i]
@@ -189,24 +239,39 @@ class BaseView(QuartClassful):
             if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
-                return jsonify(result), HTTPStatus.CREATED
+                status_code = HTTPStatus.CREATED
+                return jsonify(data=result, message="Event created successfully.", status=status_code.phrase), status_code
 
-            app.logger.error("Failed to create event")
-            return {"error": "Failed to create event"}, HTTPStatus.BAD_REQUEST
+            app.logger.error("Failed to create event in DB")
+            status_code = HTTPStatus.BAD_REQUEST
+            return jsonify(message="Failed to create event", status=status_code.phrase), status_code
         except Exception as e:
             app.logger.error(f"Error creating event: {str(e)}", exc_info=True)
-            return {"error": str(e)}, HTTPStatus.BAD_REQUEST
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to create event: {str(e)}", status=status_code.phrase), status_code
 
-    @route("/events/<event_id>/delete", methods=["DELETE"])
+    @route("/events/<event_id>/delete", methods=["DELETE"]) # Changed route slightly for consistency
     @jwt_required
     async def delete_event(self, event_id: str):
         """Delete an event"""
         try:
+            # Add check if user is authorized to delete (e.g., is the host)
+            user_id = get_jwt_identity()
+            event = await self.conn.fetch(event_id)
+            if not event:
+                 status_code = HTTPStatus.NOT_FOUND
+                 return jsonify(message="Event not found", status=status_code.phrase), status_code
+            if event.get("host") != user_id: # Assuming host field stores user ID
+                 status_code = HTTPStatus.FORBIDDEN
+                 return jsonify(message="Unauthorized to delete this event", status=status_code.phrase), status_code
+
             await self.conn.delete_event(event_id)
-            return {"message": "Event deleted successfully"}, HTTPStatus.NO_CONTENT
+            status_code = HTTPStatus.NO_CONTENT
+            return jsonify(message="Event deleted successfully", status=status_code.phrase), status_code
         except Exception as e:
-            app.logger.error(f"Error deleting event: {str(e)}", exc_info=True)
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            app.logger.error(f"Error deleting event {event_id}: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to delete event: {str(e)}", status=status_code.phrase), status_code
 
     @route("/events/private", methods=["GET"])
     @jwt_required
@@ -214,56 +279,81 @@ class BaseView(QuartClassful):
         """This endpoints returns the private events"""
         page = int(request.args.get("page", 1))
         limit = int(request.args.get("limit", 20))
-        result = await self.conn.fetch_private(page, limit)
-        return result, HTTPStatus.OK
+        try:
+            result = await self.conn.fetch_private(page, limit)
+            status_code = HTTPStatus.OK
+            return jsonify(data=result, message="Private events fetched successfully.", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error fetching private events: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to fetch private events: {str(e)}", status=status_code.phrase), status_code
+
 
     @route("/events/distance", methods=["GET"])
     @jwt_required
     async def fetch_by_distance(self):
-        """Fetch a list of events by distance. If the `nearby` endpoint is called, then...
+        """Fetch a list of events by distance."""
+        try:
+            location = (
+                float(request.args.get("lat", 0)),
+                float(request.args.get("lng", 0)),
+            )
+            distance = int(request.args.get("distance", 1000))
+            result = await self.conn.fetch_by_distance(location, distance)
+            status_code = HTTPStatus.OK
+            return jsonify(data=result, message="Events fetched by distance successfully.", status=status_code.phrase), status_code
+        except ValueError:
+             status_code = HTTPStatus.BAD_REQUEST
+             return jsonify(message="Invalid latitude, longitude, or distance parameters.", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error fetching events by distance: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to fetch events by distance: {str(e)}", status=status_code.phrase), status_code
 
-        Returns:
-            array : List of events
-        """
-        location = (
-            float(request.args.get("lat", 0)),
-            float(request.args.get("lng", 0)),
-        )
-        distance = int(request.args.get("distance", 1000))
-        result = await self.conn.fetch_by_distance(location, distance)
-        return result, HTTPStatus.OK
 
     @route("/events/<event_id>/status", methods=["PATCH"])
     @jwt_required
-    async def update_event_status(self, event_id: str) -> Tuple[Dict[str, Any], int]:
+    async def update_event_status(self, event_id: str):
         """Update event status"""
         try:
             user_id = get_jwt_identity()
             data = await request.get_json()
+            new_status = data.get("status")
+
+            if not new_status:
+                status_code = HTTPStatus.BAD_REQUEST
+                return jsonify(message="Status is required in request body.", status=status_code.phrase), status_code
 
             # Verify user has permission to update this event
             event = await self.conn.fetch(event_id)
-            app.logger.info(f"Updating event {event_id} by user {user_id}")
+            app.logger.info(f"Updating event {event_id} status to '{new_status}' by user {user_id}")
             if not event:
                 app.logger.warning(f"Event not found: {event_id}")
-                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+                status_code = HTTPStatus.NOT_FOUND
+                return jsonify(message="Event not found", status=status_code.phrase), status_code
 
-            if event["host"] != user_id:
+            if event.get("host") != user_id: # Assuming host field stores user ID
                 app.logger.warning(
                     f"Unauthorized access attempt to event {event_id} by user {user_id}"
                 )
-                return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
+                status_code = HTTPStatus.FORBIDDEN
+                return jsonify(message="Unauthorized to update this event", status=status_code.phrase), status_code
 
             result = await self.conn.update_event_status(
-                event_id, status=data["status"], metadata=data.get("metadata")
+                event_id, status=new_status, metadata=data.get("metadata")
             )
             app.logger.info(f"Successfully updated status for event {event_id}")
-            return result, HTTPStatus.OK
+            status_code = HTTPStatus.OK
+            return jsonify(data=result, message="Event status updated successfully.", status=status_code.phrase), status_code
+        except ValueError as ve: # Catch specific validation errors from connector
+             status_code = HTTPStatus.BAD_REQUEST
+             return jsonify(message=str(ve), status=status_code.phrase), status_code
         except Exception as e:
             app.logger.error(
                 f"Error updating event status for {event_id}: {str(e)}", exc_info=True
             )
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to update event status: {str(e)}", status=status_code.phrase), status_code
 
     @route("/events/<event_id>/live", methods=["GET"])
     @jwt_required
@@ -279,35 +369,45 @@ class BaseView(QuartClassful):
             )
             if not event:
                 app.logger.warning(f"Event not found: {event_id}")
-                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+                status_code = HTTPStatus.NOT_FOUND
+                return jsonify(message="Event not found", status=status_code.phrase), status_code
 
-            if event["host"] != user_id:
+            if event.get("host") != user_id: # Assuming host field stores user ID
                 app.logger.warning(
                     f"Unauthorized live updates access attempt for event {event_id} by user {user_id}"
                 )
-                return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
+                status_code = HTTPStatus.FORBIDDEN
+                return jsonify(message="Unauthorized to start live updates for this event", status=status_code.phrase), status_code
 
             # Check if live query already exists
             existing_live_id = await self._get_live_query(event_id)
             if existing_live_id:
                 app.logger.info(f"Returning existing live query for event {event_id}")
-                return {"live_query_id": existing_live_id}, HTTPStatus.OK
+                status_code = HTTPStatus.OK
+                return jsonify(data={"live_query_id": existing_live_id}, message="Live updates already running.", status=status_code.phrase), status_code
 
             # Start the live query and get its ID
             live_id = await self.conn.live_query(event_id)
+            if not live_id: # Handle potential failure in starting live query
+                 app.logger.error(f"Failed to obtain live_id for event {event_id} from connector")
+                 status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+                 return jsonify(message="Failed to start live updates.", status=status_code.phrase), status_code
+
 
             # Store in Redis
             await self._store_live_query(event_id, live_id)
 
             app.logger.info(f"Started new live query for event {event_id}")
-            return {"live_query_id": live_id}, HTTPStatus.OK
+            status_code = HTTPStatus.OK
+            return jsonify(data={"live_query_id": live_id}, message="Live updates started successfully.", status=status_code.phrase), status_code
 
         except Exception as e:
             app.logger.error(
                 f"Failed to start live query for event {event_id}: {str(e)}",
                 exc_info=True,
             )
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to start live updates: {str(e)}", status=status_code.phrase), status_code
 
     @route("/events/<event_id>/live", methods=["DELETE"])
     @jwt_required
@@ -323,13 +423,16 @@ class BaseView(QuartClassful):
             )
             if not event:
                 app.logger.warning(f"Event not found: {event_id}")
-                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+                status_code = HTTPStatus.NOT_FOUND
+                return jsonify(message="Event not found", status=status_code.phrase), status_code
 
-            if event["host"].id != user_id:
+            # Use .get() with default for safer access if host might be missing
+            if event.get("host") != user_id:
                 app.logger.warning(
                     f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}"
                 )
-                return {"error": "Unauthorized"}, HTTPStatus.FORBIDDEN
+                status_code = HTTPStatus.FORBIDDEN
+                return jsonify(message="Unauthorized to stop live updates for this event", status=status_code.phrase), status_code
 
             # Get live query ID from Redis
             live_id = await self._get_live_query(event_id)
@@ -339,17 +442,20 @@ class BaseView(QuartClassful):
                 app.logger.info(
                     f"Successfully stopped live updates for event {event_id}"
                 )
-                return {"message": "Live updates stopped"}, HTTPStatus.NO_CONTENT
+                status_code = HTTPStatus.NO_CONTENT
+                return jsonify(message="Live updates stopped successfully.", status=status_code.phrase), status_code
 
             app.logger.info(f"No live updates running for event {event_id}")
-            return {"message": "No live updates running"}, HTTPStatus.NO_CONTENT
+            status_code = HTTPStatus.OK # Or NO_CONTENT if preferred
+            return jsonify(message="No live updates running for this event.", status=status_code.phrase), status_code # Or NO_CONTENT if preferred
 
         except Exception as e:
             app.logger.error(
                 f"Failed to stop live query for event {event_id}: {str(e)}",
                 exc_info=True,
             )
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to stop live updates: {str(e)}", status=status_code.phrase), status_code
 
     @route("/events/<event_id>/buy_ticket", methods=["POST"])
     @jwt_required
@@ -361,7 +467,8 @@ class BaseView(QuartClassful):
             # Verify the event exists
             event = await self.conn.fetch(event_id)
             if not event:
-                return {"error": "Event not found"}, HTTPStatus.NOT_FOUND
+                status_code = HTTPStatus.NOT_FOUND
+                return jsonify(message="Event not found", status=status_code.phrase), status_code
 
             # Create the attendance relationship
             attendance_data = {
@@ -373,10 +480,12 @@ class BaseView(QuartClassful):
             # Assuming you have a method to create the relationship in your database
             await self.conn.create_attendance(attendance_data)
 
-            return {"message": "Ticket purchased successfully"}, HTTPStatus.CREATED
+            status_code = HTTPStatus.CREATED
+            return jsonify(message="Ticket purchased successfully", status=status_code.phrase), status_code
 
         except Exception as e:
             app.logger.error(
                 f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
             )
-            return {"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to buy ticket: {str(e)}", status=status_code.phrase), status_code
