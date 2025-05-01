@@ -1,6 +1,6 @@
 DEFINE DATABASE OVERWRITE partyscene;
 -- Define the main atomic table, the users table
-DEFINE TABLE IF NOT EXISTS users schemafull;
+DEFINE TABLE OVERWRITE users schemafull;
 DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
@@ -14,7 +14,7 @@ DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" THEN {UPD
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
 
 
-DEFINE TABLE IF NOT EXISTS credentials SCHEMAFULL;
+DEFINE TABLE OVERWRITE credentials SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE credentials TYPE record<users>;
 DEFINE FIELD OVERWRITE encrypted_data ON TABLE credentials TYPE bytes;
 DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE credentials TYPE bytes;
@@ -25,7 +25,7 @@ DEFINE FIELD OVERWRITE created_at ON TABLE credentials TYPE datetime DEFAULT tim
 
 
 
-DEFINE TABLE IF NOT EXISTS leads SCHEMAFULL;
+DEFINE TABLE OVERWRITE leads SCHEMAFULL;
 DEFINE FIELD OVERWRITE usecase ON TABLE leads TYPE string;
 DEFINE FIELD OVERWRITE encrypted_data ON TABLE leads TYPE bytes;
 DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE leads TYPE bytes;
@@ -35,7 +35,7 @@ DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE leads TYPE 
 DEFINE FIELD OVERWRITE created_at ON TABLE leads TYPE datetime DEFAULT time::now();
 
 
-DEFINE TABLE IF NOT EXISTS reports SCHEMALESS;
+DEFINE TABLE OVERWRITE reports SCHEMALESS;
 DEFINE FIELD OVERWRITE user ON TABLE reports TYPE record<users>;
 DEFINE FIELD OVERWRITE report ON TABLE reports TYPE string;
 DEFINE FIELD OVERWRITE created_at ON TABLE reports TYPE datetime DEFAULT time::now();
@@ -44,7 +44,7 @@ DEFINE FIELD OVERWRITE metadata ON TABLE reports FLEXIBLE TYPE option<object> DE
 DEFINE FIELD OVERWRITE resource ON TABLE reports TYPE option<record>;
 
 -- Let's define a relation table for users and events to record attendance
-DEFINE TABLE IF NOT EXISTS attends TYPE RELATION IN users TO events;
+DEFINE TABLE OVERWRITE attends TYPE RELATION IN users TO events;
 
 -- Now let's define the events table
 DEFINE TABLE OVERWRITE events SCHEMALESS;
@@ -59,7 +59,7 @@ DEFINE FIELD OVERWRITE time ON TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE categories ON TABLE events TYPE array<string> DEFAULT [];
 DEFINE FIELD OVERWRITE location ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE location.address ON TABLE events TYPE string;
-DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE object;
+DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE point;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
@@ -69,7 +69,7 @@ DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text H
 DEFINE TABLE OVERWRITE has_media TYPE RELATION IN events TO media;
 
 -- Let's define a table for livestreams
-DEFINE TABLE IF NOT EXISTS livestreams schemafull;
+DEFINE TABLE OVERWRITE livestreams schemafull;
 DEFINE FIELD OVERWRITE channel_name ON TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE input_name ON TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE ingest_url ON TABLE livestreams type STRING;
@@ -78,7 +78,7 @@ DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;
 DEFINE FIELD OVERWRITE event ON TABLE livestreams TYPE record<events>;
 
 -- Let's define a table for scenes???
-DEFINE TABLE IF NOT EXISTS scenes schemafull;
+DEFINE TABLE OVERWRITE scenes schemafull;
 DEFINE FIELD OVERWRITE input_uid ON TABLE scenes TYPE STRING;
 DEFINE FIELD OVERWRITE srt ON TABLE scenes FLEXIBLE TYPE OBJECT;
 DEFINE FIELD OVERWRITE event ON TABLE scenes TYPE record<events>;
@@ -99,7 +99,7 @@ DEFINE INDEX unique_posts ON TABLE posts COLUMNS in, out UNIQUE;
 -- Define a vector index on the posts table for embedding field
 
 -- A table for comments
-DEFINE TABLE IF NOT EXISTS comments TYPE RELATION IN users TO posts;
+DEFINE TABLE OVERWRITE comments TYPE RELATION IN users TO posts;
 DEFINE FIELD OVERWRITE out ON TABLE comments TYPE record<posts>;
 DEFINE FIELD OVERWRITE in ON TABLE comments TYPE record<users>;
 DEFINE FIELD OVERWRITE content ON TABLE comments TYPE string;
@@ -140,7 +140,7 @@ DEFINE INDEX hnsw_media_embeddings ON TABLE media FIELDS embeddings HNSW DIMENSI
 
 
 
-DEFINE FUNCTION fn::fetch_events_by_location($coordinates: Point, $distance: number, $is_live: option<bool>, $page: option<number>, $limit: option<number>) {
+DEFINE FUNCTION OVERWRITE fn::fetch_events_by_location($coordinates: Point, $distance: number, $is_live: option<bool>, $page: option<number>, $limit: option<number>) {
 
     LET $page =
         IF (type::is::number($page)) THEN
@@ -167,7 +167,7 @@ DEFINE FUNCTION fn::fetch_events_by_location($coordinates: Point, $distance: num
         FROM events
         WHERE 
             is_live = $live 
-            AND geo::distance(location.coordinates, $coordinates) <= $distance
+            AND geo::distance(<Point>location.coordinates, $coordinates) <= $distance
         ORDER BY distance ASC
         LIMIT $limit START ($page - 1) * $limit
     )
@@ -175,7 +175,7 @@ DEFINE FUNCTION fn::fetch_events_by_location($coordinates: Point, $distance: num
 };
 
 
-DEFINE FUNCTION fn::fetch_all_events($page: number, $limit: number, $private: option<bool>) {
+DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number, $private: option<bool>) {
 
 
     LET $page =

@@ -87,6 +87,7 @@ class EventsDB:
             data.pop("type", None)
             data.pop("categories[]", None)
             data.pop("coordinates[]", None)
+            data.pop("types", None)
 
             async with self.pool.acquire() as conn:
                 event_id = data.pop("event_id", None)

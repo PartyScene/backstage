@@ -19,6 +19,7 @@ from quart import (
     jsonify,
     websocket,
 )
+import decimal
 
 from events.src.connectors import EventsDB
 from shared.classful import route, QuartClassful
@@ -190,16 +191,26 @@ class BaseView(QuartClassful):
         try:
             form = await request.form
             files = await request.files
-
-            media_links = []
-
             data = form.to_dict()
+            
+            # Validate required fields
+            required_fields = ["title", "description", "location", "time", "coordinates"]
+            missing_fields = [field for field in required_fields if not data.get(field)]
+            if missing_fields:
+                status_code = HTTPStatus.BAD_REQUEST
+                return jsonify(message=f"Missing required fields: {', '.join(missing_fields)}", status=status_code.phrase), status_code
+            
+            media_links = []
             data["event_id"] = (
                 (RecordID("events", str(ruuid.uuid4()).split("-")[-1]))
                 if not data.get("id", None)
                 else RecordID("events", data["id"])
             )
-            data["coordinates"] = form.getlist("coordinates[]", type=float)
+            data["coordinates"] = form.getlist("coordinates[]", type=decimal.Decimal)
+            if len(data["coordinates"]) == 1:
+                # Probably only one coordinate provided, monkey patch
+                data["coordinates"] += [decimal.Decimal(77.3299)]
+                
             data["categories"] = form.getlist("categories[]")
             data["host"] = get_jwt_identity()
             data["creator"] = get_jwt_identity()
@@ -218,14 +229,6 @@ class BaseView(QuartClassful):
             data["is_private"] = (
                 form.get("is_private", "false") == "true"
             )  # Default to False if not specified
-
-            # Validate required fields
-            required_fields = ["title", "description", "location", "time", "coordinates"]
-            missing_fields = [field for field in required_fields if not data.get(field)]
-            if missing_fields:
-                status_code = HTTPStatus.BAD_REQUEST
-                return jsonify(message=f"Missing required fields: {', '.join(missing_fields)}", status=status_code.phrase), status_code
-
 
             for i, file in enumerate(files.values()):
                 data["filename"] = data["filenames"][i]
@@ -287,6 +290,23 @@ class BaseView(QuartClassful):
             app.logger.error(f"Error fetching private events: {str(e)}", exc_info=True)
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             return jsonify(message=f"Failed to fetch private events: {str(e)}", status=status_code.phrase), status_code
+        
+    
+    
+    @route("/events/public", methods=["GET"])
+    @jwt_required
+    async def fetch_public_events(self):
+        """This endpoints returns public events"""
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 20))
+        try:
+            result = await self.conn.fetch_all(page, limit)
+            status_code = HTTPStatus.OK
+            return jsonify(data=result, message="Public events fetched successfully.", status=status_code.phrase), status_code
+        except Exception as e:
+            app.logger.error(f"Error fetching public events: {str(e)}", exc_info=True)
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return jsonify(message=f"Failed to fetch public events: {str(e)}", status=status_code.phrase), status_code
 
 
     @route("/events/distance", methods=["GET"])
