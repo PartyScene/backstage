@@ -1,7 +1,7 @@
 import os
 import io
 import asyncio
-import msgpack
+import ormsgpack
 import logging  # Import standard logging
 from typing import List
 from contextlib import asynccontextmanager
@@ -201,20 +201,20 @@ class Job(RabbitBroker):
             raise  # Re-raise to allow retry/DLQ
 
     async def decode_message_body(self, msg: RabbitMessage, original_decoder):
-        """Custom decoder: Assumes body is msgpack-encoded bytes."""
+        """Custom decoder: Assumes body is ormsgpack-encoded bytes."""
         if msg.decoded_body is not None:
             return msg
         if not isinstance(msg.body, bytes):
             return msg
         try:
-            msg.body = msgpack.loads(
+            msg.body = ormsgpack.unpackb(
                 msg.body
             )  # Decodes raw bytes into Python object (likely bytes again in this case)
             msg.decoded_body = True
             return msg
-        except msgpack.exceptions.UnpackException as e:
-            logger.error("Msgpack decoding failed. Invalid format.", exc_info=True)
-            raise ValueError("Invalid msgpack body") from e
+        except ValueError as e:
+            logger.error("Ormsgpack decoding failed. Invalid format.", exc_info=True)
+            raise ValueError("Invalid ormsgpack body") from e
         except Exception as e:
             logger.exception(
                 "Unexpected decoding error."
@@ -269,17 +269,17 @@ class Job(RabbitBroker):
                 f"Max retries ({MAX_RETRIES}) reached for message {message_id}. Giving up."
             )
             # Implement DLQ (Dead Letter Queue) logic here if desired
-            # e.g., await self.publish(msgpack.dumps(image_bytes), queue="my_dlq", headers=headers)
+            # e.g., await self.publish(ormsgpack.packb(image_bytes), queue="my_dlq", headers=headers)
             # ACK the message to remove it from the main queue, even if DLQ fails
             await message.ack()
 
     async def requeue_message(self, image_bytes: bytes, headers: dict):
         """Re-encodes body with msgpack and republishes the message."""
         try:
-            body_to_publish = msgpack.dumps(image_bytes)
+            body_to_publish = ormsgpack.packb(image_bytes)
         except Exception as e:
             logger.error(
-                f"Msgpack encoding failed during requeue attempt.: {e}", exc_info=True
+                f"Ormsgpack encoding failed during requeue attempt.: {e}", exc_info=True
             )
             raise  # Propagate error to _handle_retry
 

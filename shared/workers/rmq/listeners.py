@@ -1,4 +1,4 @@
-from quart import make_response, render_template, current_app as app, request, jsonify
+from quart import make_response, render_template, current_app as app, request, jsonify, Quart
 from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
@@ -16,12 +16,12 @@ import requests
 from contextlib import asynccontextmanager
 
 from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
-import msgpack
+import ormsgpack
 
 
 class RMQBroker(RabbitBroker):
 
-    def __init__(self, app, *args, **kwargs):
+    def __init__(self, app: Quart, *args, **kwargs):
         self.RABBITMQ_MEDIA_QUEUE = RabbitQueue(os.environ["RABBITMQ_MEDIA_QUEUE"])
         self.RABBITMQ_R18E_QUEUE = RabbitQueue(os.environ["RABBITMQ_R18E_QUEUE"])
 
@@ -64,7 +64,7 @@ class RMQBroker(RabbitBroker):
 
     async def decode_message(self, msg: RabbitMessage, original_decoder):
         try:
-            msg.body = msgpack.loads(msg.body)
+            msg.body = ormsgpack.unpackb(msg.body)
             return msg
         except:
             try:
@@ -86,10 +86,10 @@ class RMQBroker(RabbitBroker):
         self, filename, file, type: Literal["MEDIA", "POST", "EVENT"]
     ):
 
-        file: bytes = (
-            msgpack.dumps(file.read())
+        file = (
+            ormsgpack.packb(file.read())
             if not isinstance(file, bytes)
-            else msgpack.dumps(file)
+            else ormsgpack.packb(file)
         )
         await self.publisher(self.RABBITMQ_R18E_QUEUE).publish(
             file,
@@ -109,7 +109,7 @@ class RMQBroker(RabbitBroker):
             data (dict): Dictionary containing the data to be published
             file (bytes): File to be published
         """
-        file: bytes = msgpack.dumps(file.read())
+        file: bytes = ormsgpack.packb(file.read())
         await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(
             file,
             headers={
