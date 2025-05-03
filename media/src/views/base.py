@@ -155,14 +155,15 @@ class BaseView(QuartClassful):
                 self.logger.info(f"Cache HIT for signed URL: {filename}")
                 # Return cached URL
                 status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data={"signed_url": cached_url},
-                        message="Signed URL retrieved from cache.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return cached_url, status_code
+                # return (
+                #     jsonify(
+                #         data={"signed_url": cached_url},
+                #         message="Signed URL retrieved from cache.",
+                #         status=status_code.phrase,
+                #     ),
+                #     status_code,
+                # )
 
             self.logger.info(f"Cache MISS for signed URL: {filename}")
 
@@ -214,14 +215,15 @@ class BaseView(QuartClassful):
 
         # Return the newly generated URL
         status_code = HTTPStatus.OK
-        return (
-            jsonify(
-                data={"signed_url": media_url},
-                message="Signed URL generated successfully.",
-                status=status_code.phrase,
-            ),
-            status_code,
-        )
+        return media_url, status_code
+        # return (
+        #     jsonify(
+        #         data={"signed_url": media_url},
+        #         message="Signed URL generated successfully.",
+        #         status=status_code.phrase,
+        #     ),
+        #     status_code,
+        # )
 
     async def generate_download_signed_url_v4(self, blob_name):
         """Generates a v4 signed URL for downloading a blob.

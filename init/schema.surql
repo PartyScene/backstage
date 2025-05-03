@@ -119,8 +119,8 @@ DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 -- & Finally? A table for media
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
-DEFINE FIELD OVERWRITE type ON media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
--- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))}["data"]["url"] ASSERT string::len($value) > 0;
+DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
+DEFINE FIELD OVERWRITE url ON TABLE media TYPE option<string> VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))} ASSERT string::len($value) > 0;
 
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";

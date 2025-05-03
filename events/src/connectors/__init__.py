@@ -86,7 +86,8 @@ class EventsDB:
                             "event": data["event_id"],
                         },
                     )
-                    media_ids.append(media_query_result["id"])
+                    if isinstance(media_query_result, dict):
+                        media_ids.append(media_query_result["id"])
                 self.logger.warning(
                     json.dumps(
                         media_query_result, option=json.OPT_INDENT_2, default=str

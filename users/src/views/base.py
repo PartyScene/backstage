@@ -4,6 +4,7 @@ from quart_jwt_extended import get_jwt_identity, jwt_required
 from http import HTTPStatus
 from typing import Tuple, Dict, Any
 import asyncio
+import uuid_utils as ruuid
 
 from shared.classful import route, QuartClassful
 from datetime import datetime
@@ -618,7 +619,7 @@ class BaseView(QuartClassful):
             # This endpoint primarily triggers the upload process.
 
             rmq_data = {
-                "filename": f"users/{user_id}/{file.filename}",  # Define storage path
+                "filename": f"users/{user_id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}",  # Define storage path
                 "type": file.content_type,
                 "creator": user_id,
                 "context": "user_avatar",  # Add context for media service
@@ -632,12 +633,13 @@ class BaseView(QuartClassful):
             await app.RMQ._publish_media(rmq_data, file)
 
             # Don't update user profile here directly. Wait for confirmation.
-            # response = await self.conn.update({"id": user_id, "avatar_pending": rmq_data['filename']}) # Maybe set a pending status?
+            response = await self.conn.update({"id": user_id, "filename": rmq_data['filename'], "type": rmq_data['type']}) # Maybe set a pending status?
 
             # Return success indicating the upload process has started
             status_code = HTTPStatus.ACCEPTED  # 202 Accepted is suitable here
             return (
                 jsonify(
+                    data=response,
                     message="Media upload process initiated successfully.",
                     status=status_code.phrase,
                 ),

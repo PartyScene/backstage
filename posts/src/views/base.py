@@ -323,7 +323,7 @@ class BaseView(QuartClassful):
 
             data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
             data["filenames"] = [
-                f"posts/{user_id}/{data['post_id']}/{file.filename}"
+                f"posts/{user_id}/{data['post_id']}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}"
                 for file in files.values()
                 if file.filename  # Ensure file has a name
             ]

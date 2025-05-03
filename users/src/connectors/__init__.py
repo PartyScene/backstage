@@ -174,7 +174,7 @@ class UsersDB:
 
         if "filename" in data:
             async with self.pool.acquire() as conn:
-                data["creator"] = RecordID("users", data["creator"])
+                data["creator"] = RecordID("users", data["id"])
                 media_query_result = await conn.create(
                     "media", self.subset(data, ["filename", "type", "creator"])
                 )
@@ -183,12 +183,9 @@ class UsersDB:
                         media_query_result, option=json.OPT_INDENT_2, default=str
                     )
                 )
-
-                avatar_media = RecordID(
-                    "media", record_id_to_json(media_query_result)["id"]
-                )
-
-                data["avatar"] = avatar_media
+                
+                if isinstance(media_query_result, dict):
+                    data["avatar"] = media_query_result["id"]
 
         async with self.pool.acquire() as conn:
             result = await conn.query(

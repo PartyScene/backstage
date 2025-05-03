@@ -326,8 +326,10 @@ class BaseView(QuartClassful):
             data["categories"] = form.getlist("categories[]")
             data["host"] = get_jwt_identity()
             data["creator"] = get_jwt_identity()
+            
+            # filename flow
             data["filenames"] = [
-                f"events/{data['host']}/{data['event_id'].id}/{file.filename}"
+                f"events/{data['host']}/{data['event_id'].id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}"
                 for file in files.values()
             ]
             data["types"] = [file.content_type for file in files.values()]

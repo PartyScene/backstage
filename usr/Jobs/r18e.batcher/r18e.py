@@ -11,7 +11,7 @@ import torch
 from transformers import ViTImageProcessor, ViTModel
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker, RabbitQueue, RabbitMessage
-from surrealdb import AsyncSurreal, AsyncWsSurrealConnection
+from surrealdb import AsyncSurreal, AsyncWsSurrealConnection, AsyncHttpSurrealConnection
 
 # --- Configuration ---
 RABBITMQ_URI = os.environ["RABBITMQ_URI"]
@@ -35,12 +35,13 @@ logger = logging.getLogger(__name__)  # Get logger for this module
 
 
 # --- Global Variables ---
-db_connection: AsyncWsSurrealConnection | None = None
+db_connection: AsyncWsSurrealConnection | AsyncHttpSurrealConnection | None = None
 processor: ViTImageProcessor | None = None
 model: ViTModel | None = None
 device: torch.device | None = None
-# Lock to ensure thread-safe model inference, critical for GPUs
+# Locks to ensure thread-safe operations
 model_lock = asyncio.Lock()
+db_init_lock = asyncio.Lock()  # Shared lock for database initialization
 # ----------------------
 
 
@@ -115,9 +116,11 @@ async def init_globals():
 
     db_connection = AsyncSurreal(SURREAL_URI)
     try:
-        await db_connection.signin({"username": SURREAL_USER, "password": SURREAL_PASS})
-        await db_connection.use(SURREAL_NAMESPACE, SURREAL_DATABASE)
-        logger.info("Database connection established.")
+        async with db_init_lock:
+            await db_connection.signin({"username": SURREAL_USER, "password": SURREAL_PASS})
+            await db_connection.use(SURREAL_NAMESPACE, SURREAL_DATABASE)
+            await db.query("INFO FOR DB;") # Check if the connection is established
+            logger.info("Database connection established.")
     except Exception as e:
         # Log as critical because the app likely cannot function without DB
         logger.critical("Database initialization failed!", exc_info=True)
