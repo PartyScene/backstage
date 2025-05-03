@@ -30,7 +30,9 @@ class TestEventCreation(TestEventsBase):
         created_event = response_json["data"]
 
         assert "id" in created_event
-        mock_event["id"] = created_event["id"]  # Store ID for potential cleanup or subsequent tests
+        mock_event["id"] = created_event[
+            "id"
+        ]  # Store ID for potential cleanup or subsequent tests
 
         assert created_event["host"] == mock_event["host"]
         # Add more assertions based on expected fields in created_event
@@ -40,7 +42,7 @@ class TestEventCreation(TestEventsBase):
         """Test creating an event with missing required fields."""
         # Remove a required field, e.g., title
         invalid_event_data = mock_event.copy()
-        invalid_event_data['id'] = 'test_invalid'
+        invalid_event_data["id"] = "test_invalid"
         del invalid_event_data["title"]
 
         files = {
@@ -51,7 +53,9 @@ class TestEventCreation(TestEventsBase):
             )
         }
 
-        response = await self.create_event(event_client, invalid_event_data, files, bearer)
+        response = await self.create_event(
+            event_client, invalid_event_data, files, bearer
+        )
         assert response.status_code == HTTPStatus.BAD_REQUEST
 
         response_json = await response.get_json()
@@ -62,8 +66,10 @@ class TestEventCreation(TestEventsBase):
         """Test creating an event without uploading files (if files are optional or handled differently)."""
         # Adapt this test based on whether files are strictly required
         test_data = mock_event.copy()
-        test_data['id'] = 'test_fileless'
-        response = await self.create_event(event_client, test_data, {}, bearer)  # Pass empty dict for files
+        test_data["id"] = "test_fileless"
+        response = await self.create_event(
+            event_client, test_data, {}, bearer
+        )  # Pass empty dict for files
 
         # Assert based on expected behavior (e.g., success if files are optional, error if required)
         # Example: Assuming files are optional for creation via this test setup
@@ -73,6 +79,8 @@ class TestEventCreation(TestEventsBase):
         assert "data" in response_json
         created_event = response_json["data"]
         assert "id" in created_event
-        assert not created_event.get("filenames")  # Check that filenames list is empty or absent
+        assert not created_event.get(
+            "filenames"
+        )  # Check that filenames list is empty or absent
 
     # Add more tests for edge cases, invalid data types, etc.

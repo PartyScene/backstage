@@ -52,3 +52,21 @@ class TestPostsBase:
         return await client.delete(
             f"/posts/{post_id}", headers={"Authorization": f"Bearer {bearer}"}
         )
+
+    async def report_post(self, client: QuartClient, post_id, report_data, bearer):
+        """Helper method to report a post"""
+        return await client.post(
+            f"/posts/{post_id}/report",
+            json=report_data,
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+
+    async def report_comment(
+        self, client: QuartClient, post_id, comment_id, report_data, bearer
+    ):
+        """Helper method to report a comment"""
+        return await client.post(
+            f"/posts/{post_id}/comments/{comment_id}/report",
+            json=report_data,
+            headers={"Authorization": f"Bearer {bearer}"},
+        )

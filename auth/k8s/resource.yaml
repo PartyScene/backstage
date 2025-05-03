@@ -4,15 +4,15 @@ metadata:
   annotations:
     autopilot.gke.io/resource-adjustment: '{"input":{"containers":[{"name":"microservices-auth-1"}]},"output":{"containers":[{"limits":{"ephemeral-storage":"1Gi"},"requests":{"cpu":"500m","ephemeral-storage":"1Gi","memory":"2Gi"},"name":"microservices-auth-1"}]},"modified":true}'
     autopilot.gke.io/warden-version: 31.23.0-gke.9
-    deployment.kubernetes.io/revision: "5"
+    deployment.kubernetes.io/revision: "155"
   creationTimestamp: "2025-03-06T23:23:47Z"
-  generation: 9
+  generation: 1384
   labels:
     app: microserv.auth
     app.kubernetes.io/managed-by: cloud-console
   name: microserv.auth
   namespace: default
-  resourceVersion: "345956"
+  resourceVersion: "74785249"
   uid: e89a1120-3c8b-4865-aca6-ad051369c312
 spec:
   progressDeadlineSeconds: 600
@@ -29,6 +29,8 @@ spec:
     type: RollingUpdate
   template:
     metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2025-05-01T03:40:46-05:00"
       creationTimestamp: null
       labels:
         app: microserv.auth
@@ -36,6 +38,11 @@ spec:
     spec:
       containers:
       - env:
+        - name: NOVU_SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              key: NOVU_SECRET_KEY
+              name: microserv.auth-config-xn0q
         - name: SURREAL_URI
           valueFrom:
             configMapKeyRef:
@@ -61,6 +68,31 @@ spec:
             configMapKeyRef:
               key: SCHEMA_FILE
               name: microserv.auth-config-xn0q
+        - name: BREVO_API_KEY
+          valueFrom:
+            configMapKeyRef:
+              key: BREVO_API_KEY
+              name: microserv.auth-config-xn0q
+        - name: PROJECT_NUMBER
+          valueFrom:
+            configMapKeyRef:
+              key: PROJECT_NUMBER
+              name: microserv.auth-config-xn0q
+        - name: PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              key: PROJECT_ID
+              name: microserv.auth-config-xn0q
+        - name: KEK_SECRET_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: KEK_SECRET_NAME
+              name: microserv.auth-config-xn0q
+        - name: IPINFO_TOKEN
+          valueFrom:
+            configMapKeyRef:
+              key: IPINFO_TOKEN
+              name: microserv.auth-config-xn0q
         image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.auth:latest
         imagePullPolicy: Always
         name: microservices-auth-1
@@ -68,9 +100,9 @@ spec:
           limits:
             ephemeral-storage: 1Gi
           requests:
-            cpu: 500m
+            cpu: 100m
             ephemeral-storage: 1Gi
-            memory: 2Gi
+            memory: 128Mi
         securityContext:
           capabilities:
             drop:
@@ -83,6 +115,8 @@ spec:
       securityContext:
         seccompProfile:
           type: RuntimeDefault
+      serviceAccount: default
+      serviceAccountName: default
       terminationGracePeriodSeconds: 30
       tolerations:
       - effect: NoSchedule
@@ -92,19 +126,19 @@ spec:
 status:
   availableReplicas: 1
   conditions:
-  - lastTransitionTime: "2025-03-06T23:45:53Z"
-    lastUpdateTime: "2025-03-06T23:45:53Z"
+  - lastTransitionTime: "2025-03-23T16:06:51Z"
+    lastUpdateTime: "2025-05-01T08:40:55Z"
+    message: ReplicaSet "microserv.auth-544d57fc8b" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2025-05-01T08:54:10Z"
+    lastUpdateTime: "2025-05-01T08:54:10Z"
     message: Deployment has minimum availability.
     reason: MinimumReplicasAvailable
     status: "True"
     type: Available
-  - lastTransitionTime: "2025-03-06T23:23:48Z"
-    lastUpdateTime: "2025-03-07T00:49:47Z"
-    message: ReplicaSet "microserv.auth-6dd5964b4c" has successfully progressed.
-    reason: NewReplicaSetAvailable
-    status: "True"
-    type: Progressing
-  observedGeneration: 9
+  observedGeneration: 1384
   readyReplicas: 1
   replicas: 1
   updatedReplicas: 1

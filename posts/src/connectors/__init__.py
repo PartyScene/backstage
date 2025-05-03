@@ -3,6 +3,7 @@ import os
 import orjson as json
 
 from surrealdb import AsyncSurreal, RecordID
+from typing import Literal
 from shared.utils import record_id_to_json
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
@@ -11,6 +12,22 @@ class PostsDB:
     def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
         self.pool = pool
         self.logger = logger
+
+    async def _report_resource(
+        self, data: dict, resource: Literal["posts", "comments"]
+    ) -> dict:
+        """
+        Report this resource which is either a post or a comment
+
+        Args:
+            data (dict): The data to report
+        """
+
+        data["reporter"] = RecordID("users", data["reporter"])
+        data["resource"] = RecordID(resource, data["resource"])
+        async with self.pool.acquire() as conn:
+            result = await conn.create("reports", data)
+            return record_id_to_json(result)
 
     async def _info(self):
         """Get database information."""
@@ -81,6 +98,21 @@ class PostsDB:
         """
         async with self.pool.acquire() as conn:
             result = await conn.delete(RecordID("comments", comment_id))
+        return record_id_to_json(result)
+
+    async def fetch_comment(self, comment_id):
+        """
+        Asynchronously fetches a comment associated with the given ID.
+            Args:
+                id (str): ID of the comment to be fetched.
+            Returns:
+                dict: The result of the fetch operation.
+            Raises:
+                Exception: If the deletion operation fails.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.select(RecordID("comments", comment_id))
+        self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
     async def create_post(self, data, author) -> dict:

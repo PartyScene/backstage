@@ -232,7 +232,7 @@ class MicroService(Quart):
                 try:
                     logger.warning("Closing SurrealDB connection...")
                     # await self.conn._close_pools()
-                    await self.pool_manager._close_pools()
+                    await self.pool_manager.close_all_pools()
                     logger.info("SurrealDB connection closed successfully")
                 except Exception as db_close_error:
                     logger.error(
@@ -361,7 +361,8 @@ class MicroService(Quart):
                 finally:
                     try:
                         await self.conn.kill_live_query(live_id)
-                        await self.redis.delete(f"live_query:{event_id}")
+                        if self.redis:
+                            await self.redis.delete(f"live_query:{event_id}")
                         logger.info(f"Cleaned up resources for event {event_id}")
                     except Exception as e:
                         logger.error(f"Cleanup error: {str(e)}", exc_info=True)

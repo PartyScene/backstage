@@ -78,11 +78,19 @@ class BaseView(QuartClassful):
         file: <image_file>
         """
         event_id = request.args.get("event")
-        resp = await self.__vector_database.recommend_similar_events(event_id)
-        
-        if not event_id or not resp:
+        try:
+            resp = await self.__vector_database.recommend_similar_events(event_id)
+            if not event_id or not resp:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(message="Missing event ID", status=status_code.phrase),
+                    status_code,
+                )
+        except Exception as e:
             status_code = HTTPStatus.BAD_REQUEST
-            return jsonify(message="Missing event ID", status=status_code.phrase), status_code
-        
+            return (
+                    jsonify(message="Event not found or has not been vectorized", status=status_code.phrase),
+                    status_code,
+                )
         status_code = HTTPStatus.OK
         return jsonify(data=resp, message=status_code.phrase), status_code

@@ -19,6 +19,18 @@ class EventsDB:
         self.pool = pool
         self.logger = logger
 
+    async def _report_resource(self, data: dict):
+        """
+        Report this resource which is an event
+        Args:
+            data (dict): The data to report
+        """
+        data["reporter"] = RecordID("users", data["reporter"])
+        data["resource"] = RecordID("events", data["resource"])
+        async with self.pool.acquire() as conn:
+            result = await conn.create("reports", data)
+            return record_id_to_json(result)
+
     async def _info(self):
         """
         Get database information.
@@ -57,7 +69,7 @@ class EventsDB:
             data["creator"] = data["host"] = RecordID("users", data["host"])
             data["location"] = {
                 "address": data.get("location"),
-                "coordinates": {"type": "Point", "coordinates": coordinates},
+                "coordinates": GeometryPoint.parse_coordinates(coordinates),
             }
 
             media_ids = []
@@ -96,7 +108,7 @@ class EventsDB:
                 await conn.query(
                     "RELATE $event -> has_media -> $media_ids",
                     {
-                        "event": result["id"],
+                        "event": result.get("id"),
                         "media_ids": media_ids,
                     },
                 )
@@ -124,12 +136,10 @@ class EventsDB:
         """
         async with self.pool.acquire() as conn:
             result = await conn.delete(RecordID("events", event_id))
-            if "err" in result:
-                raise Exception(f"Error deleting event: {result}")
-        return record_id_to_json(result)
+            return record_id_to_json(result)
 
     async def fetch_by_distance(
-        self, coordinates: tuple[float, float], distance: int, *, live: bool = False
+        self, coordinates: tuple[float, float], distance: int, *, live: bool = False, is_private: bool = False, user: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Fetch all events within a certain distance.
@@ -137,23 +147,39 @@ class EventsDB:
         Args:
             coordinates (tuple[float, float]): Latitude and longitude
             distance (int): The distance in meters
-            live (bool, optional): If True, only return live events
+            live (bool, optional): If True, only return live events. Defaults to False.
+            is_private (bool, optional): If True, only return private events. Defaults to False.
+
 
         Returns:
             List[Dict[str, Any]]: List of events within the specified distance
         """
         try:
             async with self.pool.acquire() as conn:
-                result = await conn.query(
-                    """
-                    RETURN fn::fetch_events_by_location($coordinates, $distance, $live);
-                    """,
-                    {
-                        "live": live,
-                        "distance": distance,
-                        "coordinates": GeometryPoint.parse_coordinates(coordinates),
-                    },
-                )
+                if user:
+                    result = await conn.query(
+                        f"""
+                        RETURN fn::fetch_events_by_location($coordinates, $distance, $is_live, $is_private, $user);
+                        """,
+                        {
+                            "user": RecordID("users", user),
+                            "is_live": live,
+                            "distance": distance,
+                            "coordinates": GeometryPoint.parse_coordinates(coordinates),
+                            "is_private": is_private,
+                        },
+                    )
+                else:
+                    result = await conn.query(
+                        f"""
+                        RETURN fn::fetch_events_by_location($coordinates, $distance, $is_live);
+                        """,
+                        {
+                            "is_live": live,
+                            "distance": distance,
+                            "coordinates": GeometryPoint.parse_coordinates(coordinates),
+                        },
+                    )
             return record_id_to_json(result)
 
         except Exception as e:
@@ -175,7 +201,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                    RETURN fn::fetch_all_events($page, $limit, false);
+                    RETURN fn::fetch_all_events($page, $limit);
                     """,
                     {"page": page, "limit": limit},
                 )
@@ -187,12 +213,13 @@ class EventsDB:
             raise
 
     async def fetch_private(
-        self, page: int = 1, limit: int = 20
+        self, user, page: int = 1, limit: int = 20
     ) -> List[Dict[str, Any]]:
         """
         Fetch private events.
 
         Args:
+            user (str): The user ID to fetch private events for.
             page (int, optional): The page number. Defaults to 1.
             limit (int, optional): The number of events per page. Defaults to 20.
 
@@ -203,9 +230,9 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                    RETURN fn::fetch_all_events($page, $limit, true);
+                    RETURN fn::fetch_private_events_for_user($user, $page, $limit);
                     """,
-                    {"page": page, "limit": limit},
+                    {"user": RecordID("users", user), "page": page, "limit": limit},
                 )
             self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             return record_id_to_json(result)

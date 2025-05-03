@@ -11,12 +11,10 @@ class TestUsersBase:
         return await client.get(
             f"/users/{user_id}", headers={"Authorization": f"Bearer {bearer}"}
         )
-        
+
     async def get_me(self, client: QuartClient, bearer):
         """Helper method to get a user"""
-        return await client.get(
-            f"/user", headers={"Authorization": f"Bearer {bearer}"}
-        )
+        return await client.get(f"/user", headers={"Authorization": f"Bearer {bearer}"})
 
     async def create_connection(self, client: QuartClient, target_id, bearer):
         """Helper method to create a connection."""
@@ -59,4 +57,12 @@ class TestUsersBase:
         """Helper method to delete a user."""
         return await client.delete(
             f"/users/{user_id}", headers={"Authorization": f"Bearer {bearer}"}
+        )
+
+    async def report_user(self, client: QuartClient, user_id, report_data, bearer):
+        """Helper method to report a user"""
+        return await client.post(
+            f"/users/{user_id}/report",
+            json=report_data,
+            headers={"Authorization": f"Bearer {bearer}"},
         )

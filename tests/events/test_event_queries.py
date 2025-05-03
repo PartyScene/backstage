@@ -36,7 +36,7 @@ class TestEventQueries(TestEventsBase):
         event = response_json["data"]
         assert isinstance(event, dict)
         assert event["id"] == mock_event["id"]
-        assert event["title"] == mock_event["title"] # Check other fields
+        assert event["title"] == mock_event["title"]  # Check other fields
 
     async def test_get_nonexistent_event(self, event_client, bearer):
         """Test retrieving an event that does not exist."""
@@ -65,9 +65,11 @@ class TestEventQueries(TestEventsBase):
         """Test filtering events by distance from N meters."""
         # Use a known location or generate one
         lat, lng = faker.latitude(), faker.longitude()
-        distance = 5000 # 5km
+        distance = 5000  # 5km
 
-        response = await self.get_events_distance(event_client, [lat, lng], distance, bearer)
+        response = await self.get_events_distance(
+            event_client, [lat, lng], distance, bearer
+        )
         assert response.status_code == HTTPStatus.OK
 
         response_json = await response.get_json()
@@ -88,6 +90,68 @@ class TestEventQueries(TestEventsBase):
         response_json = await response.get_json()
         assert response_json["status"] == HTTPStatus.BAD_REQUEST.phrase
         # Add assertion for specific error message if available
+
+    async def test_list_private_events(self, event_client, bearer):
+        """Test retrieving a list of private events."""
+        # Note: This test assumes the underlying DB method correctly filters.
+        # More robust testing might involve creating specific private/public events.
+        response = await self.get_private_events(event_client, bearer)
+        assert response.status_code == HTTPStatus.OK
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        events = response_json["data"]
+        assert isinstance(events, list)
+        # Optionally, verify if events returned are indeed private if possible
+
+    async def test_list_public_events(self, event_client):
+        """Test retrieving a list of public events."""
+        # Note: Similar to private events, relies on DB filtering.
+        response = await self.get_public_events(event_client)
+        assert response.status_code == HTTPStatus.OK
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "data" in response_json
+        events = response_json["data"]
+        assert isinstance(events, list)
+        # Optionally, verify if events returned are indeed public if possible
+
+    async def test_report_event(self, event_client, mock_event, bearer):
+        """Test reporting an existing event."""
+        assert "id" in mock_event, "Mock event must have an ID for this test"
+        report_data = {"reason": faker.sentence()}
+
+        response = await self.report_event(
+            event_client, mock_event["id"], report_data, bearer
+        )
+        assert response.status_code == HTTPStatus.CREATED
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.CREATED.phrase
+        assert "Resource reported" in response_json["message"]
+        assert "data" in response_json
+        assert "id" in response_json["data"]  # Check if report ID is returned
+
+    async def test_report_event_missing_reason(self, event_client, mock_event, bearer):
+        """Test reporting an event without providing a reason."""
+        assert "id" in mock_event, "Mock event must have an ID for this test"
+        report_data = {}  # Missing reason
+        response = await self.report_event(
+            event_client, mock_event["id"], report_data, bearer
+        )
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        response_json = await response.get_json()
+        assert "Reason is required" in response_json["message"]
+
+    # async def test_buy_ticket(self, event_client, mock_event, bearer):
+    #     """Test buying a ticket for an event."""
+    #     assert "id" in mock_event, "Mock event must have an ID for this test"
+    #     response = await self.buy_ticket(event_client, mock_event["id"], bearer)
+    #     assert response.status_code == HTTPStatus.CREATED
+    #     response_json = await response.get_json()
+    #     assert "Ticket purchased successfully" in response_json["message"]
 
     # Add tests for pagination (limit, page parameters) if implemented
     # Add tests for other filtering options (private, categories, etc.)

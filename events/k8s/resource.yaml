@@ -2,150 +2,22 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    autopilot.gke.io/resource-adjustment: >-
-      {"input":{"containers":[{"name":"microservices-events-sha256-1"}]},"output":{"containers":[{"limits":{"ephemeral-storage":"1Gi"},"requests":{"cpu":"500m","ephemeral-storage":"1Gi","memory":"2Gi"},"name":"microservices-events-sha256-1"}]},"modified":true}
+    autopilot.gke.io/resource-adjustment: '{"input":{"containers":[{"name":"microservices-events-sha256-1"}]},"output":{"containers":[{"limits":{"ephemeral-storage":"1Gi"},"requests":{"cpu":"100m","ephemeral-storage":"1Gi","memory":"128Mi"},"name":"microservices-events-sha256-1"}]},"modified":true}'
     autopilot.gke.io/warden-version: 31.23.0-gke.9
+    deployment.kubernetes.io/revision: "166"
+  creationTimestamp: "2025-03-07T09:05:40Z"
+  generation: 609
   labels:
     app: microserv.events
-  managedFields:
-    - apiVersion: apps/v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:spec':
-          'f:replicas': {}
-      manager: vpa-recommender
-      operation: Update
-      subresource: scale
-    - apiVersion: apps/v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:spec':
-          'f:template':
-            'f:spec':
-              'f:containers':
-                'k:{"name":"microservices-events-sha256-1"}':
-                  'f:image': {}
-      manager: kubectl-set
-      operation: Update
-      time: '2025-03-07T09:38:02Z'
-    - apiVersion: apps/v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:metadata':
-          'f:labels':
-            .: {}
-            'f:app': {}
-            'f:app.kubernetes.io/managed-by': {}
-        'f:spec':
-          'f:progressDeadlineSeconds': {}
-          'f:revisionHistoryLimit': {}
-          'f:selector': {}
-          'f:strategy':
-            'f:rollingUpdate':
-              .: {}
-              'f:maxSurge': {}
-              'f:maxUnavailable': {}
-            'f:type': {}
-          'f:template':
-            'f:metadata':
-              'f:labels':
-                .: {}
-                'f:app': {}
-                'f:app.kubernetes.io/managed-by': {}
-            'f:spec':
-              'f:containers':
-                'k:{"name":"microservices-events-sha256-1"}':
-                  .: {}
-                  'f:env':
-                    .: {}
-                    'k:{"name":"REDIS_URI"}':
-                      .: {}
-                      'f:name': {}
-                      'f:valueFrom':
-                        .: {}
-                        'f:configMapKeyRef': {}
-                    'k:{"name":"SURREAL_PASS"}':
-                      .: {}
-                      'f:name': {}
-                      'f:valueFrom':
-                        .: {}
-                        'f:configMapKeyRef': {}
-                    'k:{"name":"SURREAL_URI"}':
-                      .: {}
-                      'f:name': {}
-                      'f:valueFrom':
-                        .: {}
-                        'f:configMapKeyRef': {}
-                    'k:{"name":"SURREAL_USER"}':
-                      .: {}
-                      'f:name': {}
-                      'f:valueFrom':
-                        .: {}
-                        'f:configMapKeyRef': {}
-                  'f:imagePullPolicy': {}
-                  'f:name': {}
-                  'f:resources': {}
-                  'f:terminationMessagePath': {}
-                  'f:terminationMessagePolicy': {}
-              'f:dnsPolicy': {}
-              'f:restartPolicy': {}
-              'f:schedulerName': {}
-              'f:securityContext': {}
-              'f:terminationGracePeriodSeconds': {}
-      manager: unknown
-      operation: Update
-      time: '2025-03-08T16:38:58Z'
-    - apiVersion: apps/v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:spec':
-          'f:template':
-            'f:metadata':
-              'f:annotations':
-                .: {}
-                'f:kubectl.kubernetes.io/restartedAt': {}
-      manager: kubectl-rollout
-      operation: Update
-      time: '2025-03-08T18:48:17Z'
-    - apiVersion: apps/v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:metadata':
-          'f:annotations':
-            'f:deployment.kubernetes.io/revision': {}
-        'f:status':
-          'f:availableReplicas': {}
-          'f:collisionCount': {}
-          'f:conditions':
-            .: {}
-            'k:{"type":"Available"}':
-              .: {}
-              'f:lastTransitionTime': {}
-              'f:lastUpdateTime': {}
-              'f:message': {}
-              'f:reason': {}
-              'f:status': {}
-              'f:type': {}
-            'k:{"type":"Progressing"}':
-              .: {}
-              'f:lastTransitionTime': {}
-              'f:lastUpdateTime': {}
-              'f:message': {}
-              'f:reason': {}
-              'f:status': {}
-              'f:type': {}
-          'f:observedGeneration': {}
-          'f:readyReplicas': {}
-          'f:replicas': {}
-          'f:updatedReplicas': {}
-      manager: kube-controller-manager
-      operation: Update
-      subresource: status
-      time: '2025-03-08T18:51:12Z'
+    app.kubernetes.io/managed-by: cloud-console
   name: microserv.events
   namespace: default
+  resourceVersion: "74772903"
+  uid: e1032928-a676-4312-b730-6e0db417afd0
 spec:
+  progressDeadlineSeconds: 600
   replicas: 1
+  revisionHistoryLimit: 10
   selector:
     matchLabels:
       app: microserv.events
@@ -158,203 +30,99 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/restartedAt: '2025-03-08T13:48:17-05:00'
+        kubectl.kubernetes.io/restartedAt: "2025-05-01T03:40:46-05:00"
+      creationTimestamp: null
       labels:
         app: microserv.events
+        app.kubernetes.io/managed-by: cloud-console
     spec:
       containers:
-        - env:
-            - name: REDIS_URI
-              valueFrom:
-                configMapKeyRef:
-                  key: REDIS_URI
-                  name: microserv.events-config-y2ek
-            - name: SURREAL_URI
-              valueFrom:
-                configMapKeyRef:
-                  key: SURREAL_URI
-                  name: microserv.events-config-y2ek
-            - name: SURREAL_USER
-              valueFrom:
-                configMapKeyRef:
-                  key: SURREAL_USER
-                  name: microserv.events-config-y2ek
-            - name: SURREAL_PASS
-              valueFrom:
-                configMapKeyRef:
-                  key: SURREAL_PASS
-                  name: microserv.events-config-y2ek
-          image: gcr.io/partyscene-441317/github.com/partyscene/backstage
-          imagePullPolicy: Always
-          name: microservices-events-sha256-1
-          resources:
-            limits:
-              ephemeral-storage: 1Gi
-            requests:
-              cpu: 500m
-              ephemeral-storage: 1Gi
-              memory: 2Gi
-          securityContext:
-            capabilities:
-              drop:
-                - NET_RAW
+      - env:
+        - name: RABBITMQ_URI
+          valueFrom:
+            configMapKeyRef:
+              key: RABBITMQ_URI
+              name: microserv.events-config-y2ek
+        - name: RABBITMQ_MEDIA_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              key: RABBITMQ_MEDIA_QUEUE
+              name: microserv.events-config-y2ek
+        - name: RABBITMQ_R18E_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              key: RABBITMQ_R18E_QUEUE
+              name: microserv.events-config-y2ek
+        - name: REDIS_URI
+          valueFrom:
+            configMapKeyRef:
+              key: REDIS_URI
+              name: microserv.events-config-y2ek
+        - name: SURREAL_URI
+          valueFrom:
+            configMapKeyRef:
+              key: SURREAL_URI
+              name: microserv.events-config-y2ek
+        - name: SURREAL_USER
+          valueFrom:
+            configMapKeyRef:
+              key: SURREAL_USER
+              name: microserv.events-config-y2ek
+        - name: SURREAL_PASS
+          valueFrom:
+            configMapKeyRef:
+              key: SURREAL_PASS
+              name: microserv.events-config-y2ek
+        - name: MEDIA_MICROSERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              key: MEDIA_MICROSERVICE_URL
+              name: microserv.events-config-y2ek
+        image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.events:latest
+        imagePullPolicy: Always
+        name: microservices-events-sha256-1
+        resources:
+          limits:
+            ephemeral-storage: 1Gi
+          requests:
+            cpu: 100m
+            ephemeral-storage: 1Gi
+            memory: 128Mi
+        securityContext:
+          capabilities:
+            drop:
+            - NET_RAW
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
       securityContext:
         seccompProfile:
           type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
       tolerations:
-        - effect: NoSchedule
-          key: kubernetes.io/arch
-          operator: Equal
-          value: amd64
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  labels:
-    app: microserv.events
-  managedFields:
-    - apiVersion: autoscaling/v2
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:metadata':
-          'f:labels':
-            .: {}
-            'f:app': {}
-            'f:app.kubernetes.io/managed-by': {}
-        'f:spec':
-          'f:maxReplicas': {}
-          'f:metrics': {}
-          'f:minReplicas': {}
-          'f:scaleTargetRef':
-            'f:apiVersion': {}
-            'f:kind': {}
-            'f:name': {}
-      manager: unknown
-      operation: Update
-      time: '2025-03-07T09:05:40Z'
-    - apiVersion: autoscaling/v2
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:status':
-          'f:conditions':
-            .: {}
-            'k:{"type":"AbleToScale"}':
-              .: {}
-              'f:lastTransitionTime': {}
-              'f:message': {}
-              'f:reason': {}
-              'f:status': {}
-              'f:type': {}
-            'k:{"type":"ScalingActive"}':
-              .: {}
-              'f:lastTransitionTime': {}
-              'f:message': {}
-              'f:reason': {}
-              'f:status': {}
-              'f:type': {}
-            'k:{"type":"ScalingLimited"}':
-              .: {}
-              'f:lastTransitionTime': {}
-              'f:message': {}
-              'f:reason': {}
-              'f:status': {}
-              'f:type': {}
-          'f:currentMetrics': {}
-          'f:currentReplicas': {}
-          'f:desiredReplicas': {}
-          'f:lastScaleTime': {}
-      manager: vpa-recommender
-      operation: Update
-      subresource: status
-      time: '2025-03-09T06:42:50Z'
-  name: microserv.events-hpa-uxa9
-  namespace: default
-spec:
-  maxReplicas: 5
-  metrics:
-    - resource:
-        name: cpu
-        target:
-          averageUtilization: 80
-          type: Utilization
-      type: Resource
-  minReplicas: 1
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: microserv.events
----
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    cloud.google.com/neg: '{"exposed_ports":{"80":{}}}'
-    cloud.google.com/neg-status: >-
-      {"network_endpoint_groups":{"80":"k8s1-63f285ea-default-microserv-events-service-80-bf0bf314"},"zones":["us-central1-a","us-central1-b","us-central1-c"]}
-  labels:
-    app: microserv.events
-  managedFields:
-    - apiVersion: v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:metadata':
-          'f:labels':
-            .: {}
-            'f:app': {}
-            'f:app.kubernetes.io/managed-by': {}
-        'f:spec':
-          'f:externalTrafficPolicy': {}
-          'f:internalTrafficPolicy': {}
-          'f:ports':
-            .: {}
-            'k:{"port":80,"protocol":"TCP"}':
-              .: {}
-              'f:port': {}
-              'f:protocol': {}
-              'f:targetPort': {}
-          'f:selector': {}
-          'f:sessionAffinity': {}
-          'f:type': {}
-      manager: unknown
-      operation: Update
-      time: '2025-03-07T09:07:34Z'
-    - apiVersion: v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:metadata':
-          'f:annotations':
-            'f:cloud.google.com/neg': {}
-      manager: GoogleGKEGatewayController
-      operation: Update
-      time: '2025-03-08T14:47:06Z'
-    - apiVersion: v1
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:metadata':
-          'f:annotations':
-            'f:cloud.google.com/neg-status': {}
-      manager: glbc
-      operation: Update
-      subresource: status
-      time: '2025-03-08T18:43:15Z'
-  name: microserv-events-service
-  namespace: default
-spec:
-  clusterIP: 34.118.225.188
-  clusterIPs:
-    - 34.118.225.188
-  externalTrafficPolicy: Cluster
-  internalTrafficPolicy: Cluster
-  ipFamilies:
-    - IPv4
-  ipFamilyPolicy: SingleStack
-  ports:
-    - nodePort: 31857
-      port: 80
-      protocol: TCP
-      targetPort: 5510
-  selector:
-    app: microserv.events
-    app.kubernetes.io/managed-by: cloud-console
-  sessionAffinity: None
-  type: NodePort
+      - effect: NoSchedule
+        key: kubernetes.io/arch
+        operator: Equal
+        value: amd64
+status:
+  availableReplicas: 1
+  collisionCount: 1
+  conditions:
+  - lastTransitionTime: "2025-04-14T20:31:34Z"
+    lastUpdateTime: "2025-05-01T08:40:56Z"
+    message: ReplicaSet "microserv.events-b76788589" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2025-05-01T08:47:11Z"
+    lastUpdateTime: "2025-05-01T08:47:11Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 609
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1

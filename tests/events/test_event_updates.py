@@ -70,7 +70,9 @@ class TestEventUpdates(TestEventsBase):
         assert response_json["status"] == HTTPStatus.BAD_REQUEST.phrase
         # Add assertion for specific error message if available
 
-    async def test_update_event_unauthorized(self, event_client, mock_event, other_bearer):
+    async def test_update_event_unauthorized(
+        self, event_client, mock_event, other_bearer
+    ):
         """Test updating an event without proper authorization (e.g., not the host)."""
         # Assuming mock_event was created by 'bearer', and 'unauthorized_bearer' is different
         update_data = {"title": "Unauthorized Update Attempt"}
@@ -78,7 +80,9 @@ class TestEventUpdates(TestEventsBase):
             event_client, mock_event["id"], update_data, other_bearer
         )
         # Assuming the API checks ownership/permissions for updates
-        assert response.status_code == HTTPStatus.FORBIDDEN  # Or UNAUTHORIZED depending on implementation
+        assert (
+            response.status_code == HTTPStatus.FORBIDDEN
+        )  # Or UNAUTHORIZED depending on implementation
 
         response_json = await response.get_json()
         assert response_json["status"] == HTTPStatus.FORBIDDEN.phrase  # Or UNAUTHORIZED

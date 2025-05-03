@@ -36,8 +36,8 @@ DEFINE FIELD OVERWRITE created_at ON TABLE leads TYPE datetime DEFAULT time::now
 
 
 DEFINE TABLE OVERWRITE reports SCHEMALESS;
-DEFINE FIELD OVERWRITE user ON TABLE reports TYPE record<users>;
-DEFINE FIELD OVERWRITE report ON TABLE reports TYPE string;
+DEFINE FIELD OVERWRITE reporter ON TABLE reports TYPE record<users>;
+DEFINE FIELD OVERWRITE reason ON TABLE reports TYPE string;
 DEFINE FIELD OVERWRITE created_at ON TABLE reports TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE status ON TABLE reports TYPE string DEFAULT "pending";
 DEFINE FIELD OVERWRITE metadata ON TABLE reports FLEXIBLE TYPE option<object> DEFAULT {};
@@ -62,6 +62,7 @@ DEFINE FIELD OVERWRITE location.address ON TABLE events TYPE string;
 DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE point;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
+DEFINE FIELD OVERWRITE visible ON TABLE posts TYPE bool DEFAULT true;
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
 
@@ -93,6 +94,7 @@ DEFINE FIELD OVERWRITE content ON TABLE posts TYPE string;
 DEFINE FIELD OVERWRITE created_at ON TABLE posts TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE metadata ON TABLE posts FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE event ON TABLE posts TYPE record<events>;
+DEFINE FIELD OVERWRITE visible ON TABLE posts TYPE bool DEFAULT true;
 DEFINE INDEX hnsw_post_content_embeddings ON TABLE posts FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
 
 DEFINE INDEX unique_posts ON TABLE posts COLUMNS in, out UNIQUE;
@@ -118,7 +120,7 @@ DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
--- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))} ASSERT string::len($value) > 0;
+-- DEFINE FIELD OVERWRITE url ON media VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))}["data"]["url"] ASSERT string::len($value) > 0;
 
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
@@ -140,7 +142,7 @@ DEFINE INDEX hnsw_media_embeddings ON TABLE media FIELDS embeddings HNSW DIMENSI
 
 
 
-DEFINE FUNCTION OVERWRITE fn::fetch_events_by_location($coordinates: Point, $distance: number, $is_live: option<bool>, $page: option<number>, $limit: option<number>) {
+DEFINE FUNCTION OVERWRITE fn::fetch_events_by_location($coordinates: Point, $distance: number, $is_live: option<bool>, $is_private: option<bool>, $user:option<record<users>>, $page: option<number>, $limit: option<number>) {
 
     LET $page =
         IF (type::is::number($page)) THEN
@@ -158,16 +160,15 @@ DEFINE FUNCTION OVERWRITE fn::fetch_events_by_location($coordinates: Point, $dis
 
     RETURN (
 
-        SELECT *,
-            (->has_media->media.{creator, metadata,  filename}) AS media,
-            <-attends<-users AS attendees,
-            array::len(<-attends<-users) as attendees_count,
-            geo::distance(location.coordinates, $coordinates) as distance
-        OMIT embeddings
+        SELECT fn::fetch_event(id) AS event, geo::distance(location.coordinates, $coordinates) as distance
         FROM events
         WHERE 
-            is_live = $live 
-            AND geo::distance(<Point>location.coordinates, $coordinates) <= $distance
+            is_live = $is_live 
+            AND geo::distance(<Point>location.coordinates, $coordinates) <= $distance 
+            AND (
+                    IF $is_private { fn::exists_in_degree($user, host, 4) AND $is_private } 
+                    ELSE {is_private = false}
+                )
         ORDER BY distance ASC
         LIMIT $limit START ($page - 1) * $limit
     )
@@ -175,7 +176,8 @@ DEFINE FUNCTION OVERWRITE fn::fetch_events_by_location($coordinates: Point, $dis
 };
 
 
-DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number, $private: option<bool>) {
+-- 
+DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number) {
 
 
     LET $page =
@@ -192,20 +194,14 @@ DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number, $p
             50;
         END;
 
-
     RETURN (
 
-        SELECT *,
-        (->has_media->media.{creator, metadata,  filename}) AS media,
-        <-attends<-users AS attendees,
-        array::len(<-attends<-users) as attendees_count
-    OMIT embeddings
-    FROM events
-    WHERE is_private = $private
+        SELECT fn::fetch_event(id) AS event, created_at FROM events
     ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
     )
     
 };
+
 
 DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
     RETURN (
@@ -221,7 +217,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
 
 DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: record, $status: string) {
     -- Check existing relationship
-    LET $existing = (SELECT VALUE ->friends[*] FROM ONLY $origin WHERE <->friends[WHERE out = $target OR in = $target]);
+    LET $existing = (SELECT VALUE ->(friends WHERE out = $target OR in = $target).* FROM ONLY $origin);
     LET $new = IF !$existing THEN
         (RELATE ONLY $origin -> friends -> $target SET status = $status, created_at = time::now())
     ELSE
@@ -237,15 +233,50 @@ DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: reco
 
 DEFINE FUNCTION OVERWRITE fn::find_relationships($origin: record) {
     LET $result = SELECT
-                            ->friends->users.* AS degree_1, 
-                            ->friends->users->friends->users.* AS degree_2, 
-                            ->friends->users->friends->users->friends->users.* AS degree_3,
-                            ->friends->users->friends->users->friends->users->friends->users.* AS degree_4,
-                            ->friends->users->friends->users->friends->users->friends->users->friends->users.* AS degree_5,
-                            ->friends->users->friends->users->friends->users->friends->users->friends->users->friends->users.* AS degree_6
-    
+                            @.{1}->friends->users.* AS degree_1,
+                            @.{2}->friends->users.* AS degree_2,
+                            @.{3}->friends->users.* AS degree_3,
+                            @.{4}->friends->users.* AS degree_4,
+                            @.{5}->friends->users.* AS degree_5
     FROM ONLY $origin;
     RETURN $result
+};
+
+
+DEFINE FUNCTION OVERWRITE fn::exists_in_degree($origin: record, $target: record, $degree: number) {
+    LET $tree = fn::find_relationships($origin);
+    FOR $i IN 1..=$degree {
+      LET $field = "degree_" + <string>$i;
+        IF $target IN $tree[$field].id{
+            RETURN true;
+        }
+    };
+    RETURN false;
+};
+
+--
+DEFINE FUNCTION OVERWRITE fn::fetch_private_events_for_user($user: record, $page: number, $limit: number) {
+
+
+    LET $page =
+        IF (type::is::number($page)) THEN
+            $page;
+        ELSE
+            1;
+        END;
+    
+    LET $limit = 
+        IF (type::is::number($limit)) THEN
+            $limit;
+        ELSE
+            50;
+        END;
+
+    RETURN (
+        SELECT fn::fetch_event(id) AS event, created_at FROM events
+    WHERE is_private = true AND fn::exists_in_degree($user, host, degree_of_freedom)
+    ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
+    )
 };
 
 

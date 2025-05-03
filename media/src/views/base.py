@@ -66,7 +66,6 @@ class BaseView(QuartClassful):
             message = "Service degraded: Database connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-
         # Check Redis connection
         try:
             redis_ping = await self.redis.ping()
@@ -84,8 +83,10 @@ class BaseView(QuartClassful):
             message = "Service degraded: Redis connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-
-        return jsonify(data=health_status, message=message, status=status_code.phrase), status_code
+        return (
+            jsonify(data=health_status, message=message, status=status_code.phrase),
+            status_code,
+        )
 
     # @route("/media/upload", methods=["GET", "POST"])
     # @jwt_required
@@ -135,13 +136,16 @@ class BaseView(QuartClassful):
 
         if not filename:
             status_code = HTTPStatus.BAD_REQUEST
-            return jsonify(message="Filename missing", status=status_code.phrase), status_code
+            return (
+                jsonify(message="Filename missing", status=status_code.phrase),
+                status_code,
+            )
 
         # Define a specific cache key prefix for this endpoint
         cache_key = f"media:signed_url:{filename}"
         # Define TTL for the cache (e.g., 1 hour = 3600 seconds)
         # Should be less than the signed URL validity (1 day)
-        cache_ttl = 3600
+        cache_ttl = 3600 * 22
 
         cached_url = None
         try:
@@ -151,8 +155,14 @@ class BaseView(QuartClassful):
                 self.logger.info(f"Cache HIT for signed URL: {filename}")
                 # Return cached URL
                 status_code = HTTPStatus.OK
-                return jsonify(data={"signed_url": cached_url}, message="Signed URL retrieved from cache.", status=status_code.phrase), status_code
-
+                return (
+                    jsonify(
+                        data={"signed_url": cached_url},
+                        message="Signed URL retrieved from cache.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
 
             self.logger.info(f"Cache MISS for signed URL: {filename}")
 
@@ -179,7 +189,13 @@ class BaseView(QuartClassful):
                 f"Error generating signed URL for {filename}: {e}", exc_info=True
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return jsonify(message=f"Failed to generate signed URL for {filename}", status=status_code.phrase), status_code
+            return (
+                jsonify(
+                    message=f"Failed to generate signed URL for {filename}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
 
         # 3. Store the newly generated URL in Redis (if cache wasn't hit and GET didn't fail)
         if (
@@ -198,8 +214,14 @@ class BaseView(QuartClassful):
 
         # Return the newly generated URL
         status_code = HTTPStatus.OK
-        return jsonify(data={"signed_url": media_url}, message="Signed URL generated successfully.", status=status_code.phrase), status_code
-
+        return (
+            jsonify(
+                data={"signed_url": media_url},
+                message="Signed URL generated successfully.",
+                status=status_code.phrase,
+            ),
+            status_code,
+        )
 
     async def generate_download_signed_url_v4(self, blob_name):
         """Generates a v4 signed URL for downloading a blob.

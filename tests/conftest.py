@@ -149,8 +149,8 @@ async def bearer(auth_client, mock_user):
     except Exception as e:
         logger.error(f"Error generating bearer token: {str(e)}")
         raise
-    
-    
+
+
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def other_bearer(auth_client, other_mock_user):
     """Create second test bearer token"""
@@ -163,24 +163,23 @@ async def other_bearer(auth_client, other_mock_user):
     except Exception as e:
         logger.error(f"Error generating bearer token: {str(e)}")
         raise
-    
+
 
 @pytest.fixture(scope="session")
 def mock_post(mock_event):
     return {
-            "content": fake.text(),
-            "event": mock_event["id"], # mock_event provides an event ID
-            "type": "image", # Or determine based on file
-        }
-    
-    
+        "content": fake.text(),
+        "event": mock_event["id"],  # mock_event provides an event ID
+        "type": "image",  # Or determine based on file
+    }
+
+
 @pytest.fixture(scope="session")
 def mock_comment():
     return {
-            "content": fake.text(),
-        }
-    
-    
+        "content": fake.text(),
+    }
+
 
 @pytest.fixture(scope="session")
 def mock_user():
@@ -194,7 +193,6 @@ def mock_user():
         "host": "test",
         "id": "test",
     }
-
 
 
 @pytest.fixture(scope="session")

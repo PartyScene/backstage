@@ -63,9 +63,38 @@ class TestEventsBase:
             f"/events/{event_id}", headers={"Authorization": f"Bearer {bearer}"}
         )
 
-    async def get_events_distance(self, client: QuartClient, coordinates: list, distance, bearer):
+    async def get_events_distance(
+        self, client: QuartClient, coordinates: list, distance, bearer
+    ):
         """Helper method to get events within a distance"""
-        params = urllib.parse.urlencode({"lat": coordinates[0], "lng": coordinates[1], "distance": distance})
+        params = urllib.parse.urlencode(
+            {"lat": coordinates[0], "lng": coordinates[1], "distance": distance}
+        )
         return await client.get(
             f"/events?{params}", headers={"Authorization": f"Bearer {bearer}"}
+        )
+
+    async def get_private_events(self, client: QuartClient, bearer):
+        """Helper method to get private events"""
+        return await client.get(
+            f"/events/private", headers={"Authorization": f"Bearer {bearer}"}
+        )
+
+    async def get_public_events(self, client: QuartClient):
+        """Helper method to get public events"""
+        return await client.get(f"/events")
+
+    async def report_event(self, client: QuartClient, event_id, report_data, bearer):
+        """Helper method to report an event"""
+        return await client.post(
+            f"/events/{event_id}/report",
+            json=report_data,
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+
+    async def buy_ticket(self, client: QuartClient, event_id, bearer):
+        """Helper method to buy a ticket for an event"""
+        return await client.post(
+            f"/events/{event_id}/buy_ticket",
+            headers={"Authorization": f"Bearer {bearer}"},
         )

@@ -60,7 +60,6 @@ class BaseView(QuartClassful):
             message = "Service degraded: Database connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-
         # Check Redis connection
         try:
             redis_ping = await self.redis.ping()
@@ -78,8 +77,10 @@ class BaseView(QuartClassful):
             message = "Service degraded: Redis connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-
-        return jsonify(data=health_status, message=message, status=status_code.phrase), status_code
+        return (
+            jsonify(data=health_status, message=message, status=status_code.phrase),
+            status_code,
+        )
 
     @route("/leads", methods=["POST"])
     async def create_lead(self):
@@ -93,24 +94,35 @@ class BaseView(QuartClassful):
         )
         if not brevo_resp:
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return jsonify(
-                message="Failed to create lead in Brevo or Contact already exists.",
-                status=status_code.phrase
-            ), status_code
-
+            return (
+                jsonify(
+                    message="Failed to create lead in Brevo or Contact already exists.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
 
         created_lead = await self.conn._create_lead(
             data.get("email"), data.get("usecase")
         )
         if not created_lead:
             status_code = HTTPStatus.CONFLICT
-            return jsonify(message="Invalid Request Body or Lead already exists", status=status_code.phrase), status_code
+            return (
+                jsonify(
+                    message="Invalid Request Body or Lead already exists",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
 
         status_code = HTTPStatus.CREATED
-        return jsonify(
-            message=f"Created Lead {data.get('email')} in Brevo and SurrealDB",
-            status=status_code.phrase
-        ), status_code
+        return (
+            jsonify(
+                message=f"Created Lead {data.get('email')} in Brevo and SurrealDB",
+                status=status_code.phrase,
+            ),
+            status_code,
+        )
 
     @route("/auth/exists", methods=["GET"])
     async def check_exists(self):
@@ -121,7 +133,10 @@ class BaseView(QuartClassful):
 
         if result:
             status_code = HTTPStatus.CONFLICT
-            return jsonify(message="Already Exists.", status=status_code.phrase), status_code
+            return (
+                jsonify(message="Already Exists.", status=status_code.phrase),
+                status_code,
+            )
         else:
             status_code = HTTPStatus.OK
             return jsonify(message="Available.", status=status_code.phrase), status_code
@@ -132,7 +147,10 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         if not data.get("email") or not data.get("otp"):
             status_code = HTTPStatus.BAD_REQUEST
-            return jsonify(message="Invalid Request Body", status=status_code.phrase), status_code
+            return (
+                jsonify(message="Invalid Request Body", status=status_code.phrase),
+                status_code,
+            )
 
         if result := await self.verify_otp(data.get("email"), data.get("otp")):
             await self.conn._verify_and_store(result)
@@ -142,7 +160,7 @@ class BaseView(QuartClassful):
                 jsonify(
                     data={"access_token": access_token, "token_type": "bearer"},
                     message="OTP verified successfully.",
-                    status=status_code.phrase
+                    status=status_code.phrase,
                 ),
                 status_code,
             )
@@ -167,7 +185,12 @@ class BaseView(QuartClassful):
             logger.debug("Result for Bloom Check %s" % result)
             if result:
                 status_code = HTTPStatus.CONFLICT
-                return jsonify(message="Credential Already Exists.", status=status_code.phrase), status_code
+                return (
+                    jsonify(
+                        message="Credential Already Exists.", status=status_code.phrase
+                    ),
+                    status_code,
+                )
 
             await self.__n_register_user(
                 email=data.get("email"), user_data=data, user_id=data["id"]
@@ -176,20 +199,39 @@ class BaseView(QuartClassful):
             logger.error(f"Registration error: {e}")
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             # Consider a more specific error response
-            return jsonify(message="Registration failed due to an internal error.", status=status_code.phrase), status_code
+            return (
+                jsonify(
+                    message="Registration failed due to an internal error.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
 
-
-        if otp_result := await self.__n_generate_otp(data["id"], data.get("email"), data):
+        if otp_result := await self.__n_generate_otp(
+            data["id"], data.get("email"), data
+        ):
             # Return the OTP only in dev/test environments for easier testing
             response_data = {}
             if os.getenv("ENVIRONMENT") in ["dev", "test"]:
-                 response_data["otp"] = otp_result # Include OTP for testing
+                response_data["otp"] = otp_result  # Include OTP for testing
 
             status_code = HTTPStatus.CREATED
-            return jsonify(data=response_data, message="User registered, OTP sent.", status=status_code.phrase), status_code
+            return (
+                jsonify(
+                    data=response_data,
+                    message="User registered, OTP sent.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
         else:
             status_code = HTTPStatus.CONFLICT
-            return jsonify(message="Existing OTP, please verify", status=status_code.phrase), status_code
+            return (
+                jsonify(
+                    message="Existing OTP, please verify", status=status_code.phrase
+                ),
+                status_code,
+            )
 
     @route("/auth/login", methods=["POST"])
     async def _login_user(self):
@@ -202,14 +244,20 @@ class BaseView(QuartClassful):
                 ip_address=request.remote_addr,
             )
             status_code = HTTPStatus.OK
-            return jsonify(
-                data={"access_token": access_token, "token_type": "bearer"},
-                message="Login successful.",
-                status=status_code.phrase
-            ), status_code
+            return (
+                jsonify(
+                    data={"access_token": access_token, "token_type": "bearer"},
+                    message="Login successful.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
 
         status_code = HTTPStatus.UNAUTHORIZED
-        return jsonify(message="Bad username or password", status=status_code.phrase), status_code
+        return (
+            jsonify(message="Bad username or password", status=status_code.phrase),
+            status_code,
+        )
 
     async def __n_register_user(self, email: str, user_data: dict, user_id: str = None):
         """Create a new user in the Novu subscriber database."""
@@ -261,18 +309,18 @@ class BaseView(QuartClassful):
 
             if stored_otp and stored_otp == provided_otp:
                 json_data = await self.redis.get(f"users:pending:{email}")
-                if not json_data: # Handle case where pending user data expired
+                if not json_data:  # Handle case where pending user data expired
                     return False
                 json_data = json.loads(json_data)
 
                 # Use asyncio.gather for concurrent deletion
                 await asyncio.gather(
                     self.redis.delete(f"otp:{email}"),
-                    self.redis.delete(f"users:pending:{email}")
+                    self.redis.delete(f"users:pending:{email}"),
                 )
                 return json_data
 
             return False
         except Exception as e:
             logger.error(f"OTP verification error: {e}")
-            raise # Re-raise the exception after logging
+            raise  # Re-raise the exception after logging

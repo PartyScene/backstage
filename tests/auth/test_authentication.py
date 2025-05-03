@@ -27,7 +27,7 @@ class TestAuthentication(TestAuthBase):
                 # Handle case where OTP is not returned (e.g., production)
                 # Need a way to retrieve OTP for testing (e.g., mock Redis/email)
                 pytest.skip("OTP not found in response, skipping OTP verification test")
-                
+
         elif response.status_code == HTTPStatus.CONFLICT:
             assert response_json["status"] == HTTPStatus.CONFLICT.phrase
             assert "Credential Already Exists" in response_json["message"]
@@ -37,11 +37,12 @@ class TestAuthentication(TestAuthBase):
                 else:
                     # Handle case where OTP is not returned (e.g., production)
                     # Need a way to retrieve OTP for testing (e.g., mock Redis/email)
-                    pytest.skip("OTP not found in response, skipping OTP verification test")
+                    pytest.skip(
+                        "OTP not found in response, skipping OTP verification test"
+                    )
             # If conflict, we might not be able to proceed with OTP verification unless OTP exists
             # pytest.skip("User already exists, cannot reliably test OTP verification without existing OTP")
-        
-        
+
     async def test_other_user_registration(self, auth_client, other_mock_user):
         """Test Other User Reg"""
         response = await self.register_user(auth_client, other_mock_user)
@@ -60,7 +61,7 @@ class TestAuthentication(TestAuthBase):
                 # Handle case where OTP is not returned (e.g., production)
                 # Need a way to retrieve OTP for testing (e.g., mock Redis/email)
                 pytest.skip("OTP not found in response, skipping OTP verification test")
-                
+
         elif response.status_code == HTTPStatus.CONFLICT:
             assert response_json["status"] == HTTPStatus.CONFLICT.phrase
             assert "Exist" in response_json["message"]
@@ -71,15 +72,16 @@ class TestAuthentication(TestAuthBase):
                 else:
                     # Handle case where OTP is not returned (e.g., production)
                     # Need a way to retrieve OTP for testing (e.g., mock Redis/email)
-                    pytest.skip("OTP not found in response, skipping OTP verification test")
+                    pytest.skip(
+                        "OTP not found in response, skipping OTP verification test"
+                    )
             # # If conflict, we might not be able to proceed with OTP verification unless OTP exists
             # pytest.skip("User already exists, cannot reliably test OTP verification without existing OTP")
-
 
     async def test_verify_otp(self, auth_client, mock_user):
         """Test OTP verification"""
         if "otp" not in mock_user:
-             pytest.skip("OTP not available for verification test")
+            pytest.skip("OTP not available for verification test")
 
         response = await self.verify_otp(auth_client, mock_user)
         response_json = await response.get_json()
@@ -91,12 +93,11 @@ class TestAuthentication(TestAuthBase):
         assert "access_token" in response_json["data"]
         assert "token_type" in response_json["data"]
         assert response_json["data"]["token_type"] == "bearer"
-        
-    
+
     async def test_other_verify_otp(self, auth_client, other_mock_user):
         """Test OTP verification"""
         if "otp" not in other_mock_user:
-             pytest.skip("OTP not available for verification test")
+            pytest.skip("OTP not available for verification test")
 
         response = await self.verify_otp(auth_client, other_mock_user)
         response_json = await response.get_json()
@@ -127,12 +128,13 @@ class TestAuthentication(TestAuthBase):
         logger.info(f"Username exists check response: {response_username_json}")
 
         # Test non-existent
-        response_non_existent = await auth_client.get("/auth/exists?type=email&param=nonexistent@example.com")
+        response_non_existent = await auth_client.get(
+            "/auth/exists?type=email&param=nonexistent@example.com"
+        )
         response_non_existent_json = await response_non_existent.get_json()
         assert response_non_existent.status_code == HTTPStatus.OK
         assert response_non_existent_json["status"] == HTTPStatus.OK.phrase
         assert "Available" in response_non_existent_json["message"]
-
 
     async def test_lead_generation(self, auth_client):
         """Test lead generation"""
@@ -146,7 +148,11 @@ class TestAuthentication(TestAuthBase):
         response_json = await response.get_json()
 
         # Allow CONFLICT if lead already exists
-        assert response.status_code in (HTTPStatus.CREATED, HTTPStatus.CONFLICT, HTTPStatus.INTERNAL_SERVER_ERROR)
+        assert response.status_code in (
+            HTTPStatus.CREATED,
+            HTTPStatus.CONFLICT,
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+        )
 
         if response.status_code == HTTPStatus.CREATED:
             assert response_json["status"] == HTTPStatus.CREATED.phrase
@@ -155,13 +161,15 @@ class TestAuthentication(TestAuthBase):
             assert response_json["status"] == HTTPStatus.CONFLICT.phrase
             assert "Lead already exists" in response_json["message"]
         elif response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR:
-             assert response_json["status"] == HTTPStatus.INTERNAL_SERVER_ERROR.phrase
-             assert "Failed to create lead in Brevo" in response_json["message"]
-
+            assert response_json["status"] == HTTPStatus.INTERNAL_SERVER_ERROR.phrase
+            assert "Failed to create lead in Brevo" in response_json["message"]
 
     async def test_user_login(self, auth_client, mock_user):
         """Test user login"""
-        login_credentials = {"email": mock_user["email"], "password": mock_user["password"]}
+        login_credentials = {
+            "email": mock_user["email"],
+            "password": mock_user["password"],
+        }
         response = await self.login_user(auth_client, login_credentials)
         response_json = await response.get_json()
 

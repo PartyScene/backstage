@@ -13,7 +13,7 @@ class TestUserManagement(TestUsersBase):
 
     async def test_get_user_profile(self, users_client, mock_user, bearer):
         """Test retrieving the current user's profile (/user)."""
-        response = await self.get_me(users_client, bearer) # Use get_me helper
+        response = await self.get_me(users_client, bearer)  # Use get_me helper
         assert response.status_code == HTTPStatus.OK
 
         response_json = await response.get_json()
@@ -21,14 +21,16 @@ class TestUserManagement(TestUsersBase):
         assert "User details fetched successfully" in response_json["message"]
         assert "data" in response_json
         profile = response_json["data"]
-        assert profile["id"] == mock_user["id"] # Verify it's the correct user
+        assert profile["id"] == mock_user["id"]  # Verify it's the correct user
         assert "first_name" in profile
         assert "username" in profile
 
     async def test_get_other_user_profile(self, users_client, mock_user, bearer):
         """Test retrieving another user's profile (/users/{user_id})."""
-        user_id = mock_user["id"] # Use the mock user's ID for testing
-        response = await self.get_user(users_client, user_id, bearer) # Use get_user helper
+        user_id = mock_user["id"]  # Use the mock user's ID for testing
+        response = await self.get_user(
+            users_client, user_id, bearer
+        )  # Use get_user helper
 
         assert response.status_code == HTTPStatus.OK
         response_json = await response.get_json()
@@ -40,7 +42,7 @@ class TestUserManagement(TestUsersBase):
         assert "first_name" in profile
         assert "username" in profile
         # Ensure sensitive data like email might be excluded for other users
-        assert "email" not in profile # Adjust if email is public
+        assert "email" not in profile  # Adjust if email is public
 
     async def test_update_user_profile(self, users_client, mock_user, bearer):
         """Test updating current user profile information."""
@@ -57,9 +59,11 @@ class TestUserManagement(TestUsersBase):
 
         assert updated_profile["username"] == update_data["username"]
         assert updated_profile["bio"] == update_data["bio"]
-        assert updated_profile["id"] == mock_user["id"] # Check ID remains same
+        assert updated_profile["id"] == mock_user["id"]  # Check ID remains same
 
-    async def test_create_connection(self, users_client, mock_user, other_mock_user, bearer):
+    async def test_create_connection(
+        self, users_client, mock_user, other_mock_user, bearer
+    ):
         """Test creating a connection (friend request)."""
         # Ensure other_mock_user exists and has an ID
         target_id = other_mock_user["id"]
@@ -68,7 +72,9 @@ class TestUserManagement(TestUsersBase):
 
         response_json = await response.get_json()
         assert response_json["status"] == HTTPStatus.CREATED.phrase
-        assert "Friend request sent successfully" in response_json["message"] # Or check notification failure message
+        assert (
+            "Friend request sent successfully" in response_json["message"]
+        )  # Or check notification failure message
         assert "data" in response_json
         connection_edge = response_json["data"]
 
@@ -79,7 +85,7 @@ class TestUserManagement(TestUsersBase):
         assert "id" in connection_edge
         # assert connection_edge["in"] == f"users:{mock_user['id']}" # Check direction
         # assert connection_edge["out"] == f"users:{target_id}"
-        assert connection_edge["status"] == "pending" # Initial status
+        assert connection_edge["status"] == "pending"  # Initial status
 
     async def test_fetch_connections(self, users_client, mock_user, bearer):
         """Test fetching all connections for the current user."""
@@ -95,9 +101,11 @@ class TestUserManagement(TestUsersBase):
 
         assert isinstance(connections_data, dict)
         # Check structure based on what find_connections_at_degree returns
-        assert "degree_1" in connections_data # Example check
+        assert "degree_1" in connections_data  # Example check
 
-    async def test_update_connection(self, users_client, mock_user, other_mock_user, bearer):
+    async def test_update_connection(
+        self, users_client, mock_user, other_mock_user, bearer
+    ):
         """Test updating a connection (accepting a request)."""
         # 1. User A sends request to User B
         target_id = other_mock_user["id"]
@@ -126,7 +134,9 @@ class TestUserManagement(TestUsersBase):
         assert updated_connection["id"] == connection_id
         assert updated_connection["status"] == update_status
 
-    async def test_delete_connection(self, users_client, mock_user, other_mock_user, bearer):
+    async def test_delete_connection(
+        self, users_client, mock_user, other_mock_user, bearer
+    ):
         """Test deleting a connection (or cancelling/rejecting request)."""
         # 1. Create connection first
         target_id = other_mock_user["id"]
@@ -137,13 +147,15 @@ class TestUserManagement(TestUsersBase):
         connection_id = connection_edge["id"]
 
         # 2. Delete the connection (either user can do this)
-        delete_response = await self.delete_connection(users_client, connection_id, bearer)
+        delete_response = await self.delete_connection(
+            users_client, connection_id, bearer
+        )
         assert delete_response.status_code == HTTPStatus.NO_CONTENT
 
         # 204 No Content might have an empty body or a minimal JSON body
         try:
             delete_json = await delete_response.get_json()
-            if delete_json: # Check if body is not empty
+            if delete_json:  # Check if body is not empty
                 assert delete_json["status"] == HTTPStatus.NO_CONTENT.phrase
                 assert "Connection deleted successfully" in delete_json["message"]
         except Exception:
@@ -155,6 +167,33 @@ class TestUserManagement(TestUsersBase):
         fetch_json = await fetch_resp.get_json()
         # Check if the deleted connection ID is no longer present in the connections data
 
+    async def test_report_user_success(self, users_client, other_mock_user, bearer):
+        """Test reporting a user successfully."""
+        target_user_id = other_mock_user["id"]
+        report_data = {"reason": fake.sentence()}
+        response = await self.report_user(
+            users_client, target_user_id, report_data, bearer
+        )
+        assert response.status_code == HTTPStatus.CREATED
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.CREATED.phrase
+        assert "Resource reported" in response_json["message"]
+        assert "data" in response_json and "id" in response_json["data"]
+
+    async def test_report_user_missing_reason(
+        self, users_client, other_mock_user, bearer
+    ):
+        """Test reporting a user without a reason."""
+        target_user_id = other_mock_user["id"]
+        report_data = {}
+        response = await self.report_user(
+            users_client, target_user_id, report_data, bearer
+        )
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        response_json = await response.get_json()
+        assert "Reason is required" in response_json["message"]
+
+    # Add test for reporting non-existent user
 
     # @pytest.mark.parametrize("invalid_data", [
     #     {"display_name": ""},  # Empty display name

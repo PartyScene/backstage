@@ -2,30 +2,30 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    autopilot.gke.io/resource-adjustment: '{"input":{"containers":[{"name":"microservices-users-sha256-1"}]},"output":{"containers":[{"limits":{"ephemeral-storage":"1Gi"},"requests":{"cpu":"500m","ephemeral-storage":"1Gi","memory":"2Gi"},"name":"microservices-users-sha256-1"}]},"modified":true}'
+    autopilot.gke.io/resource-adjustment: '{"input":{"containers":[{"name":"microservices-posts-sha256-1"}]},"output":{"containers":[{"limits":{"ephemeral-storage":"1Gi"},"requests":{"cpu":"500m","ephemeral-storage":"1Gi","memory":"2Gi"},"name":"microservices-posts-sha256-1"}]},"modified":true}'
     autopilot.gke.io/warden-version: 31.23.0-gke.9
-    deployment.kubernetes.io/revision: "143"
-  creationTimestamp: "2025-03-10T15:39:05Z"
-  generation: 925
+    deployment.kubernetes.io/revision: "148"
+  creationTimestamp: "2025-03-07T16:49:36Z"
+  generation: 564
   labels:
-    app: microserv.users
+    app: microserv.posts
     app.kubernetes.io/managed-by: cloud-console
-  name: microserv.users
+  name: microserv.posts
   namespace: default
-  resourceVersion: "74766666"
-  uid: ec96c192-173b-4015-aa8d-2a62ae26bfe2
+  resourceVersion: "74773310"
+  uid: c574e4cb-0c92-4974-980f-7313289229c5
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
   revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app: microserv.users
+      app: microserv.posts
       app.kubernetes.io/managed-by: cloud-console
   strategy:
     rollingUpdate:
       maxSurge: 25%
-      maxUnavailable: 25%
+      maxUnavailable: 90%
     type: RollingUpdate
   template:
     metadata:
@@ -33,7 +33,7 @@ spec:
         kubectl.kubernetes.io/restartedAt: "2025-05-01T03:40:46-05:00"
       creationTimestamp: null
       labels:
-        app: microserv.users
+        app: microserv.posts
         app.kubernetes.io/managed-by: cloud-console
     spec:
       containers:
@@ -42,50 +42,45 @@ spec:
           valueFrom:
             configMapKeyRef:
               key: RABBITMQ_URI
-              name: microserv.users-config-pfw1
+              name: microserv.posts-config-0gbm
         - name: RABBITMQ_MEDIA_QUEUE
           valueFrom:
             configMapKeyRef:
               key: RABBITMQ_MEDIA_QUEUE
-              name: microserv.users-config-pfw1
+              name: microserv.posts-config-0gbm
         - name: RABBITMQ_R18E_QUEUE
           valueFrom:
             configMapKeyRef:
               key: RABBITMQ_R18E_QUEUE
-              name: microserv.users-config-pfw1
+              name: microserv.posts-config-0gbm
         - name: SURREAL_URI
           valueFrom:
             configMapKeyRef:
               key: SURREAL_URI
-              name: microserv.users-config-pfw1
-        - name: REDIS_URI
-          valueFrom:
-            configMapKeyRef:
-              key: REDIS_URI
-              name: microserv.users-config-pfw1
-        - name: MEDIA_MICROSERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              key: MEDIA_MICROSERVICE_URL
-              name: microserv.users-config-pfw1
+              name: microserv.posts-config-0gbm
         - name: SURREAL_USER
           valueFrom:
             configMapKeyRef:
               key: SURREAL_USER
-              name: microserv.users-config-pfw1
+              name: microserv.posts-config-0gbm
         - name: SURREAL_PASS
           valueFrom:
             configMapKeyRef:
               key: SURREAL_PASS
-              name: microserv.users-config-pfw1
-        - name: NOVU_SECRET_KEY
+              name: microserv.posts-config-0gbm
+        - name: REDIS_URI
           valueFrom:
             configMapKeyRef:
-              key: NOVU_SECRET_KEY
-              name: microserv.users-config-pfw1
-        image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.users:latest
+              key: REDIS_URI
+              name: microserv.posts-config-0gbm
+        - name: MEDIA_MICROSERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              key: MEDIA_MICROSERVICE_URL
+              name: microserv.posts-config-0gbm
+        image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.posts:latest
         imagePullPolicy: Always
-        name: microservices-users-sha256-1
+        name: microservices-posts-sha256-1
         resources:
           limits:
             ephemeral-storage: 1Gi
@@ -114,19 +109,19 @@ spec:
 status:
   availableReplicas: 1
   conditions:
-  - lastTransitionTime: "2025-05-01T05:56:53Z"
-    lastUpdateTime: "2025-05-01T05:56:53Z"
+  - lastTransitionTime: "2025-04-22T10:48:29Z"
+    lastUpdateTime: "2025-04-22T10:48:29Z"
     message: Deployment has minimum availability.
     reason: MinimumReplicasAvailable
     status: "True"
     type: Available
-  - lastTransitionTime: "2025-04-14T20:32:04Z"
-    lastUpdateTime: "2025-05-01T08:41:50Z"
-    message: ReplicaSet "microserv.users-78c94598c7" has successfully progressed.
+  - lastTransitionTime: "2025-04-14T20:32:32Z"
+    lastUpdateTime: "2025-05-01T08:41:49Z"
+    message: ReplicaSet "microserv.posts-89776dd96" has successfully progressed.
     reason: NewReplicaSetAvailable
     status: "True"
     type: Progressing
-  observedGeneration: 925
+  observedGeneration: 564
   readyReplicas: 1
   replicas: 1
   updatedReplicas: 1

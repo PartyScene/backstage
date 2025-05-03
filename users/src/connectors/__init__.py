@@ -13,6 +13,18 @@ class UsersDB:
         self.pool = pool
         self.logger = logger
 
+    async def _report_resource(self, data: dict):
+        """
+        Report this resource which is a user
+        Args:
+            data (dict): The data to report
+        """
+        data["reporter"] = RecordID("users", data["reporter"])
+        data["resource"] = RecordID("users", data["resource"])
+        async with self.pool.acquire() as conn:
+            result = await conn.create("reports", data)
+            return record_id_to_json(result)
+
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
@@ -68,8 +80,8 @@ class UsersDB:
                     "status": data.get("status", "pending"),
                 },
             )
-            
-        return record_id_to_json(result['relationship'])
+
+        return record_id_to_json(result["relationship"])
 
     async def update_friend_relationship(self, connection_id: str, data: dict):
         """
