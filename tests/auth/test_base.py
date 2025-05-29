@@ -31,11 +31,18 @@ class TestAuthBase:
         params = urllib.parse.urlencode(
             {"type": "username", "param": user_data["username"]}
         )
-
         return await client.get(f"/auth/exists?{params}")
 
+    async def forget_password(self, client: QuartClient, user_data):
+        """Helper method to request a password reset"""
+        return await client.post("/auth/forgot-password", json={"email": user_data["email"]})
+
+    async def reset_password(self, client: QuartClient, user_data):
+        """Helper method to reset a user's password"""
+        return await client.post("/auth/reset-password", json={"email": user_data["email"], "new_password": user_data["new_password"], "otp": user_data["forgot_password_otp"]})
+
     async def check_email_exists(self, client: QuartClient, user_data):
-        """Helper method to recommend events"""
+        """Helper method to check if an email exists"""
         params = urllib.parse.urlencode({"type": "email", "param": user_data["email"]})
 
         return await client.get(f"/auth/exists?{params}")

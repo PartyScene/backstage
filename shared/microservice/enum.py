@@ -7,6 +7,7 @@ class Microservice(StrEnum):
     POSTS = "POSTS"
     USERS = "USERS"
     MEDIA = "MEDIA"
+    PAYMENTS = "PAYMENTS"
     LIVESTREAM = "LIVESTREAM"
     R18E = "R18E"
 

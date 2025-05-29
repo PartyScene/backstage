@@ -50,7 +50,7 @@ DEFINE TABLE OVERWRITE attends TYPE RELATION IN users TO events;
 DEFINE TABLE OVERWRITE events SCHEMALESS;
 DEFINE FIELD OVERWRITE title ON TABLE events TYPE string;
 DEFINE FIELD OVERWRITE description ON TABLE events TYPE string;
-DEFINE FIELD OVERWRITE price ON TABLE events TYPE string;
+DEFINE FIELD OVERWRITE price ON TABLE events TYPE number;
 DEFINE FIELD OVERWRITE status ON TABLE events TYPE string DEFAULT 'scheduled';
 DEFINE FIELD OVERWRITE is_private ON TABLE events TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE host ON TABLE events TYPE record<users>;
@@ -65,6 +65,11 @@ DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
 DEFINE FIELD OVERWRITE visible ON TABLE posts TYPE bool DEFAULT true;
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
+
+
+DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
+DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE record<users>;
+DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
 
 -- Relate Events to Media
 DEFINE TABLE OVERWRITE has_media TYPE RELATION IN events TO media;
@@ -120,8 +125,6 @@ DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
-DEFINE FIELD OVERWRITE url ON TABLE media TYPE option<string> VALUE <future> {http::get(string::concat('http://34.144.227.188/media/sign?filename=', filename))} ASSERT string::len($value) > 0;
-
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
 
@@ -207,7 +210,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
     RETURN (
         SELECT
         *,
-        (->has_media->media.{creator, metadata,  filename}) AS media,
+        (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
         array::len(<-attends<-users) as attendees_count
     OMIT embeddings

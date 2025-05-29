@@ -36,6 +36,80 @@ class AuthDB:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
+    async def _reset_password(self, email: str, new_password: str) -> Optional[bool]:
+        """Reset the password for the user with the given email.
+
+        Args:
+            email (str): The email of the user whose password is to be reset.
+
+        Returns:
+            Optional[bool]: True if the password was reset successfully, False otherwise.
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query("""UPDATE users SET hashed_password = crypto::argon2::generate($new_password) WHERE crypto::argon2::compare(hashed_email, $email);""", 
+                                          {"email": email, "new_password": new_password}
+                                          )
+                
+                # Expect a list with a single dict representing the updated record
+                if not result or not isinstance(result[0], dict):
+                    logger.warning("Password reset affected 0 rows for %s – result=%s", email, result)
+                    return False
+                    
+                return True
+            
+        except Exception as e:
+            logger.exception(f"Error resetting password for {email}: {e}")
+            return None
+    
+    async def _fetch_user_by_email(self, email: str) -> Optional[dict]:
+        """
+        Fetch user data from the database by email.
+
+        Args:
+            email (str): The email to fetch
+
+        Returns:
+            Optional[dict]: User data if found, or None if not found
+        """
+        return await self._fetch_user(email, "email")
+    
+    async def _fetch_user(self, param: str, type: typing.Literal["email", "username"]) -> Optional[dict]:
+        """
+        Fetch user data from the database by email or username.
+        Args:
+            param (str): The email or username to fetch
+            type (typing.Literal["email", "username"]): The type of parameter ('email' or 'username')
+        Returns:
+            Optional[dict]: User data if found, or None if not found
+        """
+        match type:
+            case "email":
+                query = """
+                SELECT * OMIT password FROM users WHERE crypto::argon2::compare(hashed_email, $param);
+                """
+            case "username":
+                query = """
+                SELECT * OMIT password FROM users WHERE username = $param;
+                """
+            case _:
+                raise ValueError("Invalid type specified. Use 'email' or 'username'.")
+        # Execute the query to fetch user data
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(query, {"param": param})
+            if not result:
+                logger.warning(f"No user found for {type}: {param}")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching user by {type}: {e}")
+            return None
+        
+        logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+        # SurrealDB can return `[[]]` when no rows matched
+        first = result[0] if result and result[0] else None
+        return record_id_to_json(first) if first else None
+
     async def _create_lead(self, email: str, usecase: str) -> dict:
         """
         Create a new lead in the database.
@@ -103,7 +177,7 @@ class AuthDB:
             logger.error(f"DB Existence Check Failed: {e}")
             return False
 
-    async def _login(self, data) -> dict:
+    async def _login(self, data) -> dict | None:
         """
         Authenticate a user with email and password.
 
@@ -124,12 +198,12 @@ class AuthDB:
                 logger.warning(
                     f"Wrong password or non-existent credentials for email {data.get('email')}"
                 )
-                return False
+                return None
 
             return record_id_to_json(result[0])
         except Exception as e:
             logger.error(f"Login error: {e}")
-            return False
+            return None
 
     async def _create_pending_user(self, form):
         """
@@ -150,9 +224,9 @@ class AuthDB:
             logger.error(f"Error creating user: {e}")
             return None
 
-    async def _verify_and_store(self, form):
+    async def _store_after_verify(self, form):
         """
-        Create a new user in the database after verifying the user's email.
+        Store or create a new user in the database after verifying the user's email.
 
         Args:
             form: User data to create
@@ -174,13 +248,17 @@ class AuthDB:
             async with self.pool.acquire() as conn:
 
                 result = await conn.create("users", {**form, **data})
-                await self.bloom_filter.add("email", form.get("email"))
-                await self.bloom_filter.add("username", form.get("username"))
+                if isinstance(result, dict):
+                    await self.bloom_filter.add("email", form.get("email"))
+                    await self.bloom_filter.add("username", form.get("username"))
 
-                await conn.create("credentials", {**credentials, "user": result["id"]})
+                    await conn.create("credentials", {**credentials, "user": result["id"]})
 
-                logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
-                return record_id_to_json(result)
+                    logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                    return record_id_to_json(result)
+                else:
+                    logger.warning("User creation returned unexpected result: %s", result)
+                    return None
         except Exception as e:
             logger.error(f"Error creating user: {e}")
             return None
@@ -245,10 +323,5 @@ async def init_db(app) -> tuple[AuthDB, SurrealDBPoolManager]:
 
     # Create AuthDB instance
     auth_db = AuthDB(pool, app.redis)
-
-    # For backward compatibility with existing code
-    # This allows code that directly accesses auth_db.db to still work
-    async with pool.acquire() as conn:
-        auth_db.db = conn
 
     return auth_db, pool_manager

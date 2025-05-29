@@ -34,6 +34,7 @@ class TestEventQueries(TestEventsBase):
         assert response_json["status"] == HTTPStatus.OK.phrase
         assert "data" in response_json
         event = response_json["data"]
+        assert any("signed_url" in item for item in event["media"])
         assert isinstance(event, dict)
         assert event["id"] == mock_event["id"]
         assert event["title"] == mock_event["title"]  # Check other fields

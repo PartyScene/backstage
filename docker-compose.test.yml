@@ -31,6 +31,20 @@ services:
       - ./init/schema.surql:/home/schema.surql
     environment:
       - SCHEMA_FILE=/home/schema.surql
+  
+  microservices.payments:
+    container_name: microservices.payments
+    build:
+      context: .
+      dockerfile: payments/Dockerfile
+      target: test
+    depends_on:
+        microservices.auth:
+          condition: service_completed_successfully
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    environment:
+      - SCHEMA_FILE=/home/schema.surql
 
   microservices.media:
     container_name: microservices.media
@@ -70,6 +84,7 @@ services:
     depends_on:
       microservices.media:
         condition: service_started # service_completed_successfully
+    env_file: .env
 
   microservices.posts:
     container_name: microservices.posts

@@ -1,5 +1,3 @@
-import pytest_asyncio
-import pytest
 import urllib
 from quart.testing import QuartClient
 from PIL import Image
@@ -92,9 +90,9 @@ class TestEventsBase:
             headers={"Authorization": f"Bearer {bearer}"},
         )
 
-    async def buy_ticket(self, client: QuartClient, event_id, bearer):
-        """Helper method to buy a ticket for an event"""
+    async def attend_event(self, client: QuartClient, event_id, bearer):
+        """Helper method to attend an event"""
         return await client.post(
-            f"/events/{event_id}/buy_ticket",
+            f"/events/{event_id}/attend",
             headers={"Authorization": f"Bearer {bearer}"},
         )

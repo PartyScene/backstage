@@ -1,0 +1,271 @@
+from datetime import datetime
+import random
+import orjson as json
+import asyncio
+import os
+import uuid
+import stripe
+
+from typing import AsyncGenerator, Dict, Any, Tuple, Optional
+from http import HTTPStatus
+from shared.utils import sign_media_object
+
+
+
+from dataclasses import dataclass
+from pprint import pprint
+from quart import (
+    Response,
+    make_response,
+    render_template,
+    current_app as app,
+    request,
+    jsonify,
+    websocket,
+)
+from payments.src.connectors import PaymentsDB
+from shared.classful import route, QuartClassful
+
+from quart_jwt_extended import jwt_required, get_jwt_identity
+from aiocache import cached
+
+from shared.workers.rmq import RMQBroker
+import uuid_utils as ruuid
+
+from surrealdb import RecordID
+
+from stripe import StripeClient
+
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PUB_KEY = os.environ.get("STRIPE_PUB_KEY", "")
+STRIPE_PRIV_KEY = os.environ.get("STRIPE_PRIV_KEY", "")
+
+if not STRIPE_WEBHOOK_SECRET or not STRIPE_PUB_KEY or not STRIPE_PRIV_KEY:
+    raise ValueError("Stripe webhook secret and API keys must be set in environment variables.")
+class BaseView(QuartClassful):
+
+    def __init__(self):
+        self.conn: PaymentsDB = app.conn
+        self.redis = app.redis
+        self.stripe_client: Optional[StripeClient] = StripeClient(STRIPE_PRIV_KEY)
+        
+    @route("/", methods=["GET"])
+    async def index(self):
+        return await self.healthcheck()
+
+    @route("/payments/health", methods=["GET"])
+    @cached(ttl=60 * 60 * 72)
+    async def healthcheck(self):
+        """
+        Simple health check endpoint that verifies service and dependency status.
+        Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
+        """
+        health_status = {
+            "service": "microservices.payments",
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "dependencies": {"database": "unknown", "redis": "unknown"},
+        }
+        message = "Service is healthy"
+        status_code = HTTPStatus.OK
+
+        # Check database connection
+        try:
+            db_info = await self.conn._info()
+            health_status["dependencies"]["database"] = "healthy"
+        except Exception as e:
+            app.logger.error(f"Database health check failed: {e}")
+            health_status["dependencies"]["database"] = "unhealthy"
+            health_status["status"] = "degraded"
+            message = "Service degraded: Database connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+        # Check Redis connection
+        try:
+            redis_ping = await self.redis.ping()
+            health_status["dependencies"]["redis"] = (
+                "healthy" if redis_ping else "unhealthy"
+            )
+            if not redis_ping:
+                health_status["status"] = "degraded"
+                message = "Service degraded: Redis connection failed"
+                status_code = HTTPStatus.SERVICE_UNAVAILABLE
+        except Exception as e:
+            app.logger.error(f"Redis health check failed: {e}")
+            health_status["dependencies"]["redis"] = "unhealthy"
+            health_status["status"] = "degraded"
+            message = "Service degraded: Redis connection failed"
+            status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+        return (
+            jsonify(data=health_status, message=message, status=status_code.phrase),
+            status_code,
+        )
+        
+
+    async def create_stripe_intent(self, amount: int, user_id, event_id, ticket_count: int = 1) -> Dict[str, Any]:
+        """Create a Stripe payment intent for the given amount and user ID."""
+        if not self.stripe_client:
+            raise ValueError("Stripe client is not initialized.")
+        payment_intent = await self.stripe_client.payment_intents.create_async(
+            {
+            "amount": int(amount * 100),   # Convert to cents
+            "currency": "usd",
+            "metadata": {
+                "user_id": user_id,
+                "ticket_count": str(ticket_count),
+                "event_id": event_id,
+                },
+            }
+        )
+        return payment_intent
+    
+    @route("/payments/<event_id>/create-intent", methods=["POST"])
+    @jwt_required
+    async def create_intent(self, event_id: str):
+        """Create payment intent for a user & event"""
+        try:
+            user_id = get_jwt_identity()
+            data: dict = await request.get_json()
+            ticket_count = data.get("ticket_count", 1)
+
+            # Verify the event exists
+            event = await self.conn._fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+            
+            # Create a stripe payment intent
+            intent = await self.create_stripe_intent(
+                amount=event.get("price", 0),
+                user_id=user_id,
+                event_id=event_id,
+                ticket_count=ticket_count
+            )
+             
+            # return the intent client secret
+            return (
+                jsonify(
+                    data={
+                        "client_secret": intent["client_secret"],
+                        "amount": intent["amount"],
+                        "currency": intent["currency"],
+                        "event_id": event_id,
+                    },
+                    message="Payment intent created successfully.",
+                    status=HTTPStatus.OK.phrase,
+                ),
+                HTTPStatus.OK,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error creating payment intent for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to create payment intent: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+            
+    
+    @route("/payments/webhook", methods=["POST"])
+    async def payments_webhook(self):
+        """
+        Processes incoming Stripe webhook events.
+
+        This method performs the following steps:
+        1. Retrieves the raw request body and Stripe signature from headers.
+        2. Constructs a Stripe Event object, verifying the signature.
+        3. Handles 'payment_intent.succeeded' events.
+        4. Extracts relevant information (e.g., ticket_id from metadata).
+        5. Updates the ticket status in SurrealDB.
+        6. Returns a 200 OK response to Stripe.
+        """
+        app.logger.info("Received webhook request.")
+
+        # Get the raw request body
+        payload = await request.get_data()
+        # Get the Stripe signature from the header
+        sig_header = request.headers.get("stripe-signature")
+
+        event = None
+
+        try:
+            # Construct the Stripe event, verifying the signature
+            # This is crucial for security to ensure the event is from Stripe
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            )
+            app.logger.info(f"Stripe event constructed successfully. Type: {event.type}")
+        except ValueError as e:
+            # Invalid payload
+            app.logger.error(f"Invalid payload: {e}")
+            return jsonify({"error": "Invalid payload"}), 400
+        except stripe.SignatureVerificationError as e:
+            # Invalid signature
+            app.logger.error(f"Invalid signature: {e}")
+            return jsonify({"error": "Invalid signature"}), 400
+        except Exception as e:
+            # Catch any other unexpected errors during event construction
+            app.logger.error(f"Unexpected error constructing event: {e}")
+            return jsonify({"error": "Internal server error"}), 500
+
+        # Handle the event
+        if event["type"] == "payment_intent.succeeded":
+            payment_intent = event.data.object
+            app.logger.info(f"PaymentIntent was successful: {payment_intent['id']}")
+
+            # Extract ticket_id from payment_intent metadata
+            # This metadata was set when creating the PaymentIntent in /create-payment-intent
+            metadata = payment_intent.get("metadata")
+            
+            if metadata:
+                ticket_count, user_id, event_id = int(metadata.get("ticket_count")), metadata.get("user_id"), metadata.get("event_id")
+
+                for i in range(ticket_count):
+                    app.logger.info(f"Processing ticket {i + 1} for PaymentIntent {payment_intent['id']} | User ID: {user_id}")
+                    # Create ticket in DB
+                    await self.conn._create_ticket(
+                        {"user_id": user_id, "event_id": event_id}
+                    )
+                    app.logger.info(f"Ticket created for user {user_id} and event {event_id}.")
+                
+                # Register the user as attending the event
+                await self.conn.create_attendance(
+                    {
+                        "user": user_id,
+                        "event": event_id,
+                        "status": "paid",
+                    }
+                )
+                app.logger.info(f"User {user_id} registered as attending event {event_id}.")
+                # Here you might send a confirmation email or notification to the user
+                
+
+            else:
+                app.logger.warning(f"No ticket data found in metadata for PaymentIntent {payment_intent['id']}. Cannot create ticket.")
+        
+        elif event["type"] == "payment_intent.payment_failed":
+            ...
+            # payment_intent = event["data"]["object"]
+            # app.logger.warning(f"PaymentIntent failed: {payment_intent['id']}")
+            # # Extract ticket_id if available to update its status to 'failed'
+            # ticket_id = payment_intent["metadata"].get("ticket_id")
+            # if ticket_id:
+            #     await update_ticket_status(ticket_id, "payment_failed")
+            #     app.logger.info(f"Ticket '{ticket_id}' marked as payment_failed.")
+            # # Here you might update the ticket status to 'failed' or 'cancelled'
+            # # and notify the user.
+        
+        else:
+            # Log other event types that you might not be handling explicitly
+            app.logger.info(f"Unhandled event type: {event['type']}")
+
+        # Return a 200 OK response to Stripe to acknowledge receipt of the event
+        return jsonify({"status": "success"}), 200

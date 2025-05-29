@@ -633,7 +633,13 @@ class BaseView(QuartClassful):
             await app.RMQ._publish_media(rmq_data, file)
 
             # Don't update user profile here directly. Wait for confirmation.
-            response = await self.conn.update({"id": user_id, "filename": rmq_data['filename'], "type": rmq_data['type']}) # Maybe set a pending status?
+            response = await self.conn.update(
+                {
+                    "id": user_id,
+                    "filename": rmq_data["filename"],
+                    "type": rmq_data["type"],
+                }
+            )  # Maybe set a pending status?
 
             # Return success indicating the upload process has started
             status_code = HTTPStatus.ACCEPTED  # 202 Accepted is suitable here

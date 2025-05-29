@@ -64,6 +64,7 @@ class EventsDB:
             Dict[str, Any]: The created event
         """
         coordinates = data.pop("coordinates")
+        coordinates = tuple(float(x) for x in coordinates)
 
         try:
             data["creator"] = data["host"] = RecordID("users", data["host"])
@@ -74,14 +75,13 @@ class EventsDB:
 
             media_ids = []
             for i, filename in enumerate(data["filenames"]):
-                data["filename"] = filename
-                data["type"] = data["types"][i]
+                media_type = data["types"][i]
                 async with self.pool.acquire() as conn:
                     media_query_result = await conn.create(
                         "media",
                         {
                             "filename": filename,
-                            "type": data["types"][i],
+                            "type": media_type,
                             "creator": data["creator"],
                             "event": data["event_id"],
                         },
@@ -105,20 +105,22 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 event_id = data.pop("event_id", None)
                 result = await conn.create(event_id, data)
-
-                await conn.query(
-                    "RELATE $event -> has_media -> $media_ids",
-                    {
-                        "event": result.get("id"),
-                        "media_ids": media_ids,
-                    },
-                )
-                self.logger.warning(
-                    json.dumps(result, option=json.OPT_INDENT_2, default=str)
-                )
-                result = await conn.select(result["id"])
-            if isinstance(result, str):
-                raise Exception(f"Error creating event: {result}")
+                if isinstance(result, dict):
+                    await conn.query(
+                        "RELATE $event -> has_media -> $media_ids",
+                        {
+                            "event": result.get("id"),
+                            "media_ids": media_ids,
+                        },
+                    )
+                    self.logger.warning(
+                        json.dumps(result, option=json.OPT_INDENT_2, default=str)
+                    )
+                    result = await conn.select(result["id"])
+                    
+                elif isinstance(result, str):
+                    raise Exception(f"Error creating event: {result}")
+                
             return record_id_to_json(result)
 
         except Exception as e:
@@ -140,7 +142,13 @@ class EventsDB:
             return record_id_to_json(result)
 
     async def fetch_by_distance(
-        self, coordinates: tuple[float, float], distance: int, *, live: bool = False, is_private: bool = False, user: Optional[str] = None,
+        self,
+        coordinates: tuple[float, float],
+        distance: int,
+        *,
+        live: bool = False,
+        is_private: bool = False,
+        user: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Fetch all events within a certain distance.
@@ -304,7 +312,7 @@ class EventsDB:
             Any: The live query notifications
         """
         async with self.pool.acquire() as conn:
-            return await conn.subscribe_live(live_id)
+            return conn.subscribe_live(live_id)
 
     async def kill_live_query(self, live_id: str):
         """
@@ -361,9 +369,8 @@ class EventsDB:
                 )
 
             # Build update query
-            update_data = {
+            update_data : dict[str, Any] = {
                 "status": status,
-                "updated_at": "time::now()",
             }
             if metadata:
                 update_data["metadata"] = metadata
@@ -400,8 +407,9 @@ class EventsDB:
                 RELATE $user -> attends -> $event SET status = $status;
                 """
                 result = await conn.query(query, {"status": data["status"]})
-            if "err" in result:
+            if "err" in result[0]:
                 raise Exception(f"Error creating attendance: {result}")
+            return record_id_to_json(result[0])
         except Exception as e:
             self.logger.error(f"Failed to create attendance: {str(e)}")
             raise

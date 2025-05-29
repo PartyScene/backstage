@@ -2,8 +2,8 @@ import typing
 import inspect
 import functools
 
-
 from quart import Quart, Blueprint
+
 
 DEFAULT_OPTIONS = {
     "rule": None,
@@ -11,12 +11,25 @@ DEFAULT_OPTIONS = {
     "methods": ["GET"],
 }
 INSTACE_TYPE = typing.Union[Quart, Blueprint]
+HTTP_METHODS = typing.Literal[
+    "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD",
+    "TRACE"
+]
 
 
-def route(rule: str, **options: typing.Dict) -> typing.Callable:
+def route(
+    rule: str,
+    methods: typing.Optional[
+        typing.List[HTTP_METHODS]
+    ] = None,
+    **options,
+) -> typing.Callable:
     """A decorator that registers a route
     in a cached place, so it can be lazy-loaded.
     """
+    
+    if methods is None:
+        methods = ["GET"]
 
     def decorator(func) -> typing.Callable:
         if hasattr(func, "_classful") is False:
@@ -25,6 +38,7 @@ def route(rule: str, **options: typing.Dict) -> typing.Callable:
         if options is None:
             locals()["options"] = DEFAULT_OPTIONS
 
+        options["methods"] = methods
         func._classful = {"rule": rule, "options": options}
         return func
 
@@ -70,9 +84,9 @@ class QuartClassful:
     routes: typing.List[typing.Tuple[str, typing.Callable]] = []
     cls_functions: typing.List[str] = ["register"]
 
-    @staticmethod
+    @classmethod
     def get_intersting_members(
-        cls: typing.Type,
+        cls: typing.Type[typing.Self],
     ) -> typing.List[typing.Tuple[str, typing.Callable]]:
         """Get all the interesting members of a class."""
         check_lambda = lambda x: inspect.isfunction(x) or inspect.ismethod(x)
@@ -124,14 +138,14 @@ class QuartClassful:
             raise TypeError("Cannot register the base class.")
 
         self = cls(*args, **kwarg)
-        members = cls.get_intersting_members(cls)
+        members = cls.get_intersting_members()
 
         for name, member in members:
             if name not in cls.cls_functions:
                 pass
 
             func = functools.partial(member, self)
-            func.__name__ = member.__name__
+            func.__name__ = member.__name__ # pyright: ignore
 
             if hasattr(member, "_classful"):
                 args = (instance, member, func)

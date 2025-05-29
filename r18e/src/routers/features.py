@@ -89,8 +89,11 @@ class BaseView(QuartClassful):
         except Exception as e:
             status_code = HTTPStatus.BAD_REQUEST
             return (
-                    jsonify(message="Event not found or has not been vectorized", status=status_code.phrase),
-                    status_code,
-                )
+                jsonify(
+                    message="Event not found or has not been vectorized",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
         status_code = HTTPStatus.OK
         return jsonify(data=resp, message=status_code.phrase), status_code

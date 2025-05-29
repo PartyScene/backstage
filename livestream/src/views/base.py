@@ -10,12 +10,20 @@ from quart import (
 from quart.datastructures import FileStorage
 
 from quart_jwt_extended import jwt_required
+import jwt, os
 from http import HTTPStatus
 from shared.classful import route, QuartClassful
 from shared.workers import cloudflare_stream
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiocache import cached
 from livestream.src.connectors import LiveStreamDB
+
+import httpx
+
+
+VIDEOSDK_API_KEY = os.environ.get("VIDEOSDK_API_KEY", "")
+VIDEOSDK_SECRET_KEY = os.environ.get("VIDEOSDK_SECRET_KEY", "")
+TOKEN_EXPIRATION_IN_SECONDS = os.environ.get("TOKEN_EXPIRATION_IN_SECONDS", "")
 
 
 class BaseView(QuartClassful):
@@ -25,6 +33,14 @@ class BaseView(QuartClassful):
         self.redis = app.redis  # type: ignore
         self.conn: LiveStreamDB = app.conn
         self.scenes_client = cloudflare_stream.create_livestream_client(app, app.logger)
+
+        self.client = httpx.AsyncClient(
+            headers={
+                "accept": "application/json",
+                "content-type": "application/json",
+            }
+        )
+        self.videosdk_base_url = "https://api.videosdk.live/v2"
 
     @route("/", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
@@ -74,6 +90,32 @@ class BaseView(QuartClassful):
         )
 
         return jsonify(health_status), status_code
+
+    @route("/scenes/get-token/<event_id:str>", methods=["POST"])
+    @jwt_required
+    async def generate_scene_token(self, event_id):
+        expiration = datetime.now() + timedelta(seconds=TOKEN_EXPIRATION_IN_SECONDS)
+        payload = {
+            "exp": expiration,
+            "apikey": VIDEOSDK_API_KEY,
+            "permissions": ["allow_join", "allow_mod"],
+        }
+
+        if event_id:
+            payload["version"] = 2
+            payload["roles"] = ["rtc"]
+
+            payload["roomId"] = event_id
+
+            # Generate the token using the Videosdk API
+
+        token = jwt.encode(payload, VIDEOSDK_SECRET_KEY, algorithm="HS256")
+
+        return jsonify(
+            token=token,
+            message="Token generated successfully",
+            status=HTTPStatus.OK.phrase,
+        )
 
     @route("/scenes/<event_id>", methods=["GET"])
     @jwt_required

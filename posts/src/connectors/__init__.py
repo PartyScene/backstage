@@ -132,12 +132,14 @@ class PostsDB:
             data["creator"] = RecordID("users", author)
             data["event"] = RecordID("events", data["event"])
 
-            for i, filename in enumerate(data["filenames"]):
+            for file in data["files"]:
+                filename = file["filename"]
+                media_type = file["type"]
                 media_query_result = await conn.create(
                     "media",
                     {
                         "filename": filename,
-                        "type": data["types"][i],
+                        "type": media_type,
                         "event": data["event"],
                         "creator": data["creator"],
                     },
@@ -153,7 +155,7 @@ class PostsDB:
 
             await conn.let("media", media_ids)
             query = """
-            RELATE ONLY $users -> posts -> $media SET content = $content, event = $event;
+            RELATE $users -> posts -> $media SET content = $content, event = $event;
             """
             params = {
                 "content": data["content"],

@@ -81,6 +81,7 @@ class MicroService(Quart):
         self.conn = None
         self.pool_manager: SurrealDBPoolManager = None
         self.redis = None
+        self.RMQ : rmq.RMQBroker 
         self.views = views
         self.initialize_database = initialize_database
         self.microservice_instance = Microservice(instance)
@@ -92,6 +93,7 @@ class MicroService(Quart):
 
         @self.before_request
         async def log_request():
+            logger.debug(f"Request Path: {request.path}")
             logger.debug(f"Request body: {await request.data}")
             logger.debug(f"Request args: {request.args}")
 
@@ -311,7 +313,7 @@ class MicroService(Quart):
     def register_websocket_routes(self):
         """Register WebSocket routes"""
 
-        @self.websocket("/events/<event_id>/live/ws")
+        # @self.websocket("/events/<event_id>/live/ws")
         @jwt_required
         async def event_live_updates(event_id: str):
             """Handle WebSocket connections for live event updates."""

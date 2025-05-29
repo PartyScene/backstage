@@ -12,13 +12,12 @@ fake = Faker()
 class TestPostOperations(TestPostsBase):
     async def test_create_post(self, posts_client, mock_post, bearer):
         """Test creating a new post."""
-        files = {
-            "file": FileStorage(
-                io.BytesIO(b"fake image content"),
-                filename=fake.file_name(category="image", extension="jpg"),
-                content_type="image/jpeg",
-            )
-        }
+        files = [
+                {
+                    "filename": fake.file_name(category="image", extension="jpg"),
+                    "type": "image/jpeg",
+                }
+            ]
 
         response = await self.create_post(posts_client, files, mock_post, bearer)
         assert response.status_code == HTTPStatus.CREATED
@@ -26,7 +25,9 @@ class TestPostOperations(TestPostsBase):
         response_json = await response.get_json()
         assert response_json["status"] == HTTPStatus.CREATED.phrase
         assert "data" in response_json
-        created_post = response_json["data"]
+        assert "signed_urls" in response_json
+        created_post = response_json["data"][0]
+        
         assert "id" in created_post
         mock_post["id"] = created_post["id"]
         assert created_post["content"] == mock_post["content"]
@@ -150,7 +151,7 @@ class TestPostOperations(TestPostsBase):
         assert response_json["status"] == HTTPStatus.CREATED.phrase
         assert "Resource reported" in response_json["message"]
         assert "data" in response_json and "id" in response_json["data"]
-        
+
     async def test_delete_comment(self, posts_client, mock_post, mock_comment, bearer):
         """Test deleting a comment."""
         response = await self.delete_comment(
@@ -161,7 +162,6 @@ class TestPostOperations(TestPostsBase):
         response_json = await response.get_json()
         assert response_json["status"] == HTTPStatus.NO_CONTENT.phrase
         assert "deleted successfully" in response_json["message"]
-        
 
     # Add tests for reporting non-existent post/comment
     # Add tests for reporting comment with missing reason

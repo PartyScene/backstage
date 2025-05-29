@@ -8,6 +8,19 @@ fake = Faker()
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestEventUpdates(TestEventsBase):
+    
+    async def test_event_attendance(self, event_client, mock_event, bearer):
+        """Test attending an event."""
+        # Ensure the mock event exists first (or create one if needed)
+        # Assuming mock_event fixture provides a created event ID
+        response = await self.attend_event(event_client, mock_event["id"], bearer)
+        assert response.status_code == HTTPStatus.OK
+
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "Ticket purchased successfully" in response_json["message"]
+        
+        
     async def test_update_event_details(self, event_client, mock_event, bearer):
         """Test updating an existing event's details."""
         # Ensure the mock event exists first (or create one if needed)

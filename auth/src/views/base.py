@@ -12,7 +12,8 @@ import logging
 import asyncio
 import uuid_utils as ruuid
 import orjson as json
-from ..connectors import AuthDB
+
+from auth.src.connectors import AuthDB
 from shared.classful import route, QuartClassful
 from shared.workers.brevo import Brevo
 from shared.workers.novu import NotificationManager
@@ -123,13 +124,119 @@ class BaseView(QuartClassful):
             ),
             status_code,
         )
+        
+    @route("/auth/forgot-password", methods=["POST"])
+    async def forgot_password(self):
+        """Request a password reset for a user."""
+        data = await request.get_json()
+        email = data.get("email")
 
+        if not email:
+            status_code = HTTPStatus.BAD_REQUEST
+            return (
+                jsonify(message="Email is required", status=status_code.phrase),
+                status_code,
+            )
+
+        if not await self.conn._check_exists(email, "email"):
+            status_code = HTTPStatus.NOT_FOUND
+            return (
+                jsonify(message="Email not found", status=status_code.phrase),
+                status_code,
+            )
+        
+        user_info = await self.conn._fetch_user_by_email(email)
+        if not user_info:
+            status_code = HTTPStatus.NOT_FOUND
+            return (
+                jsonify(message="User not found", status=status_code.phrase),
+                status_code,
+            )
+        # Generate OTP and send it to the user
+        otp = await self.__n_generate_otp(
+            user_id=user_info['id'], email=email, data=data
+        )
+        if otp:
+            # Otp has been created, return success response
+            status_code = HTTPStatus.OK
+            # Return otp for testing purposes only
+            if os.getenv("ENVIRONMENT") in ["dev", "test"]:
+                return (
+                    jsonify(
+                        data={"otp": otp},
+                        message="OTP sent to your email for password reset.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+                
+            return (
+                jsonify(
+                    message="OTP sent to your email for password reset.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+        else:
+            # Otp already exists, return conflict response
+            status_code = HTTPStatus.CONFLICT
+            return (
+                jsonify(
+                    message="Existing OTP, please verify",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+            
+    @route("/auth/reset-password", methods=["POST"])
+    async def reset_password(self):
+        """Reset a user's password using the provided email and new password."""
+        data = await request.get_json()
+        email = data.get("email")
+        new_password = data.get("new_password")
+        otp = data.get("otp")
+        
+        if not email or not new_password or not otp:
+            status_code = HTTPStatus.BAD_REQUEST
+            
+            return (
+                jsonify(message="Email, new password, and OTP are required", status=status_code.phrase),
+                status_code,
+            )
+        
+        # check if the otp is valid
+        otp_exists = await self.verify_otp(email, otp, validate_only=True)
+        
+        if otp_exists:
+            if await self.conn._reset_password(email, new_password):
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(message="Password reset successfully", status=status_code.phrase),
+                    status_code,
+                )
+        
+        else:
+            # OTP is invalid or expired
+            status_code = HTTPStatus.UNAUTHORIZED
+            return (
+                jsonify(message="Invalid or expired OTP", status=status_code.phrase),
+                status_code,
+            )
+        
+        status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+        return (
+            jsonify(message="Failed to reset password", status=status_code.phrase),
+            status_code,
+        )
+        
     @route("/auth/exists", methods=["GET"])
     async def check_exists(self):
         """Verify if a user with the provided parameter already exists."""
-        type, param = request.args.get("type"), request.args.get("param")
-
-        result = await self.conn._check_exists(param, type)
+        type, param = request.args.get("type", ""), request.args.get("param")
+        
+        if type in ("email", "username"):
+            result = await self.conn._check_exists(param, type)
+        else: result = None
 
         if result:
             status_code = HTTPStatus.CONFLICT
@@ -152,8 +259,8 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-        if result := await self.verify_otp(data.get("email"), data.get("otp")):
-            await self.conn._verify_and_store(result)
+        if result := await self.verify_otp(data.get("email"), data.get("otp"), validate_only=False):
+            await self.conn._store_after_verify(result)
             access_token = self.generate_jwt_secret(result["id"])
             status_code = HTTPStatus.OK
             return (
@@ -234,7 +341,7 @@ class BaseView(QuartClassful):
             )
 
     @route("/auth/login", methods=["POST"])
-    async def _login_user(self):
+    async def login_user(self):
         """Verify user credentials and generate an access token."""
         data = await request.get_json()
         if result := await self.conn._login(data):
@@ -259,7 +366,7 @@ class BaseView(QuartClassful):
             status_code,
         )
 
-    async def __n_register_user(self, email: str, user_data: dict, user_id: str = None):
+    async def __n_register_user(self, email: str, user_data: dict, user_id: str = ""):
         """Create a new user in the Novu subscriber database."""
         try:
             return await self.__notification_manager.create_subscriber(
@@ -272,8 +379,17 @@ class BaseView(QuartClassful):
             logger.error(f"User registration error: {e}")
             raise
 
-    async def __n_generate_otp(self, user_id: str, email: str, data: dict):
-        """Generate and send OTP for authentication."""
+    async def __n_generate_otp(self, user_id: str, email: str, data: Optional[dict]) -> str | bool:
+        """Generate and send OTP for authentication
+        If data is provided, it will be stored in Redis for later verification.
+        If an OTP already exists for the email, it will return False.
+        Args:
+            user_id (str): The ID of the user.
+            email (str): The email address of the user.
+            data (Optional[dict]): Additional data to store for later verification.
+        Returns:
+            str | bool: The generated OTP if successful, False if an OTP already exists.
+        """
         try:
             otp = secrets.token_hex(3)[:6].upper()
 
@@ -284,9 +400,11 @@ class BaseView(QuartClassful):
             key = f"otp:{email}"
             await self.redis.set(key, otp, ex=600)  # 10 minutes expiration
 
-            await self.redis.set(
-                f"users:pending:{email}", json.dumps(data), ex=800
-            )  # Expire a little later
+            if data:
+                # Store user data in Redis for later verification
+                await self.redis.set(
+                    f"users:pending:{email}", json.dumps(data), ex=800
+                )  # Expire a little later
 
             await self.__notification_manager.send_otp_notification(
                 user_id=user_id,
@@ -301,13 +419,27 @@ class BaseView(QuartClassful):
         except Exception as e:
             logger.error(f"OTP generation error: {e}")
             raise
-
-    async def verify_otp(self, email: str, provided_otp: str) -> Optional[Dict] | bool:
-        """Verify OTP for user authentication."""
+        
+    async def verify_otp(self, email: str, provided_otp: str, validate_only: Optional[bool]) -> Optional[Dict] | bool:
+        """Verify and delete OTP for user authentication.
+        Args:
+            email (str): The email address of the user.
+            provided_otp (str): The OTP provided by the user.
+            validate_only (Optional[bool]): If True, only validate the OTP without deleting user data.
+        Returns:
+            Optional[Dict] | bool: User data if OTP is valid, False if invalid or expired.
+        """
         try:
-            stored_otp = await self.redis.get(f"otp:{email}")
+            key = f"otp:{email}"
+            stored_otp = await self.redis.get(key)
 
             if stored_otp and stored_otp == provided_otp:
+                if validate_only:
+                    # Delete OTP from Redis
+                    await self.redis.delete(key)
+                    return True
+                
+                # If validate_only is True, we still need to fetch user data
                 json_data = await self.redis.get(f"users:pending:{email}")
                 if not json_data:  # Handle case where pending user data expired
                     return False
@@ -315,7 +447,7 @@ class BaseView(QuartClassful):
 
                 # Use asyncio.gather for concurrent deletion
                 await asyncio.gather(
-                    self.redis.delete(f"otp:{email}"),
+                    self.redis.delete(key),
                     self.redis.delete(f"users:pending:{email}"),
                 )
                 return json_data

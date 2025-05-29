@@ -183,7 +183,7 @@ class UsersDB:
                         media_query_result, option=json.OPT_INDENT_2, default=str
                     )
                 )
-                
+
                 if isinstance(media_query_result, dict):
                     data["avatar"] = media_query_result["id"]
 

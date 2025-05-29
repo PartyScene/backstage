@@ -117,9 +117,13 @@ async def init_globals():
     db_connection = AsyncSurreal(SURREAL_URI)
     try:
         async with db_init_lock:
-            await db_connection.signin({"username": SURREAL_USER, "password": SURREAL_PASS})
+            await db_connection.signin(
+                {"username": SURREAL_USER, "password": SURREAL_PASS}
+            )
             await db_connection.use(SURREAL_NAMESPACE, SURREAL_DATABASE)
-            await db.query("INFO FOR DB;") # Check if the connection is established
+            await db_connection.query(
+                "INFO FOR DB;"
+            )  # Check if the connection is established
             logger.info("Database connection established.")
     except Exception as e:
         # Log as critical because the app likely cannot function without DB

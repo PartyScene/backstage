@@ -309,8 +309,7 @@ class BaseView(QuartClassful):
         Asynchronously creates a new post with the provided content, and optionally uploads media files.
         """
         try:
-            data = (await request.form).to_dict()
-            files = await request.files
+            data = await request.get_json()
             user_id = get_jwt_identity()
             content = data.get("content")
 
@@ -322,28 +321,30 @@ class BaseView(QuartClassful):
                 )
 
             data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
-            data["filenames"] = [
-                f"posts/{user_id}/{data['post_id']}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}"
-                for file in files.values()
-                if file.filename  # Ensure file has a name
-            ]
-            data["types"] = [
-                file.content_type for file in files.values() if file.filename
-            ]
-
             # Publish media upload tasks to RMQ
-            media_publish_tasks = []
-            for i, file in enumerate(files.values()):
-                if file.filename:  # Process only if file has a name
-                    media_data = (
-                        data.copy()
-                    )  # Avoid modifying original data dict in loop
-                    media_data["filename"] = data["filenames"][i]
-                    media_data["type"] = data["types"][i]
-                    media_publish_tasks.append(app.RMQ._publish_media(media_data, file))
+            # media_publish_tasks = []
+            # for i, file in enumerate(files.values()):
+            #     if file.filename:  # Process only if file has a name
+            #         media_data = (
+            #             data.copy()
+            #         )  # Avoid modifying original data dict in loop
+            #         media_data["filename"] = data["filenames"][i]
+            #         media_data["type"] = data["types"][i]
+            #         media_publish_tasks.append(app.RMQ._publish_media(media_data, file))
 
-            if media_publish_tasks:
-                await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
+            # if media_publish_tasks:
+            #     await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
+
+            # Sign filenames for uploading
+            filenames = tuple(
+                map(lambda item: item["filename"], data["files"])
+            )
+            # Assuming data["files"] is a list of dicts with "filename" keys
+            # and that the filenames are unique for each post
+            # Generate signed URLs for media upload
+            signed_urls = await app.RMQ.sign_put_urls(
+                filenames
+            )  # Assuming filenames are in the data dict
 
             # Create post in the database
             result = await self.__posts_handler.create_post(data=data, author=user_id)
@@ -353,7 +354,8 @@ class BaseView(QuartClassful):
                 return (
                     jsonify(
                         data=result,
-                        message="Post created successfully.",
+                        message="Post created successfully, upload media to signed_urls.",
+                        signed_urls=signed_urls,
                         status=status_code.phrase,
                     ),
                     status_code,
@@ -488,7 +490,8 @@ class BaseView(QuartClassful):
             )
 
         if result := await self.__posts_handler._report_resource(
-            {"reason": reason, "reporter": reporter, "resource": post_info["id"]}, "posts"
+            {"reason": reason, "reporter": reporter, "resource": post_info["id"]},
+            "posts",
         ):
             status_code = HTTPStatus.CREATED
             return (

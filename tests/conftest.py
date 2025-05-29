@@ -186,9 +186,10 @@ def mock_user():
     return {
         "first_name": "John",
         "last_name": "Doe",
-        "email": "dylee@tutamail.com",
+        "email": "doubra.ak@zohomail.com",
         "password": "testingTs",
         "confirm_password": "testingTs",
+        "new_password": "testingTs",
         "username": fake.user_name(),
         "host": "test",
         "id": "test",
@@ -200,7 +201,7 @@ def other_mock_user():
     return {
         "first_name": "John",
         "last_name": "Doe",
-        "email": "dyleee@tutamail.com",
+        "email": "oyinxdoubx@gmail.com",
         "password": "testingTs",
         "confirm_password": "testingTs",
         "username": fake.user_name(),

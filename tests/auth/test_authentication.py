@@ -135,7 +135,66 @@ class TestAuthentication(TestAuthBase):
         assert response_non_existent.status_code == HTTPStatus.OK
         assert response_non_existent_json["status"] == HTTPStatus.OK.phrase
         assert "Available" in response_non_existent_json["message"]
+    
+    async def test_user_login(self, auth_client, mock_user):
+        """Test user login"""
+        login_credentials = {
+            "email": mock_user["email"],
+            "password": mock_user["password"],
+        }
+        response = await self.login_user(auth_client, login_credentials)
+        response_json = await response.get_json()
 
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "Login successful" in response_json["message"]
+        assert "data" in response_json
+        assert "access_token" in response_json["data"]
+        assert "token_type" in response_json["data"]
+        assert response_json["data"]["token_type"] == "bearer"
+    
+    async def test_forgot_password(self, auth_client, mock_user):
+        """Test forgot password and assign returned dev otp to user data"""
+        response = await self.forget_password(auth_client, mock_user)
+        response_json = await response.get_json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "OTP sent to your email for password reset." in response_json["message"]
+        assert "data" in response_json
+        assert "otp" in response_json["data"]
+        mock_user["forgot_password_otp"] = response_json["data"]["otp"]
+    
+    async def test_reset_password(self, auth_client, mock_user):
+        """Test reset password by providing OTP and new password"""
+        if "forgot_password_otp" not in mock_user:
+            pytest.skip("Forgot password OTP not available for reset test")
+        response = await self.reset_password(auth_client, mock_user)
+        response_json = await response.get_json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "Password reset successfully" in response_json["message"]
+    
+    async def test_new_password_login(self, auth_client, mock_user):
+        """Test user login with new password"""
+        if "new_password" not in mock_user:
+            pytest.skip("New password not available for login test")
+        login_credentials = {
+            "email": mock_user["email"],
+            "password": mock_user["new_password"],
+        }
+        response = await self.login_user(auth_client, login_credentials)
+        response_json = await response.get_json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "Login successful" in response_json["message"]
+        assert "data" in response_json
+        assert "access_token" in response_json["data"]
+        assert "token_type" in response_json["data"]
+        assert response_json["data"]["token_type"] == "bearer"
+            
     async def test_lead_generation(self, auth_client):
         """Test lead generation"""
         lead_data = {
@@ -163,23 +222,6 @@ class TestAuthentication(TestAuthBase):
         elif response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR:
             assert response_json["status"] == HTTPStatus.INTERNAL_SERVER_ERROR.phrase
             assert "Failed to create lead in Brevo" in response_json["message"]
-
-    async def test_user_login(self, auth_client, mock_user):
-        """Test user login"""
-        login_credentials = {
-            "email": mock_user["email"],
-            "password": mock_user["password"],
-        }
-        response = await self.login_user(auth_client, login_credentials)
-        response_json = await response.get_json()
-
-        assert response.status_code == HTTPStatus.OK
-        assert response_json["status"] == HTTPStatus.OK.phrase
-        assert "Login successful" in response_json["message"]
-        assert "data" in response_json
-        assert "access_token" in response_json["data"]
-        assert "token_type" in response_json["data"]
-        assert response_json["data"]["token_type"] == "bearer"
 
     @pytest.mark.parametrize(
         "invalid_data",

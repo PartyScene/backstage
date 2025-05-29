@@ -7,6 +7,7 @@ import uuid
 
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
+from shared.utils import sign_media_object
 
 from dataclasses import dataclass
 from pprint import pprint
@@ -30,13 +31,12 @@ import uuid_utils as ruuid
 
 from surrealdb import RecordID
 
-
 class BaseView(QuartClassful):
 
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
-
+        
     async def _store_live_query(self, event_id: str, live_id: str):
         """Store live query ID in Redis"""
         key = f"live_query:{event_id}"
@@ -104,6 +104,51 @@ class BaseView(QuartClassful):
             jsonify(data=health_status, message=message, status=status_code.phrase),
             status_code,
         )
+        
+    @route("/events/<event_id>/attend", methods=["POST"])
+    @jwt_required
+    async def mark_attendance(self, event_id: str):
+        """Mark attendance for an event"""
+        try:
+            user_id = get_jwt_identity()
+            
+            event = await self.conn.fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Create the attendance relationship
+            attendance_data = {
+                "user": user_id,
+                "event": event_id,
+                "status": "confirmed",  # You can add more fields as needed
+            }
+
+            # Assuming you have a method to create the relationship in your database
+            await self.conn.create_attendance(attendance_data)
+
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    message="Ticket purchased successfully", status=status_code.phrase
+                ),
+                status_code,
+            )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to buy ticket: {str(e)}", status=status_code.phrase
+                ),
+                status_code,
+            )
 
     @route("/events/<event_id>", methods=["GET"])
     @jwt_required
@@ -156,6 +201,12 @@ class BaseView(QuartClassful):
             if event_id:
                 if result := await self.conn.fetch(event_id):
                     status_code = HTTPStatus.OK
+                    if "media" in result:
+                        try:
+                            result["media"] = await sign_media_object(result["media"])
+                        except Exception as e:
+                            app.logger.warning(f"Failed to sign media URLS: {str(e)}")
+                            # continue
                     return (
                         jsonify(
                             data=result,
@@ -189,6 +240,11 @@ class BaseView(QuartClassful):
                     )
 
                 result = await self.conn.fetch_by_distance(location, distance)
+                if any("media" in obj["event"] for obj in result):
+                    for obj in result:
+                        if "media" in obj["event"]:
+                            obj["event"]["media"] = await sign_media_object(obj["event"]["media"])
+                            
                 status_code = HTTPStatus.OK
                 return (
                     jsonify(
@@ -200,6 +256,10 @@ class BaseView(QuartClassful):
                 )
 
             result = await self.conn.fetch_all(page, limit)
+            if any("media" in obj["event"] for obj in result):
+                for obj in result:
+                    if "media" in obj["event"]:
+                        obj["event"]["media"] = await sign_media_object(obj["event"]["media"])                
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -299,6 +359,7 @@ class BaseView(QuartClassful):
                 "location",
                 "time",
                 "coordinates[]",
+                "price",
             ]
             # missing_fields = any( [field not in data for])
             missing_fields = [field for field in required_fields if not field in data]
@@ -335,9 +396,9 @@ class BaseView(QuartClassful):
             data["types"] = [file.content_type for file in files.values()]
 
             data["degree_of_freedom"] = form.get("degree_of_freedom", 1, type=int)
-
+            data["price"] = form.get("price", type=float)
             data["time"] = datetime.fromisoformat(
-                form.get("time", type=str).replace("Z", "+00:00")
+                form.get("time", "", type=str).replace("Z", "+00:00")
             )
 
             data["is_private"] = (
@@ -351,8 +412,10 @@ class BaseView(QuartClassful):
                     f"Uploading new event media to GCP: {data['filename']}"
                 )
                 await app.RMQ._publish_media(data, file)
+            
 
             app.logger.debug(f"Creating event data: {data}")
+            
             if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
@@ -439,6 +502,11 @@ class BaseView(QuartClassful):
         user = get_jwt_identity()
         try:
             result = await self.conn.fetch_private(user, page, limit)
+            if any("media" in obj["event"] for obj in result):
+                for obj in result:
+                    if "media" in obj["event"]:
+                        obj["event"]["media"] = await sign_media_object(obj["event"]["media"])
+                            
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -471,6 +539,11 @@ class BaseView(QuartClassful):
             user = get_jwt_identity()
             distance = int(request.args.get("distance", 1000))
             result = await self.conn.fetch_by_distance(location, distance, user=user)
+            if any("media" in obj["event"] for obj in result):
+                for obj in result:
+                    if "media" in obj["event"]:
+                        obj["event"]["media"] = await sign_media_object(obj["event"]["media"])
+                        
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -741,48 +814,3 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-    @route("/events/<event_id>/buy_ticket", methods=["POST"])
-    @jwt_required
-    async def buy_ticket(self, event_id: str):
-        """Buy a ticket for an event"""
-        try:
-            user_id = get_jwt_identity()
-
-            # Verify the event exists
-            event = await self.conn.fetch(event_id)
-            if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
-
-            # Create the attendance relationship
-            attendance_data = {
-                "user": user_id,
-                "event": event_id,
-                "status": "confirmed",  # You can add more fields as needed
-            }
-
-            # Assuming you have a method to create the relationship in your database
-            await self.conn.create_attendance(attendance_data)
-
-            status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    message="Ticket purchased successfully", status=status_code.phrase
-                ),
-                status_code,
-            )
-
-        except Exception as e:
-            app.logger.error(
-                f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
-            )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to buy ticket: {str(e)}", status=status_code.phrase
-                ),
-                status_code,
-            )

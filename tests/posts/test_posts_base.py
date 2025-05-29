@@ -6,11 +6,12 @@ from quart.testing import QuartClient
 
 class TestPostsBase:
     async def create_post(self, client: QuartClient, files, metadata, bearer):
-        """Helper method to upload media"""
+        """Helper method to create a post"""
+        metadata["files"] = files
+
         return await client.post(
             f"/posts",
-            files=files,
-            form=metadata,
+            json=metadata,
             headers={"Authorization": f"Bearer {bearer}"},
         )
 

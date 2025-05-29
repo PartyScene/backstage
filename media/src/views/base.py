@@ -87,81 +87,47 @@ class BaseView(QuartClassful):
             jsonify(data=health_status, message=message, status=status_code.phrase),
             status_code,
         )
-
-    @route("/media/sign", methods=["GET"])
-    # @cached(ttl=60 * 60 * 72) # Caching handled manually with Redis below
-    async def sign(self):
-        """Sign a media in the Bucket for access"""
-        filename = request.args.get("filename")
-
+    
+    async def sign_media_url(self, filename, cache=True):
+        """Sign a media URL for access and cache it in Redis"""
         if not filename:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Filename missing", status=status_code.phrase),
-                status_code,
-            )
-
+            self.logger.error("Filename is required to sign media URL.")
+            return None
         # Define a specific cache key prefix for this endpoint
         cache_key = f"media:signed_url:{filename}"
         # Define TTL for the cache (e.g., 1 hour = 3600 seconds)
         # Should be less than the signed URL validity (1 day)
         cache_ttl = 3600 * 22
+        if cache:
+            try:
+                # 1. Check Redis cache first
+                cached_url = await self.redis.get(cache_key)
+                if cached_url:
+                    self.logger.info(f"Cache HIT for signed URL: {filename}")
+                    # Return cached URL
+                    return cached_url
 
-        cached_url = None
-        try:
-            # 1. Check Redis cache first
-            cached_url = await self.redis.get(cache_key)
-            if cached_url:
-                self.logger.info(f"Cache HIT for signed URL: {filename}")
-                # Return cached URL
-                status_code = HTTPStatus.OK
-                return cached_url, status_code
-                # return (
-                #     jsonify(
-                #         data={"signed_url": cached_url},
-                #         message="Signed URL retrieved from cache.",
-                #         status=status_code.phrase,
-                #     ),
-                #     status_code,
-                # )
+                self.logger.info(f"Cache MISS for signed URL: {filename}")
 
-            self.logger.info(f"Cache MISS for signed URL: {filename}")
-
-        except redis.exceptions.RedisError as e:
-            self.logger.error(
-                f"Redis GET error for key {cache_key}: {e}. Proceeding without cache."
-            )
-            # Fallback: If Redis GET fails, generate a new URL without caching
-
+            except redis.exceptions.RedisError as e:
+                self.logger.error(
+                    f"Redis GET error for key {cache_key}: {e}. Proceeding without cache."
+                )
+                # Fallback: If Redis GET fails, generate a new URL without caching
         # --- Cache MISS or Redis GET Error ---
         self.logger.warning(f"Generating new signed URL for Filename: {filename}")
-
+        # 2. Generate the signed URL (original logic)
         try:
-            # 2. Generate the signed URL (original logic)
             media_url = await obs.sign_async(
                 self.OBS_STORE, "GET", filename, timedelta(days=1)
             )
-            # Alternative method call if needed:
-            # media_url = await self.generate_download_signed_url_v4(filename)
-
         except Exception as e:
-            # Handle potential errors during URL signing
-            self.logger.error(
-                f"Error generating signed URL for {filename}: {e}", exc_info=True
-            )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to generate signed URL for {filename}",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )
-
+            self.logger.error(f"Error signing media URL: {e}")
+            return None
         # 3. Store the newly generated URL in Redis (if cache wasn't hit and GET didn't fail)
-        if (
-            cached_url is None
-        ):  # Only store if it was a definite miss (and GET didn't error)
+        if cache:
+            # Only store if it was a definite miss (and GET didn't error)
+            self.logger.info(f"Storing signed URL in cache for {filename}")
             try:
                 await self.redis.set(cache_key, media_url, ex=cache_ttl)
                 self.logger.info(
@@ -171,19 +137,42 @@ class BaseView(QuartClassful):
                 self.logger.error(
                     f"Redis SET error for key {cache_key}: {e}. Serving URL without caching."
                 )
-                # If SET fails, we still return the generated URL, just don't cache it
+        # If SET fails, we still return the generated URL
+        return media_url
 
-        # Return the newly generated URL
+    @route("/media/sign", methods=["POST"])
+    # @cached(ttl=60 * 60 * 72) # Caching handled manually with Redis below
+    async def sign(self):
+        """Sign a media in the Bucket for access"""
+        data = await request.get_json(silent=True) or {}
+        filenames = data.get("filenames")
+        if not isinstance(filenames, (list, tuple)) or not filenames:
+            return (
+                jsonify(message="`filenames` must be a non-empty list"),
+                HTTPStatus.BAD_REQUEST,
+            )
+        result = {}
+        for filename in filenames:
+            # Generate signed URL for each filename
+            try:
+                signed_url = await self.sign_media_url(filename)
+                result[filename] = signed_url
+            except Exception as e:
+                self.logger.error(
+                    f"Error generating signed URL for {filename}: {e}", exc_info=True
+                )
+                status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+                return (
+                    jsonify(
+                        message=f"Failed to generate signed URL for {filename}",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+                
+        # Return the newly generated URLs
         status_code = HTTPStatus.OK
-        return media_url, status_code
-        # return (
-        #     jsonify(
-        #         data={"signed_url": media_url},
-        #         message="Signed URL generated successfully.",
-        #         status=status_code.phrase,
-        #     ),
-        #     status_code,
-        # )
+        return jsonify(data=result, status=status_code.phrase), status_code
 
     async def generate_download_signed_url_v4(self, blob_name):
         """Generates a v4 signed URL for downloading a blob.

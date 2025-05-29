@@ -16,3 +16,4 @@ cryptography
 google-cloud-secret-manager
 uuid-utils
 ormsgpack
+obstore
