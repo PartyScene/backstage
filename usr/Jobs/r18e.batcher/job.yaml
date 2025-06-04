@@ -5,7 +5,6 @@ taskGroups:
         imageUri: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/r18e.batcher
     environment:
       secretVariables:
-        RABBITMQ_URI: projects/288617366843/secrets/RABBITMQ_URI/versions/latest
         SURREAL_URI: projects/288617366843/secrets/SURREAL_URI/versions/latest
         SURREAL_USER: projects/288617366843/secrets/SURREAL_USER/versions/latest
         SURREAL_PASS: projects/288617366843/secrets/SURREAL_PASS/versions/latest

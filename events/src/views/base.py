@@ -7,7 +7,7 @@ import uuid
 
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
-from shared.utils import sign_media_object
+from shared.utils import recursively_sign_event_media
 
 from dataclasses import dataclass
 from pprint import pprint
@@ -201,12 +201,12 @@ class BaseView(QuartClassful):
             if event_id:
                 if result := await self.conn.fetch(event_id):
                     status_code = HTTPStatus.OK
-                    if "media" in result:
-                        try:
-                            result["media"] = await sign_media_object(result["media"])
-                        except Exception as e:
-                            app.logger.warning(f"Failed to sign media URLS: {str(e)}")
-                            # continue
+                    # Check if the event has media and sign it
+                    try:
+                        result = await recursively_sign_event_media(result)
+                    except Exception as e:
+                        app.logger.warning(f"Failed to sign media URLS: {str(e)}")
+                        # continue
                     return (
                         jsonify(
                             data=result,
@@ -240,10 +240,7 @@ class BaseView(QuartClassful):
                     )
 
                 result = await self.conn.fetch_by_distance(location, distance)
-                if any("media" in obj["event"] for obj in result):
-                    for obj in result:
-                        if "media" in obj["event"]:
-                            obj["event"]["media"] = await sign_media_object(obj["event"]["media"])
+                result = await recursively_sign_event_media(result)
                             
                 status_code = HTTPStatus.OK
                 return (
@@ -256,10 +253,7 @@ class BaseView(QuartClassful):
                 )
 
             result = await self.conn.fetch_all(page, limit)
-            if any("media" in obj["event"] for obj in result):
-                for obj in result:
-                    if "media" in obj["event"]:
-                        obj["event"]["media"] = await sign_media_object(obj["event"]["media"])                
+            result = await recursively_sign_event_media(result)
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -405,6 +399,10 @@ class BaseView(QuartClassful):
                 form.get("is_private", "false") == "true"
             )  # Default to False if not specified
 
+            data["is_free"] = (
+                form.get("is_free", "false") == "true"
+            )  # Default to False if not specified
+
             for i, file in enumerate(files.values()):
                 data["filename"] = data["filenames"][i]
                 data["type"] = data["types"][i]
@@ -447,7 +445,7 @@ class BaseView(QuartClassful):
             )
 
     @route(
-        "/events/<event_id>/delete", methods=["DELETE"]
+        "/events/<event_id>", methods=["DELETE"]
     )  # Changed route slightly for consistency
     @jwt_required
     async def delete_event(self, event_id: str):
@@ -462,7 +460,7 @@ class BaseView(QuartClassful):
                     jsonify(message="Event not found", status=status_code.phrase),
                     status_code,
                 )
-            if event.get("host") != user_id:  # Assuming host field stores user ID
+            if event.get("creator") != user_id:  # Assuming host field stores user ID
                 status_code = HTTPStatus.FORBIDDEN
                 return (
                     jsonify(
@@ -502,10 +500,7 @@ class BaseView(QuartClassful):
         user = get_jwt_identity()
         try:
             result = await self.conn.fetch_private(user, page, limit)
-            if any("media" in obj["event"] for obj in result):
-                for obj in result:
-                    if "media" in obj["event"]:
-                        obj["event"]["media"] = await sign_media_object(obj["event"]["media"])
+            result = await recursively_sign_event_media(result)
                             
             status_code = HTTPStatus.OK
             return (
@@ -539,10 +534,7 @@ class BaseView(QuartClassful):
             user = get_jwt_identity()
             distance = int(request.args.get("distance", 1000))
             result = await self.conn.fetch_by_distance(location, distance, user=user)
-            if any("media" in obj["event"] for obj in result):
-                for obj in result:
-                    if "media" in obj["event"]:
-                        obj["event"]["media"] = await sign_media_object(obj["event"]["media"])
+            result = await recursively_sign_event_media(result)
                         
             status_code = HTTPStatus.OK
             return (
@@ -607,7 +599,7 @@ class BaseView(QuartClassful):
                     status_code,
                 )
 
-            if event.get("host") != user_id:  # Assuming host field stores user ID
+            if event.get("creator") != user_id:  # Assuming host field stores user ID
                 app.logger.warning(
                     f"Unauthorized access attempt to event {event_id} by user {user_id}"
                 )
@@ -669,7 +661,7 @@ class BaseView(QuartClassful):
                     status_code,
                 )
 
-            if event.get("host") != user_id:  # Assuming host field stores user ID
+            if event.get("creator") != user_id:  # Assuming host field stores user ID
                 app.logger.warning(
                     f"Unauthorized live updates access attempt for event {event_id} by user {user_id}"
                 )
@@ -760,7 +752,7 @@ class BaseView(QuartClassful):
                 )
 
             # Use .get() with default for safer access if host might be missing
-            if event.get("host") != user_id:
+            if event.get("creator") != user_id:
                 app.logger.warning(
                     f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}"
                 )

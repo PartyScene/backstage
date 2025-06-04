@@ -10,7 +10,19 @@ fake = Faker()
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestUserManagement(TestUsersBase):
+    async def test_get_user_events(self, users_client, mock_user, bearer):
+        """Test retrieving events related to the current user (/user/events)."""
+        response = await self.get_user_events(users_client, bearer)  
+        assert response.status_code == HTTPStatus.OK  # Use get_attended_events helper
 
+        response_json = await response.get_json()
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "User events fetched successfully" in response_json["message"]
+        assert "data" in response_json
+        events = response_json["data"]
+        assert isinstance(events, dict)  # Ensure it's a list of events
+        print("User Events:", events)  # Debug print to see the events
+        
     async def test_get_user_profile(self, users_client, mock_user, bearer):
         """Test retrieving the current user's profile (/user)."""
         response = await self.get_me(users_client, bearer)  # Use get_me helper

@@ -93,9 +93,11 @@ class MicroService(Quart):
 
         @self.before_request
         async def log_request():
-            logger.debug(f"Request Path: {request.path}")
-            logger.debug(f"Request body: {await request.data}")
-            logger.debug(f"Request args: {request.args}")
+            if len(request.path) > 1:
+                logger.warning(request.headers.to_wsgi_list())
+                logger.warning(f"Request Path: {request.path}")
+                logger.warning(f"Request body: {await request.data}")
+                logger.warning(f"Request args: {request.args}")
 
         @self.after_request
         async def log_response(response):

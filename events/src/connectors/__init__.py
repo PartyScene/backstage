@@ -407,9 +407,9 @@ class EventsDB:
                 RELATE $user -> attends -> $event SET status = $status;
                 """
                 result = await conn.query(query, {"status": data["status"]})
-            if "err" in result[0]:
+            if "err" in result:
                 raise Exception(f"Error creating attendance: {result}")
-            return record_id_to_json(result[0])
+            return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to create attendance: {str(e)}")
             raise

@@ -1,7 +1,6 @@
 import os
 import io
 import asyncio
-import ormsgpack
 import logging  # Import standard logging
 from typing import List
 from contextlib import asynccontextmanager
@@ -9,18 +8,14 @@ from contextlib import asynccontextmanager
 from PIL import Image
 import torch
 from transformers import ViTImageProcessor, ViTModel
-from faststream import FastStream
-from faststream.rabbit import RabbitBroker, RabbitQueue, RabbitMessage
 from surrealdb import AsyncSurreal, AsyncWsSurrealConnection, AsyncHttpSurrealConnection
 
 # --- Configuration ---
-RABBITMQ_URI = os.environ["RABBITMQ_URI"]
 SURREAL_URI = os.environ["SURREAL_URI"]
 SURREAL_USER = os.environ["SURREAL_USER"]
 SURREAL_PASS = os.environ["SURREAL_PASS"]
 SURREAL_NAMESPACE = "partyscene"
 SURREAL_DATABASE = "partyscene"
-RABBITMQ_R18E_QUEUE_NAME = "R18E"
 VIT_MODEL_NAME = "google/vit-base-patch16-224-in21k"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # Base delay for exponential backoff
@@ -145,28 +140,23 @@ async def close_globals():
             db_connection = None
     logger.info("Global resources closed.")
 
+import obstore as obs
 
-class Job(RabbitBroker):
+class Job:
     """
     Manages RabbitMQ connection, message decoding, database interactions,
     and coordination of message processing logic.
     """
 
     def __init__(self, *args, **kwargs):
-        self.RABBITMQ_R18E_QUEUE = RabbitQueue(
-            RABBITMQ_R18E_QUEUE_NAME, auto_delete=False, durable=False
-        )
-        super().__init__(
-            url=RABBITMQ_URI, decoder=self.decode_message_body, *args, **kwargs
-        )
-
+        self.OBS_STORE = obs.store.GCSStore(os.environ.get("GCS_BUCKET_NAME", "partyscene"))
+        ...
+        
     async def start(self):
-        await super().start()
         await init_globals()
 
     async def stop(self):
         await close_globals()
-        await super().stop()
 
     @asynccontextmanager
     async def db_session(self):
@@ -206,174 +196,43 @@ class Job(RabbitBroker):
         except Exception as e:
             logger.error(f"SurrealDB save failed for {filename}", exc_info=True)
             raise  # Re-raise to allow retry/DLQ
-
-    async def decode_message_body(self, msg: RabbitMessage, original_decoder):
-        """Custom decoder: Assumes body is ormsgpack-encoded bytes."""
-        if msg.decoded_body is not None:
-            return msg
-        if not isinstance(msg.body, bytes):
-            return msg
+    
+    async def fetch_media_objects(self):
         try:
-            msg.body = ormsgpack.unpackb(
-                msg.body
-            )  # Decodes raw bytes into Python object (likely bytes again in this case)
-            msg.decoded_body = True
-            return msg
-        except ValueError as e:
-            logger.error("Ormsgpack decoding failed. Invalid format.", exc_info=True)
-            raise ValueError("Invalid ormsgpack body") from e
+            async with model_lock:
+                async with self.db_session() as db:
+                    result = await db.query(
+                        "SELECT filename FROM media WHERE status = 'pending'",
+                    )
+            logger.debug(
+                f"Successfully fetched {len(result)} media objects"
+            )  # Use debug for success logs
+            return result
         except Exception as e:
-            logger.exception(
-                "Unexpected decoding error."
-            )  # Use exception to include traceback
-            try:
-                return await original_decoder(msg)
-            except Exception as e:
-                return msg
-
-    async def process_r18e_event(
-        self, event_type: str, filename: str, image_bytes: bytes
-    ):
-        """Routes event processing based on type."""
-        logger.debug(f"Processing event type '{event_type}' for file '{filename}'")
-        if event_type == "MEDIA":
-            embeddings = await extract_embeddings(image_bytes)
+            logger.error(f"SurrealDB fetch failed for media objects", exc_info=True)
+            raise  # Re-raise to allow retry/DLQ
+    
+    async def process(self):
+        media_objects = await self.fetch_media_objects()
+        for object in media_objects:
+            filename = object['filename']
+            logger.debug(f"Processing media for file '{filename}'")
+            obs_result = await obs.get_async(self.OBS_STORE, filename)
+            embeddings = await extract_embeddings(bytes(await obs_result.bytes_async()))
             await self.save(filename, embeddings)
-        else:
-            logger.warning(
-                f"Received unknown event type '{event_type}' for file '{filename}'"
-            )
-            # Depending on requirements, might raise ValueError or just log and ACK
-            raise ValueError(f"Unknown event type encountered in headers: {event_type}")
 
-    async def _handle_retry(
-        self,
-        image_bytes: bytes,
-        headers: dict,
-        message: RabbitMessage,
-        retry_count: int,
-    ):
-        """Manages the retry logic for failed message processing."""
-        message_id = message.message_id or "UNKNOWN"
-        if retry_count < MAX_RETRIES:
-            retry_count += 1
-            headers["retry_count"] = retry_count  # Update header for next attempt
-            delay = RETRY_DELAY**retry_count
-            logger.info(
-                f"Retrying message {message_id} (attempt {retry_count}/{MAX_RETRIES}) in {delay} seconds..."
-            )
-            await asyncio.sleep(delay)
-            try:
-                await self.requeue_message(image_bytes, headers)
-                await message.ack()  # ACK original *after* successful requeue
-                logger.info(f"Message {message_id} successfully requeued for retry.")
-            except Exception as requeue_err:
-                logger.error(f"Failed to requeue message {message_id}", exc_info=True)
-                # If requeue fails, NACK without requeue to avoid infinite loops
-                await message.nack(requeue=False)
-        else:
-            logger.error(
-                f"Max retries ({MAX_RETRIES}) reached for message {message_id}. Giving up."
-            )
-            # Implement DLQ (Dead Letter Queue) logic here if desired
-            # e.g., await self.publish(ormsgpack.packb(image_bytes), queue="my_dlq", headers=headers)
-            # ACK the message to remove it from the main queue, even if DLQ fails
-            await message.ack()
+# --- Instantiate the Worker ---
+worker = Job()
 
-    async def requeue_message(self, image_bytes: bytes, headers: dict):
-        """Re-encodes body with msgpack and republishes the message."""
+if __name__ == "__main__":
+    import asyncio
+
+    async def main():
         try:
-            body_to_publish = ormsgpack.packb(image_bytes)
-        except Exception as e:
-            logger.error(
-                f"Ormsgpack encoding failed during requeue attempt.: {e}", exc_info=True
-            )
-            raise  # Propagate error to _handle_retry
+            await worker.start()
+            await worker.process()  # Example usage of the worker instance
+        finally:
+            await worker.stop()
 
-        # Access queue via self.RABBITMQ_R18E_QUEUE
-        await self.publish(
-            body_to_publish,
-            queue=self.RABBITMQ_R18E_QUEUE.name,
-            routing_key=self.RABBITMQ_R18E_QUEUE.routing_key
-            or self.RABBITMQ_R18E_QUEUE.name,
-            headers=headers,
-        )
-
-
-# --- Instantiate the Broker ---
-broker = Job()
+    asyncio.run(main())
 # ----------------------------
-
-
-# --- Subscriber Handler (Outside Class) ---
-@broker.subscriber(broker.RABBITMQ_R18E_QUEUE)
-async def handle_r18e(message):
-    """
-    Main message handler: extracts metadata, routes processing, handles errors/retries.
-    """
-    headers = message.headers
-    body = message.body
-
-    event_type = headers.get("type")
-    filename = headers.get("filename")
-    message_id = (
-        message.message_id or f"amqp_{message.delivery_tag}"
-    )  # Use delivery tag if no message_id
-    retry_count = headers.get("retry_count", 0)
-
-    # Basic header validation
-    if not event_type or not filename:
-        logger.error(
-            f"Missing 'type' or 'filename' header(s) for message {message_id}. Headers: {headers}"
-        )
-        # NACK without requeue for fundamentally invalid messages
-        await message.nack(requeue=False)
-        return  # Stop processing this message
-
-    logger.info(
-        f"Received message {message_id} for file '{filename}' (Type: {event_type}, Retry: {retry_count})"
-    )
-
-    try:
-        # Delegate processing to the broker instance's method
-        await broker.process_r18e_event(event_type, filename, body)
-        logger.info(
-            f"Successfully processed message {message_id} for file '{filename}'"
-        )
-        # Automatic ACK happens on successful completion if auto_ack=True (default)
-
-    except (ConnectionError, TimeoutError, asyncio.TimeoutError) as transient_error:
-        # Errors that might resolve themselves on retry
-        logger.warning(
-            f"Transient error processing message {message_id} (Retry {retry_count}): {transient_error}"
-        )
-        await broker._handle_retry(body, headers, message, retry_count)
-    except ValueError as data_error:
-        # Errors indicating bad data (invalid image, unknown type, missing headers handled above)
-        logger.error(
-            f"Data error processing message {message_id}: {data_error}. Won't retry."
-        )
-        # Let FastStream NACK without requeue by raising, or explicitly NACK here
-        await message.nack(requeue=False)
-    except RuntimeError as runtime_err:
-        # Errors during ML inference or other critical runtime issues
-        logger.error(
-            f"Runtime error processing message {message_id} (Retry {retry_count}): {runtime_err}",
-            exc_info=True,
-        )
-        await broker._handle_retry(
-            body, headers, message, retry_count
-        )  # Retry runtime errors
-    except Exception as e:
-        # Catch-all for truly unexpected errors
-        logger.exception(
-            f"Unexpected error processing message {message_id} (Retry {retry_count}): {e}"
-        )  # Use exception for traceback
-        await broker._handle_retry(body, headers, message, retry_count)
-
-
-# ----------------------------------------
-
-
-# Create the FastStream application instance
-app = FastStream(broker)

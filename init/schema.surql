@@ -45,6 +45,8 @@ DEFINE FIELD OVERWRITE resource ON TABLE reports TYPE option<record>;
 
 -- Let's define a relation table for users and events to record attendance
 DEFINE TABLE OVERWRITE attends TYPE RELATION IN users TO events;
+DEFINE EVENT OVERWRITE update_attendee_count ON TABLE attends WHEN $event = "CREATE" THEN {UPDATE $after.out SET attendee_count = attendee_count + 1};
+DEFINE INDEX unique_attendance ON TABLE attends COLUMNS in, out UNIQUE;
 
 -- Now let's define the events table
 DEFINE TABLE OVERWRITE events SCHEMALESS;
@@ -53,6 +55,7 @@ DEFINE FIELD OVERWRITE description ON TABLE events TYPE string;
 DEFINE FIELD OVERWRITE price ON TABLE events TYPE number;
 DEFINE FIELD OVERWRITE status ON TABLE events TYPE string DEFAULT 'scheduled';
 DEFINE FIELD OVERWRITE is_private ON TABLE events TYPE option<bool> DEFAULT false;
+DEFINE FIELD OVERWRITE is_free ON TABLE events TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE host ON TABLE events TYPE record<users>;
 DEFINE FIELD OVERWRITE created_at ON TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE time ON TABLE events TYPE datetime DEFAULT time::now();
@@ -62,6 +65,7 @@ DEFINE FIELD OVERWRITE location.address ON TABLE events TYPE string;
 DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE point;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
+DEFINE FIELD OVERWRITE attendee_count ON TABLE events TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE visible ON TABLE posts TYPE bool DEFAULT true;
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
@@ -70,6 +74,7 @@ DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text H
 DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE record<users>;
 DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
+DEFINE FIELD OVERWRITE created_at ON TABLE tickets TYPE datetime DEFAULT time::now();
 
 -- Relate Events to Media
 DEFINE TABLE OVERWRITE has_media TYPE RELATION IN events TO media;
@@ -127,6 +132,7 @@ DEFINE TABLE OVERWRITE media SCHEMALESS;
 DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE status ON media TYPE string DEFAULT "pending";
 
 -- Metadata fields
 DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();
@@ -205,6 +211,27 @@ DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number) {
     
 };
 
+DEFINE FUNCTION OVERWRITE fn::fetch_attended_events($origin: record, $page: option<number>, $limit: option<number>) {
+
+    LET $page = IF (type::is::number($page)) THEN $page ELSE 1 END;
+    LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
+
+    RETURN (
+        SELECT ->attends->events.* AS events FROM ONLY $origin
+        LIMIT $limit START ($page - 1) * $limit
+    )
+};
+
+DEFINE FUNCTION OVERWRITE fn::fetch_created_events($origin: record, $page: option<number>, $limit: option<number>) {
+
+    LET $page = IF (type::is::number($page)) THEN $page ELSE 1 END;
+    LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
+
+    RETURN (
+        SELECT * FROM events WHERE creator = $origin
+        LIMIT $limit START ($page - 1) * $limit
+    )
+};
 
 DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
     RETURN (
@@ -212,6 +239,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         *,
         (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
+        host.{id, first_name, last_name},
         array::len(<-attends<-users) as attendees_count
     OMIT embeddings
     FROM ONLY $event_id
@@ -233,30 +261,27 @@ DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: reco
 };
 
 
-
 DEFINE FUNCTION OVERWRITE fn::find_relationships($origin: record) {
     LET $result = SELECT
-                            @.{1}->friends->users.* AS degree_1,
-                            @.{2}->friends->users.* AS degree_2,
-                            @.{3}->friends->users.* AS degree_3,
-                            @.{4}->friends->users.* AS degree_4,
-                            @.{5}->friends->users.* AS degree_5
+                            @.{1}<->friends.{id, in, out, status} AS degree_1,
+                            @.{2}<->friends.{id, in, out, status} AS degree_2,
+                            @.{3}<->friends.{id, in, out, status} AS degree_3,
+                            @.{4}<->friends.{id, in, out, status} AS degree_4,
+                            @.{5}<->friends.{id, in, out, status} AS degree_5
     FROM ONLY $origin;
     RETURN $result
 };
-
 
 DEFINE FUNCTION OVERWRITE fn::exists_in_degree($origin: record, $target: record, $degree: number) {
     LET $tree = fn::find_relationships($origin);
     FOR $i IN 1..=$degree {
       LET $field = "degree_" + <string>$i;
-        IF $target IN $tree[$field].id{
+        IF $target IN $tree[$field].in OR $target IN $tree[$field].out{
             RETURN true;
         }
     };
     RETURN false;
 };
-
 --
 DEFINE FUNCTION OVERWRITE fn::fetch_private_events_for_user($user: record, $page: number, $limit: number) {
 

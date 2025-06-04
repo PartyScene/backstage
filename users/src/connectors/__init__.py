@@ -1,9 +1,11 @@
 from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
 import os
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 from shared.utils import record_id_to_json
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
+
+
 
 import orjson as json
 
@@ -57,6 +59,36 @@ class UsersDB:
             )
         return record_id_to_json(result)
 
+    async def fetch_user_events(self, user_id: Any, created: bool = False):
+        """
+        Fetch events attended by this user
+
+        Args:
+            user_id (str, required): The origin user ID
+        Returns:
+            list: The created relationship details
+        """
+
+        async with self.pool.acquire() as conn:
+
+            result = await conn.query(
+                "RETURN fn::fetch_attended_events($origin);",
+                {
+                    "origin": RecordID("users", user_id),
+                },
+            )
+            if created:
+                created_events = await conn.query(
+                    "RETURN fn::fetch_created_events($origin);",
+                    {
+                        "origin": RecordID("users", user_id),
+                    },
+                )
+                result = {"attended": result, "created": created_events}
+
+        return record_id_to_json(result)
+    
+    
     async def create_friend_relationship(self, data: dict):
         """
         Create a bidirectional friend relationship between two users.

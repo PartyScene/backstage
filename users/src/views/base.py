@@ -75,6 +75,43 @@ class BaseView(QuartClassful):
             jsonify(data=health_status, message=message, status=status_code.phrase),
             status_code,
         )
+        
+    @route("/user/events", methods=["GET"])
+    @jwt_required
+    async def get_user_events(self):
+        """Fetch events attended or created by this user"""
+        user_id = get_jwt_identity()
+        created = request.args.get("created") == "true"
+        try:
+            events = await self.conn.fetch_user_events(user_id, created=created)
+            if not events:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="No events found", status=status_code.phrase),
+                    status_code,
+                )
+            
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    data=events,
+                    message="User events fetched successfully.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching user events ({user_id}): {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to fetch user events: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
 
     @route("/user", methods=["GET"])
     @jwt_required

@@ -39,6 +39,7 @@ from stripe import StripeClient
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PUB_KEY = os.environ.get("STRIPE_PUB_KEY", "")
 STRIPE_PRIV_KEY = os.environ.get("STRIPE_PRIV_KEY", "")
+PAYMENT_WEBHOOK_URL = os.environ.get("PAYMENT_WEBHOOK_URL", "")
 
 if not STRIPE_WEBHOOK_SECRET or not STRIPE_PUB_KEY or not STRIPE_PRIV_KEY:
     raise ValueError("Stripe webhook secret and API keys must be set in environment variables.")
@@ -48,6 +49,24 @@ class BaseView(QuartClassful):
         self.conn: PaymentsDB = app.conn
         self.redis = app.redis
         self.stripe_client: Optional[StripeClient] = StripeClient(STRIPE_PRIV_KEY)
+        self.check_and_assign_webhook()
+    
+    def check_and_assign_webhook(self):
+        if self.stripe_client:
+            webhook_endpoints = self.stripe_client.webhook_endpoints.list(params={"limit": 100})
+            if any(endpoint.url == PAYMENT_WEBHOOK_URL for endpoint in webhook_endpoints):
+                app.logger.debug("Webhook endpoint already exists.")
+            else:
+                app.logger.debug("Creating new webhook endpoint with URL %s" % PAYMENT_WEBHOOK_URL)
+                self.stripe_client.webhook_endpoints.create(
+                    params={
+                        'url': PAYMENT_WEBHOOK_URL,
+                        'enabled_events': ["payment_intent.succeeded", "payment_intent.payment_failed"],
+                        'description': 'Webhook for payment intents',
+                        }
+                )
+                app.logger.info("Webhook endpoint created successfully.")
+            return webhook_endpoints
         
     @route("/", methods=["GET"])
     async def index(self):
@@ -151,6 +170,7 @@ class BaseView(QuartClassful):
                 jsonify(
                     data={
                         "client_secret": intent["client_secret"],
+                        "pub_key": STRIPE_PUB_KEY,
                         "amount": intent["amount"],
                         "currency": intent["currency"],
                         "event_id": event_id,
@@ -172,8 +192,7 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-            
-    
+      
     @route("/payments/webhook", methods=["POST"])
     async def payments_webhook(self):
         """
@@ -192,7 +211,7 @@ class BaseView(QuartClassful):
         # Get the raw request body
         payload = await request.get_data()
         # Get the Stripe signature from the header
-        sig_header = request.headers.get("stripe-signature")
+        sig_header = request.headers.get('STRIPE_SIGNATURE') or request.headers.get('Stripe-Signature')
 
         event = None
 
@@ -232,7 +251,7 @@ class BaseView(QuartClassful):
                     app.logger.info(f"Processing ticket {i + 1} for PaymentIntent {payment_intent['id']} | User ID: {user_id}")
                     # Create ticket in DB
                     await self.conn._create_ticket(
-                        {"user_id": user_id, "event_id": event_id}
+                        {"user": user_id, "event": event_id}
                     )
                     app.logger.info(f"Ticket created for user {user_id} and event {event_id}.")
                 

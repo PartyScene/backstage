@@ -71,4 +71,4 @@ COPY . .
 
 # Command to run the application
 # Assumes your Python script is named r18e.py
-CMD ["faststream", "run", "r18e:app"]
+CMD ["python", "r18e.py"]

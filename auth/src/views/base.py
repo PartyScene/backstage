@@ -4,7 +4,7 @@ from http import HTTPStatus
 from quart import make_response, render_template, current_app as app, request, jsonify
 from quart_jwt_extended import create_access_token
 from redis.asyncio import Redis
-from typing import Optional, Dict
+from typing import Optional, Dict, Literal
 from aiocache import cached, RedisCache, Cache
 import os
 import secrets
@@ -153,8 +153,8 @@ class BaseView(QuartClassful):
                 status_code,
             )
         # Generate OTP and send it to the user
-        otp = await self.__n_generate_otp(
-            user_id=user_info['id'], email=email, data=data
+        otp = await self.__generate_and_send_otp(
+            user_id=user_info['id'], email=email, data=data, context="forgot-password"
         )
         if otp:
             # Otp has been created, return success response
@@ -195,7 +195,6 @@ class BaseView(QuartClassful):
         email = data.get("email")
         new_password = data.get("new_password")
         otp = data.get("otp")
-        
         if not email or not new_password or not otp:
             status_code = HTTPStatus.BAD_REQUEST
             
@@ -204,31 +203,27 @@ class BaseView(QuartClassful):
                 status_code,
             )
         
-        # check if the otp is valid
-        otp_exists = await self.verify_otp(email, otp, validate_only=True)
-        
-        if otp_exists:
-            if await self.conn._reset_password(email, new_password):
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(message="Password reset successfully", status=status_code.phrase),
-                    status_code,
-                )
-        
-        else:
-            # OTP is invalid or expired
+        # Verify OTP before resetting password
+        if not await self.verify_otp(email, otp, validate_only=True, context="forgot-password"):
             status_code = HTTPStatus.UNAUTHORIZED
             return (
                 jsonify(message="Invalid or expired OTP", status=status_code.phrase),
                 status_code,
             )
-        
-        status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-        return (
-            jsonify(message="Failed to reset password", status=status_code.phrase),
-            status_code,
-        )
-        
+            
+        if await self.conn._reset_password(email, new_password):
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(message="Password reset successfully", status=status_code.phrase),
+                status_code,
+            )        
+        else:
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(message="Failed to reset password", status=status_code.phrase),
+                status_code,
+            )
+            
     @route("/auth/exists", methods=["GET"])
     async def check_exists(self):
         """Verify if a user with the provided parameter already exists."""
@@ -252,27 +247,45 @@ class BaseView(QuartClassful):
     async def verify(self):
         """Verify a provided OTP and generate an access token."""
         data = await request.get_json()
-        if not data.get("email") or not data.get("otp"):
+        
+        # If context is forgot password, we're probably only validating
+        context = data.get("context", None)
+        validate_only = context in ("forgot-password",) # If context is forgot-password, we only validate the OTP
+        delete = context != "forgot-password" # If context is forgot-password, we don't delete the OTP after verification
+        
+        print("Verify OTP Data %s" % data)
+        if not data.get("email") or not data.get("otp") or not context:
             status_code = HTTPStatus.BAD_REQUEST
             return (
                 jsonify(message="Invalid Request Body", status=status_code.phrase),
                 status_code,
             )
 
-        if result := await self.verify_otp(data.get("email"), data.get("otp"), validate_only=False):
-            await self.conn._store_after_verify(result)
-            access_token = self.generate_jwt_secret(result["id"])
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data={"access_token": access_token, "token_type": "bearer"},
-                    message="OTP verified successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )
-        status_code = HTTPStatus.UNAUTHORIZED
-        return jsonify(message="Invalid OTP", status=status_code.phrase), status_code
+        if result := await self.verify_otp(data.get("email"), data.get("otp"), validate_only=validate_only, context=context, delete=delete):
+            # If validate_only is True, we only return the boolean result
+            print("Verify OTP Result %s" % result)
+            if validate_only:
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(message="OTP verified successfully", status=status_code.phrase),
+                    status_code,
+                )
+
+            if isinstance(result, dict):
+                await self.conn._store_after_verify(result)
+                access_token = self.generate_jwt_secret(result["id"])
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(
+                        data={"access_token": access_token, "token_type": "bearer"},
+                        message="OTP verified successfully.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+        else:
+            status_code = HTTPStatus.UNAUTHORIZED
+            return jsonify(message="Invalid OTP", status=status_code.phrase), status_code
 
     @route("/auth/register", methods=["POST"])
     async def register_user(self):
@@ -314,8 +327,8 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-        if otp_result := await self.__n_generate_otp(
-            data["id"], data.get("email"), data
+        if otp_result := await self.__generate_and_send_otp(
+            data["id"], data.get("email"), data, context="register"
         ):
             # Return the OTP only in dev/test environments for easier testing
             response_data = {}
@@ -379,7 +392,7 @@ class BaseView(QuartClassful):
             logger.error(f"User registration error: {e}")
             raise
 
-    async def __n_generate_otp(self, user_id: str, email: str, data: Optional[dict]) -> str | bool:
+    async def __generate_and_send_otp(self, user_id: str, email: str, data: Optional[dict], context: Literal["register", "forgot-password"]) -> str | bool:
         """Generate and send OTP for authentication
         If data is provided, it will be stored in Redis for later verification.
         If an OTP already exists for the email, it will return False.
@@ -392,12 +405,12 @@ class BaseView(QuartClassful):
         """
         try:
             otp = secrets.token_hex(3)[:6].upper()
-
-            existing_otp = await self.redis.get(f"otp:{email}")
+            key = f"{context}-otp:{email}"
+            # Check if an OTP already exists for this email
+            existing_otp = await self.redis.get(key)
             if existing_otp:
                 return False
-
-            key = f"otp:{email}"
+            # Store the OTP in Redis with a 10-minute expiration
             await self.redis.set(key, otp, ex=600)  # 10 minutes expiration
 
             if data:
@@ -420,23 +433,26 @@ class BaseView(QuartClassful):
             logger.error(f"OTP generation error: {e}")
             raise
         
-    async def verify_otp(self, email: str, provided_otp: str, validate_only: Optional[bool]) -> Optional[Dict] | bool:
-        """Verify and delete OTP for user authentication.
+    async def verify_otp(self, email: str, provided_otp: str, validate_only: Optional[bool], context: Literal["register", "forgot-password"], delete: bool = True) -> Optional[Dict] | bool:
+        """Verify and delete OTP for authentication.
         Args:
             email (str): The email address of the user.
             provided_otp (str): The OTP provided by the user.
-            validate_only (Optional[bool]): If True, only validate the OTP without deleting user data.
+            validate_only (Optional[bool]): If True, only validate the OTP without deleting or returning user data.
         Returns:
             Optional[Dict] | bool: User data if OTP is valid, False if invalid or expired.
         """
         try:
-            key = f"otp:{email}"
+            key = f"{context}-otp:{email}"
             stored_otp = await self.redis.get(key)
 
             if stored_otp and stored_otp == provided_otp:
                 if validate_only:
+                    print("Validate only %s" % validate_only)
+                    print("Delete %s" % delete)
                     # Delete OTP from Redis
-                    await self.redis.delete(key)
+                    if delete:
+                        await self.redis.delete(key)
                     return True
                 
                 # If validate_only is True, we still need to fetch user data
@@ -446,10 +462,11 @@ class BaseView(QuartClassful):
                 json_data = json.loads(json_data)
 
                 # Use asyncio.gather for concurrent deletion
-                await asyncio.gather(
-                    self.redis.delete(key),
-                    self.redis.delete(f"users:pending:{email}"),
-                )
+                if delete:
+                    await asyncio.gather(
+                        self.redis.delete(key),
+                        self.redis.delete(f"users:pending:{email}"),
+                    )
                 return json_data
 
             return False

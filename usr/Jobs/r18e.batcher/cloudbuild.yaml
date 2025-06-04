@@ -10,8 +10,8 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/r18e.batcher', '--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/r18e.batcher', '.']
 
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['run', '--env-file', '.env' , '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/r18e.batcher']
+  # - name: 'gcr.io/cloud-builders/docker'
+  #   args: ['run', '--env-file', '.env' , '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/r18e.batcher']
 
 
 substitutions:

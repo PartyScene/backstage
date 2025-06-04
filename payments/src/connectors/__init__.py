@@ -52,8 +52,8 @@ class PaymentsDB:
         Returns:
             dict: The created ticket object
         """
-        data['user'] = RecordID("users", data.pop('user_id'))
-        data['event'] = RecordID("events", data.pop('event_id'))
+        data['user'] = RecordID("users", data.pop('user'))
+        data['event'] = RecordID("events", data.pop('event'))
         
         try:
             async with self.pool.acquire() as conn:

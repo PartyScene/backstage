@@ -107,8 +107,8 @@ services:
     volumes:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
-      microservices.media:
-        condition: service_started # service_completed_successfully
+      microservices.events:
+        condition: service_completed_successfully
 
   rabbitmq:
     image: rabbitmq:management

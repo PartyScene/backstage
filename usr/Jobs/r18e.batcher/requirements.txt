@@ -1,10 +1,9 @@
 # requirements.txt
-faststream[cli, rabbit]==0.5.39
 surrealdb
 transformers
 torch
 torchvision
 torchaudio
 Pillow
-ormsgpack
 accelerate
+obstore

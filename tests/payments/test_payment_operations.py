@@ -14,13 +14,13 @@ class TestPaymentOperations(TestPaymentsBase):
         """Test creating a new payment intent."""
         response = await self.create_payment_intent(payments_client, mock_event['id'], 3, bearer)
         print(response)
-        assert response.status_code == HTTPStatus.CREATED
+        assert response.status_code == HTTPStatus.OK
 
         response_json = await response.get_json()
-        assert response_json["status"] == HTTPStatus.CREATED.phrase
+        assert response_json["status"] == HTTPStatus.OK.phrase
         assert "data" in response_json
         payment_response_data = response_json["data"]
-        assert "id" in payment_response_data
         assert "client_secret" in payment_response_data
-        assert payment_response_data["event"] == mock_event["id"]
+        assert payment_response_data["event_id"] == mock_event["id"]
         assert payment_response_data["amount"] > 0  # Assuming amount is greater than zero for valid paymentss
+        assert "pub_key" in payment_response_data

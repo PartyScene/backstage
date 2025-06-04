@@ -83,7 +83,7 @@ class TestAuthentication(TestAuthBase):
         if "otp" not in mock_user:
             pytest.skip("OTP not available for verification test")
 
-        response = await self.verify_otp(auth_client, mock_user)
+        response = await self.verify_otp(auth_client, mock_user, mock_user["otp"], "register")
         response_json = await response.get_json()
 
         assert response.status_code == HTTPStatus.OK
@@ -99,7 +99,7 @@ class TestAuthentication(TestAuthBase):
         if "otp" not in other_mock_user:
             pytest.skip("OTP not available for verification test")
 
-        response = await self.verify_otp(auth_client, other_mock_user)
+        response = await self.verify_otp(auth_client, other_mock_user, other_mock_user["otp"], "register")
         response_json = await response.get_json()
 
         assert response.status_code == HTTPStatus.OK
@@ -164,7 +164,18 @@ class TestAuthentication(TestAuthBase):
         assert "data" in response_json
         assert "otp" in response_json["data"]
         mock_user["forgot_password_otp"] = response_json["data"]["otp"]
-    
+        
+    async def test_verify_forgot_password_otp(self, auth_client, mock_user):
+        """Test Forgot Pass OTP verification"""
+        if "forgot_password_otp" not in mock_user:
+            pytest.skip("Forgot password OTP not available for verification test")
+
+        response = await self.verify_otp(auth_client, mock_user, mock_user['forgot_password_otp'], "forgot-password")
+        response_json = await response.get_json()
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["status"] == HTTPStatus.OK.phrase
+        assert "OTP verified successfully" in response_json["message"]
+        
     async def test_reset_password(self, auth_client, mock_user):
         """Test reset password by providing OTP and new password"""
         if "forgot_password_otp" not in mock_user:
