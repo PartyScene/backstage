@@ -246,6 +246,15 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
     )
 };
 
+DEFINE FUNCTION OVERWRITE fn::fetch_post($post_id: record) {
+    RETURN (
+        SELECT
+        *,
+        (out.{creator, filename}) AS media
+    FROM ONLY $post_id
+    )
+};
+
 DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: record, $status: string) {
     -- Check existing relationship
     LET $existing = (SELECT VALUE ->(friends WHERE out = $target OR in = $target).* FROM ONLY $origin);

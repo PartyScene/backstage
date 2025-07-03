@@ -93,6 +93,11 @@ class EventsDB:
                         media_query_result, option=json.OPT_INDENT_2, default=str
                     )
                 )
+                self.logger.warning(
+                    json.dumps(
+                        media_ids, option=json.OPT_INDENT_2, default=str
+                    )
+                )
 
             data.pop("id", None)
             data.pop("filenames", None)
@@ -109,14 +114,14 @@ class EventsDB:
                     await conn.query(
                         "RELATE $event -> has_media -> $media_ids",
                         {
-                            "event": result.get("id"),
+                            "event": event_id,
                             "media_ids": media_ids,
                         },
                     )
                     self.logger.warning(
                         json.dumps(result, option=json.OPT_INDENT_2, default=str)
                     )
-                    result = await conn.select(result["id"])
+                    result = await conn.select(event_id)
                     
                 elif isinstance(result, str):
                     raise Exception(f"Error creating event: {result}")

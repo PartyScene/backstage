@@ -16,8 +16,10 @@ from datetime import datetime
 from aiocache import cached
 
 from shared.workers.rmq import RMQBroker
+from shared.utils import recursively_sign_event_media
 import uuid_utils as ruuid
 
+from surrealdb import RecordID
 
 class BaseView(QuartClassful):
 
@@ -280,6 +282,7 @@ class BaseView(QuartClassful):
         """Fetch all posts for a given event"""
         try:
             result = await self.__posts_handler.fetch_event_posts(id)
+            reuslt = await recursively_sign_event_media(result)
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -302,6 +305,36 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
+
+    @route("/posts/user/<id>", methods=["GET"])
+    @jwt_required  # Added JWT requirement assuming it's needed
+    async def fetch_user_posts(self, id: str):
+        """Fetch all posts for a user"""
+        try:
+            result = await self.__posts_handler.fetch_user_posts(id)
+            reuslt = await recursively_sign_event_media(result)
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    data=result,
+                    message="User posts fetched successfully.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching posts for user {id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to fetch user posts: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
     @route("/posts", methods=["POST"])
     @jwt_required
     async def create_post(self):
@@ -309,7 +342,9 @@ class BaseView(QuartClassful):
         Asynchronously creates a new post with the provided content, and optionally uploads media files.
         """
         try:
-            data = await request.get_json()
+            form = await request.form
+            files = await request.files
+            data = form.to_dict()
             user_id = get_jwt_identity()
             content = data.get("content")
 
@@ -319,32 +354,36 @@ class BaseView(QuartClassful):
                     jsonify(message="Content is required", status=status_code.phrase),
                     status_code,
                 )
+            
+            if not files:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(message="At least one media file is required", status=status_code.phrase),
+                    status_code,
+                )
 
-            data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
-            # Publish media upload tasks to RMQ
-            # media_publish_tasks = []
-            # for i, file in enumerate(files.values()):
-            #     if file.filename:  # Process only if file has a name
-            #         media_data = (
-            #             data.copy()
-            #         )  # Avoid modifying original data dict in loop
-            #         media_data["filename"] = data["filenames"][i]
-            #         media_data["type"] = data["types"][i]
-            #         media_publish_tasks.append(app.RMQ._publish_media(media_data, file))
-
-            # if media_publish_tasks:
-            #     await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
-
-            # Sign filenames for uploading
-            filenames = tuple(
-                map(lambda item: item["filename"], data["files"])
+            # data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
+            data["post_id"] = (
+                (RecordID("posts", str(ruuid.uuid4()).split("-")[-1]))
+                if not data.get("id", None)
+                else RecordID("posts", data["id"])
             )
-            # Assuming data["files"] is a list of dicts with "filename" keys
-            # and that the filenames are unique for each post
-            # Generate signed URLs for media upload
-            signed_urls = await app.RMQ.sign_put_urls(
-                filenames
-            )  # Assuming filenames are in the data dict
+            data["filenames"] = [
+                f"posts/{user_id}/{data['post_id'].id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}"
+                for file in files.values()
+            ]
+            data["types"] = [file.content_type for file in files.values()]
+            
+            # Publish media upload tasks to RMQ
+            media_publish_tasks = []
+            for i, file in enumerate(files.values()):
+                if file.filename:  # Process only if file has a name
+                    data["filename"] = data["filenames"][i]
+                    data["type"] = data["types"][i]
+                    media_publish_tasks.append(app.RMQ._publish_media(data, file))
+
+            if media_publish_tasks:
+                await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
 
             # Create post in the database
             result = await self.__posts_handler.create_post(data=data, author=user_id)
@@ -355,7 +394,6 @@ class BaseView(QuartClassful):
                     jsonify(
                         data=result,
                         message="Post created successfully, upload media to signed_urls.",
-                        signed_urls=signed_urls,
                         status=status_code.phrase,
                     ),
                     status_code,
@@ -392,6 +430,7 @@ class BaseView(QuartClassful):
         """
         try:
             if result := await self.__posts_handler.fetch_post(id):
+                result = await recursively_sign_event_media(result)
                 status_code = HTTPStatus.OK
                 return (
                     jsonify(

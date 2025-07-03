@@ -71,14 +71,14 @@ class RMQBroker(RabbitBroker):
             @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
             async def handle_media_upload(message):
                 await self.upload_to_bucket(message.headers, message.body)
-                name = message.headers.get("filename", "")
+                # name = message.headers.get("filename", "")
 
-                if "event" in name:
-                    await self._publish_r18e(name, message.body, "MEDIA")
-                elif "post" in name:
-                    await self._publish_r18e(name, message.body, "POST")
-                else:
-                    app.logger.warning("Unknown filename: %s", name)
+                # if "event" in name:
+                #     await self._publish_r18e(name, message.body, "MEDIA")
+                # elif "post" in name:
+                #     await self._publish_r18e(name, message.body, "POST")
+                # else:
+                #     app.logger.warning("Unknown filename: %s", name)
 
                 await message.ack()
 

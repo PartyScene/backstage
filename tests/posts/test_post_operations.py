@@ -25,16 +25,13 @@ class TestPostOperations(TestPostsBase):
         response_json = await response.get_json()
         assert response_json["status"] == HTTPStatus.CREATED.phrase
         assert "data" in response_json
-        assert "signed_urls" in response_json
         created_post = response_json["data"][0]
         
         assert "id" in created_post
         mock_post["id"] = created_post["id"]
         assert created_post["content"] == mock_post["content"]
         assert created_post["event"] == mock_post["event"]
-        # Store post ID if needed for other tests
-        # self.created_post_id = created_post["id"]
-
+        
     async def test_fetch_post(self, posts_client, mock_post, bearer):
         """Test retrieving a specific post."""
         # Assuming mock_post fixture provides a created post ID

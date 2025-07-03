@@ -42,9 +42,26 @@ class PostsDB:
                 dict: A dictionary containing the result of the post fetch query.
         """
         query = """
-                SELECT * FROM posts WHERE event == type::thing('events', $event_id);
+                SELECT fn::fetch_post(id) AS post FROM posts WHERE event == type::thing('events', $event_id);
             """
         params = {"event_id": id}
+        async with self.pool.acquire() as conn:
+            result = await conn.query(query, params)
+        self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+        return record_id_to_json(result)
+    
+    async def fetch_user_posts(self, id: str) -> dict:
+        """
+        Asynchronously fetches all posts associated with the given user.
+            Args:
+                id (str): The ID of the user.
+            Returns:
+                dict: A dictionary containing the result of the post fetch query.
+        """
+        query = """
+                SELECT fn::fetch_post(id) AS post FROM posts WHERE in == type::thing('users', $user_id);
+            """
+        params = {"user_id": id}
         async with self.pool.acquire() as conn:
             result = await conn.query(query, params)
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
@@ -127,14 +144,18 @@ class PostsDB:
         """
         async with self.pool.acquire() as conn:
             await conn.let("users", RecordID("users", author))
-            media_ids = []
+            media_query_result = { "id": None }  # Initialize media_query_result
+            if "event" not in data:
+                raise ValueError("Event ID is required to create a post.")
+            if "content" not in data:
+                raise ValueError("Content is required to create a post.")
 
             data["creator"] = RecordID("users", author)
             data["event"] = RecordID("events", data["event"])
-
-            for file in data["files"]:
-                filename = file["filename"]
-                media_type = file["type"]
+            
+            if "filename" in data and "type" in data:
+                filename = data["filename"]
+                media_type = data["type"]
                 media_query_result = await conn.create(
                     "media",
                     {
@@ -149,15 +170,12 @@ class PostsDB:
                         media_query_result, option=json.OPT_INDENT_2, default=str
                     )
                 )
-                media_ids.append(
-                    RecordID("media", record_id_to_json(media_query_result)["id"])
-                )
 
-            await conn.let("media", media_ids)
             query = """
             RELATE $users -> posts -> $media SET content = $content, event = $event;
             """
             params = {
+                "media": media_query_result["id"],
                 "content": data["content"],
                 "event": data["event"],
             }
@@ -190,7 +208,13 @@ class PostsDB:
             Exception: If the deletion operation fails.
         """
         async with self.pool.acquire() as conn:
-            result = await conn.select(RecordID("posts", id))
+            result = await conn.query(
+                    """
+                    RETURN fn::fetch_post(type::thing('posts', $post_id));
+                    """,
+                    {"post_id": id},
+                )
+            # result = await conn.select(RecordID("posts", id))
         self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 

@@ -47,6 +47,9 @@ async def recursively_sign_event_media(obj: Any) -> Any:
         # Handle single event object
         if 'event' in obj and 'media' in obj['event']:
             obj['event']['media'] = await sign_media_object(obj['event']['media'])
+        # Handle post media if present
+        if 'post' in obj and 'media' in obj['post']:
+            obj['post']['media'] = await sign_media_object(obj['post']['media'])
         if 'media' in obj:
             obj['media'] = await sign_media_object(obj['media'])
         # Recursively handle nested dictionaries
