@@ -7,6 +7,7 @@ from datetime import timedelta
 import werkzeug.datastructures
 
 from shared.classful import route, QuartClassful
+from shared.utils import signer
 from media.src.connectors import MediaDB
 from http import HTTPStatus
 
@@ -19,6 +20,8 @@ from aiocache import cached
 
 from obstore.store import GCSStore
 import obstore as obs
+
+LOAD_BALANCER_BASE_URL = os.environ.get('LOAD_BALANCER_BASE_URL')
 
 
 class BaseView(QuartClassful):
@@ -118,9 +121,15 @@ class BaseView(QuartClassful):
         self.logger.warning(f"Generating new signed URL for Filename: {filename}")
         # 2. Generate the signed URL (original logic)
         try:
-            media_url = await obs.sign_async(
-                self.OBS_STORE, "GET", filename, timedelta(days=1)
+            # media_url = await obs.sign_async(
+            #     self.OBS_STORE, "GET", filename, timedelta(days=1)
+            # )
+            media_url = signer.generate_cdn_signed_url(
+                LOAD_BALANCER_BASE_URL,
+                "/" + filename, # Add trailing / to filename
+                timedelta(days=1)
             )
+
         except Exception as e:
             self.logger.error(f"Error signing media URL: {e}")
             return None

@@ -35,6 +35,27 @@ class AuthDB:
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
+    
+    async def update_user(self, data: dict) -> dict:
+        """
+        Update user data
+
+        Args:
+            data (dict): User data to update, must include 'id' field
+
+        Returns:
+            dict: Updated user data
+        """
+
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "UPDATE ONLY type::thing('users', $record_id) MERGE $content RETURN AFTER;",
+                {"content": data, "record_id": data["id"]},
+            )
+        logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+        return record_id_to_json(result)
+
+
 
     async def _reset_password(self, email: str, new_password: str) -> Optional[bool]:
         """Reset the password for the user with the given email.

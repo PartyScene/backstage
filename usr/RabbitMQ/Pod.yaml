@@ -15,6 +15,13 @@ spec:
               name: rabbitmq
               key: erlangCookie
               # Create Secret with: kubectl create secret generic rabbitmq --from-literal=erlangCookie=$(dd if=/dev/urandom bs=30 count=1 | base64)
+      resources:
+        requests:
+          memory: "512Mi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
       volumeMounts:
         - name: rabbitmq-data
           mountPath: /var/lib/rabbitmq

@@ -3,6 +3,7 @@ from datetime import timedelta, datetime
 from http import HTTPStatus
 from quart import make_response, render_template, current_app as app, request, jsonify
 from quart_jwt_extended import create_access_token
+from quart_jwt_extended import jwt_required, get_jwt_identity
 from redis.asyncio import Redis
 from typing import Optional, Dict, Literal
 from aiocache import cached, RedisCache, Cache
@@ -16,6 +17,7 @@ import orjson as json
 from auth.src.connectors import AuthDB
 from shared.classful import route, QuartClassful
 from shared.workers.brevo import Brevo
+from shared.utils import veriff
 from shared.workers.novu import NotificationManager
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,7 @@ class BaseView(QuartClassful):
         self.redis: Redis = app.redis
         self.__notification_manager = NotificationManager()
         self.__brevo_client = Brevo()
+        self.__veriff_client = veriff.VeriffClient()
 
     def generate_jwt_secret(self, identity):
         """Generate a JWT secret for the given identity."""
@@ -352,6 +355,51 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
+    
+    @route("/auth/kyc/update", methods=["PATCH"])
+    @jwt_required
+    async def update_kyc_status(self):
+        """"""
+        user_id = get_jwt_identity()
+        data = await request.get_json()
+        status = data.get('kyc_status', 'false') == 'true'
+        updated_data = {
+            "kyc_status": status,
+            "id": user_id,
+        }
+        if await self.conn.update_user(updated_data):
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(message="KYC Data updated successfully.", status=status_code.phrase),
+                status_code,
+            ) 
+        
+    
+    @route("/auth/kyc/session", methods=["POST"])
+    @jwt_required
+    async def create_kyc_session(self):
+        """"""
+        veriff_resp = await self.__veriff_client.create_session()
+        if not veriff_resp:
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message="Failed to create session in Veriff.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+            
+        status_code = HTTPStatus.CREATED
+        return (
+            jsonify(
+                message=f"Veriff session created.",
+                data=veriff_resp,
+                status=status_code.phrase,
+            ),
+            status_code,
+        )
+        
 
     @route("/auth/login", methods=["POST"])
     async def login_user(self):

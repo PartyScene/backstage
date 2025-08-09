@@ -6,6 +6,8 @@ DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE username ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE option<record<media>>;
+DEFINE FIELD OVERWRITE kyc_status ON TABLE users TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE kyc_payment_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE hashed_password ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE hashed_email ON TABLE users TYPE string;

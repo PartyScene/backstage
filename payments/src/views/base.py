@@ -122,7 +122,7 @@ class BaseView(QuartClassful):
         )
         
 
-    async def create_stripe_intent(self, amount: int, user_id, event_id, ticket_count: int = 1) -> Dict[str, Any]:
+    async def create_payment_stripe_intent(self, amount: int, user_id, event_id, ticket_count: int = 1) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
             raise ValueError("Stripe client is not initialized.")
@@ -134,6 +134,23 @@ class BaseView(QuartClassful):
                 "user_id": user_id,
                 "ticket_count": str(ticket_count),
                 "event_id": event_id,
+                },
+            }
+        )
+        return payment_intent
+    
+    
+    async def create_kyc_stripe_intent(self, user_id) -> Dict[str, Any]:
+        """Create a Stripe payment intent for the given amount and user ID."""
+        if not self.stripe_client:
+            raise ValueError("Stripe client is not initialized.")
+        payment_intent = await self.stripe_client.payment_intents.create_async(
+            {
+            "amount": int(10 * 100),   # Convert to cents
+            "currency": "usd",
+            "metadata": {
+                "user_id": user_id,
+                "type": "KYC_PAYMENT"
                 },
             }
         )
@@ -158,7 +175,7 @@ class BaseView(QuartClassful):
                 )
             
             # Create a stripe payment intent
-            intent = await self.create_stripe_intent(
+            intent = await self.create_payment_stripe_intent(
                 amount=event.get("price", 0),
                 user_id=user_id,
                 event_id=event_id,
@@ -183,6 +200,46 @@ class BaseView(QuartClassful):
         except Exception as e:
             app.logger.error(
                 f"Error creating payment intent for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to create payment intent: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+      
+    
+    @route("/payments/kyc/create-intent", methods=["POST"])
+    @jwt_required
+    async def create_kyc_intent(self):
+        """Create KYC payment intent"""
+        try:
+            user_id = get_jwt_identity()
+            
+            # Create a stripe payment intent
+            intent = await self.create_kyc_stripe_intent(
+                user_id=user_id,
+            )
+             
+            # return the intent client secret
+            return (
+                jsonify(
+                    data={
+                        "client_secret": intent["client_secret"],
+                        "pub_key": STRIPE_PUB_KEY,
+                        "amount": intent["amount"],
+                        "currency": intent["currency"],
+                    },
+                    message="Payment intent created successfully.",
+                    status=HTTPStatus.OK.phrase,
+                ),
+                HTTPStatus.OK,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error creating payment intent for KYC {event_id}: {str(e)}", exc_info=True
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             return (
