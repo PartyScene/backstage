@@ -301,7 +301,7 @@ class BaseView(QuartClassful):
             # This metadata was set when creating the PaymentIntent in /create-payment-intent
             metadata = payment_intent.get("metadata")
             
-            if metadata:
+            if "ticket_count" in metadata:
                 ticket_count, user_id, event_id = int(metadata.get("ticket_count")), metadata.get("user_id"), metadata.get("event_id")
 
                 for i in range(ticket_count):
@@ -323,7 +323,15 @@ class BaseView(QuartClassful):
                 app.logger.info(f"User {user_id} registered as attending event {event_id}.")
                 # Here you might send a confirmation email or notification to the user
                 
-
+            elif "type" in metadata and metadata["type"] == "KYC_PAYMENT":
+                user_id = metadata.get("user_id")
+                app.logger.info(f"KYC payment successful for user {user_id}.")
+                data = {}
+                data["id"] = user_id
+                data["kyc_payment_status"] = True
+                # Update the user's KYC status in the database
+                await self.conn._update_user(data)
+                app.logger.info(f"User {user_id} KYC status updated to 'verified'.")
             else:
                 app.logger.warning(f"No ticket data found in metadata for PaymentIntent {payment_intent['id']}. Cannot create ticket.")
         

@@ -17,6 +17,43 @@ class PaymentsDB:
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
+
+    def subset(self, d, keys):
+        return {k: d[k] for k in keys if k in d}
+
+    async def _update_user(self, data: dict) -> dict:
+        """
+        Update user data
+
+        Args:
+            data (dict): User data to update, must include 'id' field
+
+        Returns:
+            dict: Updated user data
+        """
+
+        if "filename" in data:
+            async with self.pool.acquire() as conn:
+                data["creator"] = RecordID("users", data["id"])
+                media_query_result = await conn.create(
+                    "media", self.subset(data, ["filename", "type", "creator"])
+                )
+                self.logger.warning(
+                    json.dumps(
+                        media_query_result, option=json.OPT_INDENT_2, default=str
+                    )
+                )
+
+                if isinstance(media_query_result, dict):
+                    data["avatar"] = media_query_result["id"]
+
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "UPDATE ONLY type::thing('users', $record_id) MERGE $content RETURN AFTER;",
+                {"content": data, "record_id": data["id"]},
+            )
+        self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+        return record_id_to_json(result)
     
     
     async def create_attendance(self, data: Dict[str, Any]):
