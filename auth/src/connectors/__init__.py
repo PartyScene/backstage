@@ -244,7 +244,46 @@ class AuthDB:
         except Exception as e:
             logger.error(f"Error creating user: {e}")
             return None
+    async def sso_store(self, form):
+        """
+        Store or create a new user in the database after SSO authentication.
 
+        Args:
+            form: User data to create
+        Returns:
+            dict: Created user data or None if creation failed
+        """
+        # Let's rewrite the form to fit the schema
+        data = {
+            "first_name": form.get("first_name", ""),
+            "last_name": form.get("last_name", ""),
+            "hashed_email": form.get("email", ""),
+            "auth_provider": form.get("auth_provider", "sso"),
+            "google_sub": form.get("google_sub", None),
+            "hashed_password": None,  # SSO users typically don't have a password
+        }
+        # Generate Crypto credentials
+        credentials = await self.envelope_service.encrypt(form.get("email").encode())
+
+        try:
+            async with self.pool.acquire() as conn:
+
+                result = await conn.create("users", {**form, **data})
+                if isinstance(result, dict):
+                    await self.bloom_filter.add("email", form.get("email"))
+                    # await self.bloom_filter.add("username", form.get("username"))
+
+                    await conn.create("credentials", {**credentials, "user": result["id"]})
+
+                    logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                    return record_id_to_json(result)
+                else:
+                    logger.warning("User creation returned unexpected result: %s", result)
+                    return None
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            return None
+        
     async def _store_after_verify(self, form):
         """
         Store or create a new user in the database after verifying the user's email.

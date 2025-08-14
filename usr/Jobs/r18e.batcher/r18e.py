@@ -217,9 +217,13 @@ class Job:
         for object in media_objects:
             filename = object['filename']
             logger.debug(f"Processing media for file '{filename}'")
-            obs_result = await obs.get_async(self.OBS_STORE, filename)
-            embeddings = await extract_embeddings(bytes(await obs_result.bytes_async()))
-            await self.save(filename, embeddings)
+            try:
+                obs_result = await obs.get_async(self.OBS_STORE, filename)
+                embeddings = await extract_embeddings(bytes(await obs_result.bytes_async()))
+                await self.save(filename, embeddings)
+            except:
+                logger.exception(f"Failed to process media for file '{filename}'")
+                
 
 # --- Instantiate the Worker ---
 worker = Job()

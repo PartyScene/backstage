@@ -19,8 +19,13 @@ from shared.classful import route, QuartClassful
 from shared.workers.brevo import Brevo
 from shared.utils import veriff
 from shared.workers.novu import NotificationManager
+from google.oauth2 import id_token
+from google.auth.transport import requests as grequests
+import os
 
 logger = logging.getLogger(__name__)
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "your-google-client-id")
 
 
 class BaseView(QuartClassful):
@@ -440,6 +445,90 @@ class BaseView(QuartClassful):
             logger.error(f"User registration error: {e}")
             raise
 
+    @route("/auth/google", methods=["POST"])
+    async def auth_google(self):
+        data = request.get_json()
+        token_str = data.get("id_token")
+
+        if not token_str:
+            status_code = HTTPStatus.BAD_REQUEST
+            return (
+                jsonify(message="Missing ID token", status=status_code.phrase),
+                status_code,
+            )
+
+        try:
+            # Verify the token
+            idinfo = id_token.verify_oauth2_token(
+                token_str,
+                grequests.Request(),
+                GOOGLE_CLIENT_ID
+            )
+
+            # Optional: check email is verified
+            if not idinfo.get("email_verified"):
+                return jsonify({"error": "Email not verified"}), 403
+
+            # Extract user info
+            user_id = idinfo["sub"]  # Google unique ID
+            email = idinfo["email"]
+            first_name = idinfo.get("given_name")
+            last_name = idinfo.get("family_name")
+            picture = idinfo.get("picture")
+
+            # TODO: Find or create user in DB here
+            email_exists = await self.conn._check_exists(email, "email")
+            if not email_exists:
+                # Create user in SurrealDB if not exists
+                user_data = {
+                    "google_sub": user_id,
+                    "email": email,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "avatar": picture,
+                }
+                user_data = await self.conn.sso_store(user_data)
+                access_token = self.generate_jwt_secret(user_data["id"])
+                status_code = HTTPStatus.CREATED
+                return (
+                    jsonify(
+                        data={"access_token": access_token, "token_type": "bearer"},
+                        message="User registered successfully, proceed to update username.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+            else:
+                # Fetch existing user data
+                user_data = await self.conn._fetch_user_by_email(email)
+                if not user_data:
+                    status_code = HTTPStatus.NOT_FOUND
+                    return (
+                        jsonify(message="User not found", status=status_code.phrase),
+                        status_code,
+                    )
+                
+            # Generate JWT token for the user
+                access_token = self.generate_jwt_secret(user_data["id"])
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(
+                        data={"access_token": access_token, "token_type": "bearer"},
+                        message="OTP verified successfully.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+                
+        except ValueError:
+            # Invalid token
+            logger.error("Invalid ID token")
+            status_code = HTTPStatus.UNAUTHORIZED
+            return (
+                jsonify(message="Invalid ID token", status=status_code.phrase),
+                status_code,
+            )
+        
     async def __generate_and_send_otp(self, user_id: str, email: str, data: Optional[dict], context: Literal["register", "forgot-password"]) -> str | bool:
         """Generate and send OTP for authentication
         If data is provided, it will be stored in Redis for later verification.
