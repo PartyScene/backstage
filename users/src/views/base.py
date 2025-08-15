@@ -197,6 +197,11 @@ class BaseView(QuartClassful):
                 )
 
             data["id"] = user_id  # Ensure ID is set for the update operation
+            
+            # Data checks
+            if 'kyc_payment_status' in data:
+                data['kyc_payment_status'] = data.get('kyc_payment_status', 'false') == 'true'
+                
             result = await self.conn.update(data)
             if not result:  # Handle case where update fails or user doesn't exist
                 # Check if user exists first? Might be redundant if update handles it.
