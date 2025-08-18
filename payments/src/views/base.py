@@ -126,9 +126,12 @@ class BaseView(QuartClassful):
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
             raise ValueError("Stripe client is not initialized.")
+        total_amount = self.calculate_total_amount(float(amount))
+        app.logger.debug(f"Creating payment intent for user {user_id} with amount {total_amount} for event {event_id} and ticket count {ticket_count}")
+        # Create a Stripe payment intent with the total amount and user metadata
         payment_intent = await self.stripe_client.payment_intents.create_async(
             {
-            "amount": int(amount * 100),   # Convert to cents
+            "amount": int(total_amount * 100),   # Convert to cents
             "currency": "usd",
             "metadata": {
                 "user_id": user_id,
@@ -139,19 +142,31 @@ class BaseView(QuartClassful):
         )
         return payment_intent
     
+    def calculate_total_amount(self, base_amount: float) -> float:
+        """
+        Calculate the total amount including Stripe fees.
+        The formula is: (base_amount + 0.30) / (1 - 0.029)
+        where 0.30 is the fixed fee and 0.029 is the percentage fee.
+        """
+        stripe_percentage = 0.029
+        stripe_fixed = 0.30
+        total_amount = (base_amount + stripe_fixed) / (1 - stripe_percentage)
+        return total_amount
+    
     
     async def create_kyc_stripe_intent(self, user_id) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
             raise ValueError("Stripe client is not initialized.")
+        total_amount = self.calculate_total_amount(10.00)
         payment_intent = await self.stripe_client.payment_intents.create_async(
             {
-            "amount": int(10 * 100),   # Convert to cents
+            "amount": int(total_amount * 100),  # Convert to cents
             "currency": "usd",
             "metadata": {
-                "user_id": user_id,
-                "type": "KYC_PAYMENT"
-                },
+            "user_id": user_id,
+            "type": "KYC_PAYMENT"
+            },
             }
         )
         return payment_intent

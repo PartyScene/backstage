@@ -153,6 +153,24 @@ class PostsDB:
             data["creator"] = RecordID("users", author)
             data["event"] = RecordID("events", data["event"])
             
+            # Check if post is close to event location
+            event_info = await conn.select(data["event"])
+            if "coordinates" in data and "location" in event_info:
+                event_coordinates = event_info["location"]["coordinates"]
+                post_coordinates = data["coordinates"]
+                if not event_coordinates or not post_coordinates:
+                    raise ValueError("Coordinates are required for both event and post.")
+                
+                # For example, you could calculate the distance between the two coordinates
+                distance = await conn.query("RETURN geo::distance($post_location, $event_location);", 
+                                            {
+                                                "post_location": post_coordinates,
+                                                "event_location": event_coordinates
+                                            })
+                if distance > 500:  # Example threshold in meters
+                    raise ValueError("Post is too far from the event location.")
+                
+            
             if "filename" in data and "type" in data:
                 filename = data["filename"]
                 media_type = data["type"]

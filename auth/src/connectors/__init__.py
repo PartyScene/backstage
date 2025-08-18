@@ -177,9 +177,9 @@ class AuthDB:
                     "SELECT * FROM users WHERE crypto::argon2::compare(hashed_email, $email);",
                     {"email": param},
                 )
-                logger.debug("Bloom Miss, Result for email %s" % result)
+                logger.warning("Bloom Miss, Result for email %s" % result)
                 if bool(result):
-                    self.bloom_filter.add("email", param)
+                    await self.bloom_filter.add("email", param)
                     return True
 
             elif type == "username":
@@ -187,9 +187,9 @@ class AuthDB:
                     "SELECT * FROM users WHERE username = $username",
                     {"username": param},
                 )
-                logger.debug("Bloom Miss, Result for username %s" % result)
+                logger.warning("Bloom Miss, Result for username %s" % result)
                 if bool(result):
-                    self.bloom_filter.add("username", param)
+                    await self.bloom_filter.add("username", param)
                     return True
 
             return False

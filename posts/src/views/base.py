@@ -363,6 +363,7 @@ class BaseView(QuartClassful):
                 )
 
             # data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
+            data["coordinates"] = form.getlist("coordinates[]", type=float)
             data["post_id"] = (
                 (RecordID("posts", str(ruuid.uuid4()).split("-")[-1]))
                 if not data.get("id", None)
