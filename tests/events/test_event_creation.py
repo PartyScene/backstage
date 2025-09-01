@@ -37,21 +37,20 @@ class TestEventCreation(TestEventsBase):
         assert created_event["host"] == mock_event["host"]
         # Add more assertions based on expected fields in created_event
         assert created_event["title"] == mock_event["title"]
-        
+
         # Let's also create and delete an event in one test
         # Temporary New event for delete operation later
         new_event = dict(mock_event)
-        new_event.pop('id')
+        new_event.pop("id")
         response = await self.create_event(event_client, new_event, files, bearer)
         assert response.status_code == HTTPStatus.CREATED
         response_json = await response.get_json()
         assert response_json["status"] == HTTPStatus.CREATED.phrase
         assert "data" in response_json
         created_event = response_json["data"]
-        
-        response = await self.delete_event(event_client, created_event['id'], bearer)
-        assert response.status_code == HTTPStatus.NO_CONTENT
-        
+
+        response = await self.delete_event(event_client, created_event["id"], bearer)
+        assert response.status_code == HTTPStatus.OK
 
     async def test_create_event_missing_fields(self, event_client, mock_event, bearer):
         """Test creating an event with missing required fields."""

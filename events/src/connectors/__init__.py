@@ -94,9 +94,7 @@ class EventsDB:
                     )
                 )
                 self.logger.warning(
-                    json.dumps(
-                        media_ids, option=json.OPT_INDENT_2, default=str
-                    )
+                    json.dumps(media_ids, option=json.OPT_INDENT_2, default=str)
                 )
 
             data.pop("id", None)
@@ -122,10 +120,10 @@ class EventsDB:
                         json.dumps(result, option=json.OPT_INDENT_2, default=str)
                     )
                     result = await conn.select(event_id)
-                    
+
                 elif isinstance(result, str):
                     raise Exception(f"Error creating event: {result}")
-                
+
             return record_id_to_json(result)
 
         except Exception as e:
@@ -374,7 +372,7 @@ class EventsDB:
                 )
 
             # Build update query
-            update_data : dict[str, Any] = {
+            update_data: dict[str, Any] = {
                 "status": status,
             }
             if metadata:
@@ -397,7 +395,7 @@ class EventsDB:
             self.logger.error(f"Failed to update event status: {str(e)}")
             raise
 
-    async def create_attendance(self, data: Dict[str, Any]):
+    async def create_attendance(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create an attendance relationship between a user and an event.
 

@@ -21,12 +21,11 @@ class VeriffClient:
             }
         )
         self.base_url = os.environ["VERIFF_API_URL"]
-        
-    
+
     async def create_session(self):
         """
         Create a veriff Session
-        
+
         Returns
         -------
         dict
@@ -38,9 +37,7 @@ class VeriffClient:
             If the session creation fails.
         """
         try:
-            payload = {
-                "verification": {}
-            }
+            payload = {"verification": {}}
             response = await self.client.post(f"{self.base_url}/sessions", json=payload)
             response.raise_for_status()
             return response.json()

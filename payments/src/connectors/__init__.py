@@ -9,11 +9,11 @@ from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 
 class PaymentsDB:
-    
+
     def __init__(self, pool: SurrealDBConnectionPool, logger) -> None:
         self.pool = pool
         self.logger = logger
-        
+
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
@@ -54,8 +54,7 @@ class PaymentsDB:
             )
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
-    
-    
+
     async def create_attendance(self, data: Dict[str, Any]):
         """
         Create an attendance relationship between a user and an event.
@@ -78,7 +77,6 @@ class PaymentsDB:
             self.logger.error(f"Failed to create attendance: {str(e)}")
             raise
 
-
     async def _create_ticket(self, data):
         """
         Create a ticket in the database.
@@ -89,18 +87,18 @@ class PaymentsDB:
         Returns:
             dict: The created ticket object
         """
-        data['user'] = RecordID("users", data.pop('user'))
-        data['event'] = RecordID("events", data.pop('event'))
-        
+        data["user"] = RecordID("users", data.pop("user"))
+        data["event"] = RecordID("events", data.pop("event"))
+
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("tickets", data)
             return record_id_to_json(result)
-        
+
         except Exception as e:
             self.logger.error(f"Failed to create ticket: {str(e)}")
             raise
-    
+
     async def _fetch(self, event_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch a single event by ID.

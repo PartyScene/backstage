@@ -140,7 +140,9 @@ async def close_globals():
             db_connection = None
     logger.info("Global resources closed.")
 
+
 import obstore as obs
+
 
 class Job:
     """
@@ -149,9 +151,11 @@ class Job:
     """
 
     def __init__(self, *args, **kwargs):
-        self.OBS_STORE = obs.store.GCSStore(os.environ.get("GCS_BUCKET_NAME", "partyscene"))
+        self.OBS_STORE = obs.store.GCSStore(
+            os.environ.get("GCS_BUCKET_NAME", "partyscene")
+        )
         ...
-        
+
     async def start(self):
         await init_globals()
 
@@ -196,7 +200,7 @@ class Job:
         except Exception as e:
             logger.error(f"SurrealDB save failed for {filename}", exc_info=True)
             raise  # Re-raise to allow retry/DLQ
-    
+
     async def fetch_media_objects(self):
         try:
             async with model_lock:
@@ -211,19 +215,21 @@ class Job:
         except Exception as e:
             logger.error(f"SurrealDB fetch failed for media objects", exc_info=True)
             raise  # Re-raise to allow retry/DLQ
-    
+
     async def process(self):
         media_objects = await self.fetch_media_objects()
         for object in media_objects:
-            filename = object['filename']
+            filename = object["filename"]
             logger.debug(f"Processing media for file '{filename}'")
             try:
                 obs_result = await obs.get_async(self.OBS_STORE, filename)
-                embeddings = await extract_embeddings(bytes(await obs_result.bytes_async()))
+                embeddings = await extract_embeddings(
+                    bytes(await obs_result.bytes_async())
+                )
                 await self.save(filename, embeddings)
             except:
                 logger.exception(f"Failed to process media for file '{filename}'")
-                
+
 
 # --- Instantiate the Worker ---
 worker = Job()

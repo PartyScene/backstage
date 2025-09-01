@@ -12,7 +12,7 @@ fake = Faker()
 class TestUserManagement(TestUsersBase):
     async def test_get_user_events(self, users_client, mock_user, bearer):
         """Test retrieving events related to the current user (/user/events)."""
-        response = await self.get_user_events(users_client, bearer)  
+        response = await self.get_user_events(users_client, bearer)
         assert response.status_code == HTTPStatus.OK  # Use get_attended_events helper
 
         response_json = await response.get_json()
@@ -22,7 +22,7 @@ class TestUserManagement(TestUsersBase):
         events = response_json["data"]
         assert isinstance(events, dict)  # Ensure it's a list of events
         print("User Events:", events)  # Debug print to see the events
-        
+
     async def test_get_user_profile(self, users_client, mock_user, bearer):
         """Test retrieving the current user's profile (/user)."""
         response = await self.get_me(users_client, bearer)  # Use get_me helper
@@ -162,13 +162,13 @@ class TestUserManagement(TestUsersBase):
         delete_response = await self.delete_connection(
             users_client, connection_id, bearer
         )
-        assert delete_response.status_code == HTTPStatus.NO_CONTENT
+        assert delete_response.status_code == HTTPStatus.OK
 
         # 204 No Content might have an empty body or a minimal JSON body
         try:
             delete_json = await delete_response.get_json()
             if delete_json:  # Check if body is not empty
-                assert delete_json["status"] == HTTPStatus.NO_CONTENT.phrase
+                assert delete_json["status"] == HTTPStatus.OK.phrase
                 assert "Connection deleted successfully" in delete_json["message"]
         except Exception:
             # Handle cases where get_json() fails on an empty body

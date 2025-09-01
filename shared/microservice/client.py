@@ -81,7 +81,7 @@ class MicroService(Quart):
         self.conn = None
         self.pool_manager: SurrealDBPoolManager = None
         self.redis = None
-        self.RMQ : rmq.RMQBroker 
+        self.RMQ: rmq.RMQBroker
         self.views = views
         self.initialize_database = initialize_database
         self.microservice_instance = Microservice(instance)

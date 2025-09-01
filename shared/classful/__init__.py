@@ -12,22 +12,19 @@ DEFAULT_OPTIONS = {
 }
 INSTACE_TYPE = typing.Union[Quart, Blueprint]
 HTTP_METHODS = typing.Literal[
-    "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD",
-    "TRACE"
+    "GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "TRACE"
 ]
 
 
 def route(
     rule: str,
-    methods: typing.Optional[
-        typing.List[HTTP_METHODS]
-    ] = None,
+    methods: typing.Optional[typing.List[HTTP_METHODS]] = None,
     **options,
 ) -> typing.Callable:
     """A decorator that registers a route
     in a cached place, so it can be lazy-loaded.
     """
-    
+
     if methods is None:
         methods = ["GET"]
 
@@ -145,7 +142,7 @@ class QuartClassful:
                 pass
 
             func = functools.partial(member, self)
-            func.__name__ = member.__name__ # pyright: ignore
+            func.__name__ = member.__name__  # pyright: ignore
 
             if hasattr(member, "_classful"):
                 args = (instance, member, func)

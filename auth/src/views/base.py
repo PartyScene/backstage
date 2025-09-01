@@ -1,7 +1,15 @@
 from dataclasses import dataclass
 from datetime import timedelta, datetime
 from http import HTTPStatus
-from quart import make_response, render_template, current_app as app, request, jsonify
+from quart import (
+    make_response,
+    render_template,
+    current_app as app,
+    request,
+    jsonify,
+    url_for,
+    redirect,
+)
 from quart_jwt_extended import create_access_token
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from redis.asyncio import Redis
@@ -22,10 +30,12 @@ from shared.workers.novu import NotificationManager
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import os
+import stripe
 
 logger = logging.getLogger(__name__)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "your-google-client-id")
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # Use env vars for security
 
 
 class BaseView(QuartClassful):
@@ -132,7 +142,7 @@ class BaseView(QuartClassful):
             ),
             status_code,
         )
-        
+
     @route("/auth/forgot-password", methods=["POST"])
     async def forgot_password(self):
         """Request a password reset for a user."""
@@ -152,7 +162,7 @@ class BaseView(QuartClassful):
                 jsonify(message="Email not found", status=status_code.phrase),
                 status_code,
             )
-        
+
         user_info = await self.conn._fetch_user_by_email(email)
         if not user_info:
             status_code = HTTPStatus.NOT_FOUND
@@ -162,7 +172,7 @@ class BaseView(QuartClassful):
             )
         # Generate OTP and send it to the user
         otp = await self.__generate_and_send_otp(
-            user_id=user_info['id'], email=email, data=data, context="forgot-password"
+            user_id=user_info["id"], email=email, data=data, context="forgot-password"
         )
         if otp:
             # Otp has been created, return success response
@@ -177,7 +187,7 @@ class BaseView(QuartClassful):
                     ),
                     status_code,
                 )
-                
+
             return (
                 jsonify(
                     message="OTP sent to your email for password reset.",
@@ -195,7 +205,7 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-            
+
     @route("/auth/reset-password", methods=["POST"])
     async def reset_password(self):
         """Reset a user's password using the provided email and new password."""
@@ -205,41 +215,49 @@ class BaseView(QuartClassful):
         otp = data.get("otp")
         if not email or not new_password or not otp:
             status_code = HTTPStatus.BAD_REQUEST
-            
+
             return (
-                jsonify(message="Email, new password, and OTP are required", status=status_code.phrase),
+                jsonify(
+                    message="Email, new password, and OTP are required",
+                    status=status_code.phrase,
+                ),
                 status_code,
             )
-        
+
         # Verify OTP before resetting password
-        if not await self.verify_otp(email, otp, validate_only=True, context="forgot-password"):
+        if not await self.verify_otp(
+            email, otp, validate_only=True, context="forgot-password"
+        ):
             status_code = HTTPStatus.UNAUTHORIZED
             return (
                 jsonify(message="Invalid or expired OTP", status=status_code.phrase),
                 status_code,
             )
-            
+
         if await self.conn._reset_password(email, new_password):
             status_code = HTTPStatus.OK
             return (
-                jsonify(message="Password reset successfully", status=status_code.phrase),
+                jsonify(
+                    message="Password reset successfully", status=status_code.phrase
+                ),
                 status_code,
-            )        
+            )
         else:
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             return (
                 jsonify(message="Failed to reset password", status=status_code.phrase),
                 status_code,
             )
-            
+
     @route("/auth/exists", methods=["GET"])
     async def check_exists(self):
         """Verify if a user with the provided parameter already exists."""
         type, param = request.args.get("type", ""), request.args.get("param")
-        
+
         if type in ("email", "username"):
             result = await self.conn._check_exists(param, type)
-        else: result = None
+        else:
+            result = None
 
         if result:
             status_code = HTTPStatus.CONFLICT
@@ -255,12 +273,16 @@ class BaseView(QuartClassful):
     async def verify(self):
         """Verify a provided OTP and generate an access token."""
         data = await request.get_json()
-        
+
         # If context is forgot password, we're probably only validating
         context = data.get("context", None)
-        validate_only = context in ("forgot-password",) # If context is forgot-password, we only validate the OTP
-        delete = context != "forgot-password" # If context is forgot-password, we don't delete the OTP after verification
-        
+        validate_only = context in (
+            "forgot-password",
+        )  # If context is forgot-password, we only validate the OTP
+        delete = (
+            context != "forgot-password"
+        )  # If context is forgot-password, we don't delete the OTP after verification
+
         print("Verify OTP Data %s" % data)
         if not data.get("email") or not data.get("otp") or not context:
             status_code = HTTPStatus.BAD_REQUEST
@@ -269,13 +291,21 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-        if result := await self.verify_otp(data.get("email"), data.get("otp"), validate_only=validate_only, context=context, delete=delete):
+        if result := await self.verify_otp(
+            data.get("email"),
+            data.get("otp"),
+            validate_only=validate_only,
+            context=context,
+            delete=delete,
+        ):
             # If validate_only is True, we only return the boolean result
             print("Verify OTP Result %s" % result)
             if validate_only:
                 status_code = HTTPStatus.OK
                 return (
-                    jsonify(message="OTP verified successfully", status=status_code.phrase),
+                    jsonify(
+                        message="OTP verified successfully", status=status_code.phrase
+                    ),
                     status_code,
                 )
 
@@ -293,7 +323,10 @@ class BaseView(QuartClassful):
                 )
         else:
             status_code = HTTPStatus.UNAUTHORIZED
-            return jsonify(message="Invalid OTP", status=status_code.phrase), status_code
+            return (
+                jsonify(message="Invalid OTP", status=status_code.phrase),
+                status_code,
+            )
 
     @route("/auth/register", methods=["POST"])
     async def register_user(self):
@@ -360,14 +393,14 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-    
+
     @route("/auth/kyc/update", methods=["PATCH"])
     @jwt_required
     async def update_kyc_status(self):
         """"""
         user_id = get_jwt_identity()
         data = await request.get_json()
-        status = data.get('kyc_status', 'false') == 'true'
+        status = data.get("kyc_status", "false") == "true"
         updated_data = {
             "kyc_status": status,
             "id": user_id,
@@ -375,11 +408,12 @@ class BaseView(QuartClassful):
         if await self.conn.update_user(updated_data):
             status_code = HTTPStatus.OK
             return (
-                jsonify(message="KYC Data updated successfully.", status=status_code.phrase),
+                jsonify(
+                    message="KYC Data updated successfully.", status=status_code.phrase
+                ),
                 status_code,
-            ) 
-        
-    
+            )
+
     @route("/auth/kyc/session", methods=["POST"])
     @jwt_required
     async def create_kyc_session(self):
@@ -394,7 +428,7 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-            
+
         status_code = HTTPStatus.CREATED
         return (
             jsonify(
@@ -404,7 +438,6 @@ class BaseView(QuartClassful):
             ),
             status_code,
         )
-        
 
     @route("/auth/login", methods=["POST"])
     async def login_user(self):
@@ -460,9 +493,7 @@ class BaseView(QuartClassful):
         # try:
         # Verify the token
         idinfo = id_token.verify_oauth2_token(
-            token_str,
-            grequests.Request(),
-            GOOGLE_CLIENT_ID
+            token_str, grequests.Request(), GOOGLE_CLIENT_ID
         )
 
         # Optional: check email is verified
@@ -507,8 +538,8 @@ class BaseView(QuartClassful):
                     jsonify(message="User not found", status=status_code.phrase),
                     status_code,
                 )
-            
-        # Generate JWT token for the user
+
+            # Generate JWT token for the user
             access_token = self.generate_jwt_secret(user_data["id"])
             status_code = HTTPStatus.OK
             return (
@@ -519,7 +550,7 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-                
+
         # except ValueError:
         #     # Invalid token
         #     logger.error("Invalid ID token")
@@ -528,8 +559,104 @@ class BaseView(QuartClassful):
         #         jsonify(message="Invalid ID token", status=status_code.phrase),
         #         status_code,
         #     )
-        
-    async def __generate_and_send_otp(self, user_id: str, email: str, data: Optional[dict], context: Literal["register", "forgot-password"]) -> str | bool:
+
+    @route("/auth/create-stripe-account", methods=["POST"])
+    @jwt_required
+    async def create_stripe_account(self):
+        data = await request.json
+        user_id = get_jwt_identity()
+        user_email = data.get("email")  # From your authenticated user
+        user_country = data.get("country", "US")  # Default to US
+
+        try:
+            print("URLS")
+            # Create Express account
+            account = stripe.Account.create(
+                type="express",
+                country=user_country,
+                email=user_email,
+                capabilities={
+                    "card_payments": {"requested": True},
+                    "transfers": {"requested": True},
+                },
+                controller={
+                    "fees": {"payer": "account"},
+                    "losses": {"payments": "application"},
+                    "stripe_dashboard": {"type": "express"},
+                },
+                business_type="individual",  # Or 'company'; adjust based on user
+            )
+            print(url_for(
+                    ".reauth_stripe", account_id=account.id, _external=True
+                ))
+
+            # Store account.id in your DB for this user
+            await self.conn.update_user(
+                {"id": user_id, "stripe_account_id": account.id}
+            )
+
+            # Create onboarding link
+            account_link = stripe.AccountLink.create(
+                account=account.id,
+                refresh_url=url_for(
+                    ".reauth_stripe", account_id=account.id, _external=True
+                ),  # Your reauth endpoint
+                return_url=url_for(
+                    ".stripe_return", account_id=account.id, _external=True
+                ),  # Your return endpoint
+                type="account_onboarding",
+            )
+
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(url=account_link.url),
+                status_code,
+            )  # Frontend redirects to this URL
+        except stripe.error.StripeError as e:
+            status_code = HTTPStatus.BAD_REQUEST
+            return jsonify(error=str(e)), status_code
+
+    @route("/auth/stripe-return", methods=["GET"])
+    @jwt_required
+    async def stripe_return(self):
+        # User completed (or exited) onboarding
+        user_id = get_jwt_identity()
+        account_id = request.args.get(
+            "account_id"
+        )  # Retrieve from your session or DB (pass via state if needed)
+        account = stripe.Account.retrieve(account_id)
+
+        if account.charges_enabled and account.payouts_enabled:
+            # Onboarding complete; update DB, notify user
+            await self.conn.update_user(
+                {"id": user_id, "stripe_account_kyc_status": True}
+            )
+            # return redirect('/dashboard?onboarding=success')
+            return jsonify(onboarding="success"), HTTPStatus.OK
+        else:
+            # Incomplete; prompt to resume
+            # return redirect('/dashboard?onboarding=incomplete')
+            return jsonify(onboarding="incomplete"), HTTPStatus.OK
+
+    @route("/auth/reauth-stripe", methods=["GET"])
+    async def reauth_stripe(self):
+        account_id = request.args.get("account_id")  # Retrieve from your session or DB
+        # Regenerate a new link if expired
+        account_link = stripe.AccountLink.create(
+            account=account_id,
+            refresh_url=url_for(".reauth_stripe", account_id=account_id, _external=True),
+            return_url=url_for(".stripe_return", account_id=account_id, _external=True),
+            type="account_onboarding",
+        )
+        return jsonify(url=account_link.url), HTTPStatus.OK
+
+    async def __generate_and_send_otp(
+        self,
+        user_id: str,
+        email: str,
+        data: Optional[dict],
+        context: Literal["register", "forgot-password"],
+    ) -> str | bool:
         """Generate and send OTP for authentication
         If data is provided, it will be stored in Redis for later verification.
         If an OTP already exists for the email, it will return False.
@@ -569,8 +696,15 @@ class BaseView(QuartClassful):
         except Exception as e:
             logger.error(f"OTP generation error: {e}")
             raise
-        
-    async def verify_otp(self, email: str, provided_otp: str, validate_only: Optional[bool], context: Literal["register", "forgot-password"], delete: bool = True) -> Optional[Dict] | bool:
+
+    async def verify_otp(
+        self,
+        email: str,
+        provided_otp: str,
+        validate_only: Optional[bool],
+        context: Literal["register", "forgot-password"],
+        delete: bool = True,
+    ) -> Optional[Dict] | bool:
         """Verify and delete OTP for authentication.
         Args:
             email (str): The email address of the user.
@@ -591,7 +725,7 @@ class BaseView(QuartClassful):
                     if delete:
                         await self.redis.delete(key)
                     return True
-                
+
                 # If validate_only is True, we still need to fetch user data
                 json_data = await self.redis.get(f"users:pending:{email}")
                 if not json_data:  # Handle case where pending user data expired

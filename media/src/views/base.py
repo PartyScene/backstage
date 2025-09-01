@@ -21,7 +21,7 @@ from aiocache import cached
 from obstore.store import GCSStore
 import obstore as obs
 
-LOAD_BALANCER_BASE_URL = os.environ.get('LOAD_BALANCER_BASE_URL')
+LOAD_BALANCER_BASE_URL = os.environ.get("LOAD_BALANCER_BASE_URL")
 
 
 class BaseView(QuartClassful):
@@ -90,7 +90,7 @@ class BaseView(QuartClassful):
             jsonify(data=health_status, message=message, status=status_code.phrase),
             status_code,
         )
-    
+
     async def sign_media_url(self, filename, cache=True):
         """Sign a media URL for access and cache it in Redis"""
         if not filename:
@@ -126,8 +126,8 @@ class BaseView(QuartClassful):
             # )
             media_url = signer.generate_cdn_signed_url(
                 LOAD_BALANCER_BASE_URL,
-                "/" + filename, # Add trailing / to filename
-                timedelta(days=1)
+                "/" + filename,  # Add trailing / to filename
+                timedelta(days=1),
             )
 
         except Exception as e:
@@ -178,7 +178,7 @@ class BaseView(QuartClassful):
                     ),
                     status_code,
                 )
-                
+
         # Return the newly generated URLs
         status_code = HTTPStatus.OK
         return jsonify(data=result, status=status_code.phrase), status_code

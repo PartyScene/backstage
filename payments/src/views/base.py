@@ -11,7 +11,6 @@ from http import HTTPStatus
 from shared.utils import sign_media_object
 
 
-
 from dataclasses import dataclass
 from pprint import pprint
 from quart import (
@@ -42,7 +41,11 @@ STRIPE_PRIV_KEY = os.environ.get("STRIPE_PRIV_KEY", "")
 PAYMENT_WEBHOOK_URL = os.environ.get("PAYMENT_WEBHOOK_URL", "")
 
 if not STRIPE_WEBHOOK_SECRET or not STRIPE_PUB_KEY or not STRIPE_PRIV_KEY:
-    raise ValueError("Stripe webhook secret and API keys must be set in environment variables.")
+    raise ValueError(
+        "Stripe webhook secret and API keys must be set in environment variables."
+    )
+
+
 class BaseView(QuartClassful):
 
     def __init__(self):
@@ -50,24 +53,33 @@ class BaseView(QuartClassful):
         self.redis = app.redis
         self.stripe_client: Optional[StripeClient] = StripeClient(STRIPE_PRIV_KEY)
         self.check_and_assign_webhook()
-    
+
     def check_and_assign_webhook(self):
         if self.stripe_client:
-            webhook_endpoints = self.stripe_client.webhook_endpoints.list(params={"limit": 100})
-            if any(endpoint.url == PAYMENT_WEBHOOK_URL for endpoint in webhook_endpoints):
+            webhook_endpoints = self.stripe_client.webhook_endpoints.list(
+                params={"limit": 100}
+            )
+            if any(
+                endpoint.url == PAYMENT_WEBHOOK_URL for endpoint in webhook_endpoints
+            ):
                 app.logger.debug("Webhook endpoint already exists.")
             else:
-                app.logger.debug("Creating new webhook endpoint with URL %s" % PAYMENT_WEBHOOK_URL)
+                app.logger.debug(
+                    "Creating new webhook endpoint with URL %s" % PAYMENT_WEBHOOK_URL
+                )
                 self.stripe_client.webhook_endpoints.create(
                     params={
-                        'url': PAYMENT_WEBHOOK_URL,
-                        'enabled_events': ["payment_intent.succeeded", "payment_intent.payment_failed"],
-                        'description': 'Webhook for payment intents',
-                        }
+                        "url": PAYMENT_WEBHOOK_URL,
+                        "enabled_events": [
+                            "payment_intent.succeeded",
+                            "payment_intent.payment_failed",
+                        ],
+                        "description": "Webhook for payment intents",
+                    }
                 )
                 app.logger.info("Webhook endpoint created successfully.")
             return webhook_endpoints
-        
+
     @route("/", methods=["GET"])
     async def index(self):
         return await self.healthcheck()
@@ -120,28 +132,31 @@ class BaseView(QuartClassful):
             jsonify(data=health_status, message=message, status=status_code.phrase),
             status_code,
         )
-        
 
-    async def create_payment_stripe_intent(self, amount: int, user_id, event_id, ticket_count: int = 1) -> Dict[str, Any]:
+    async def create_payment_stripe_intent(
+        self, amount: int, user_id, event_id, ticket_count: int = 1
+    ) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
             raise ValueError("Stripe client is not initialized.")
         total_amount = self.calculate_total_amount(float(amount))
-        app.logger.debug(f"Creating payment intent for user {user_id} with amount {total_amount} for event {event_id} and ticket count {ticket_count}")
+        app.logger.debug(
+            f"Creating payment intent for user {user_id} with amount {total_amount} for event {event_id} and ticket count {ticket_count}"
+        )
         # Create a Stripe payment intent with the total amount and user metadata
         payment_intent = await self.stripe_client.payment_intents.create_async(
             {
-            "amount": int(total_amount * 100),   # Convert to cents
-            "currency": "usd",
-            "metadata": {
-                "user_id": user_id,
-                "ticket_count": str(ticket_count),
-                "event_id": event_id,
+                "amount": int(total_amount * 100),  # Convert to cents
+                "currency": "usd",
+                "metadata": {
+                    "user_id": user_id,
+                    "ticket_count": str(ticket_count),
+                    "event_id": event_id,
                 },
             }
         )
         return payment_intent
-    
+
     def calculate_total_amount(self, base_amount: float) -> float:
         """
         Calculate the total amount including Stripe fees.
@@ -152,8 +167,7 @@ class BaseView(QuartClassful):
         stripe_fixed = 0.30
         total_amount = (base_amount + stripe_fixed) / (1 - stripe_percentage)
         return total_amount
-    
-    
+
     async def create_kyc_stripe_intent(self, user_id) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
@@ -161,16 +175,13 @@ class BaseView(QuartClassful):
         total_amount = self.calculate_total_amount(10.00)
         payment_intent = await self.stripe_client.payment_intents.create_async(
             {
-            "amount": int(total_amount * 100),  # Convert to cents
-            "currency": "usd",
-            "metadata": {
-            "user_id": user_id,
-            "type": "KYC_PAYMENT"
-            },
+                "amount": int(total_amount * 100),  # Convert to cents
+                "currency": "usd",
+                "metadata": {"user_id": user_id, "type": "KYC_PAYMENT"},
             }
         )
         return payment_intent
-    
+
     @route("/payments/<event_id>/create-intent", methods=["POST"])
     @jwt_required
     async def create_intent(self, event_id: str):
@@ -188,15 +199,15 @@ class BaseView(QuartClassful):
                     jsonify(message="Event not found", status=status_code.phrase),
                     status_code,
                 )
-            
+
             # Create a stripe payment intent
             intent = await self.create_payment_stripe_intent(
                 amount=event.get("price", 0),
                 user_id=user_id,
                 event_id=event_id,
-                ticket_count=ticket_count
+                ticket_count=ticket_count,
             )
-             
+
             # return the intent client secret
             return (
                 jsonify(
@@ -214,7 +225,8 @@ class BaseView(QuartClassful):
             )
         except Exception as e:
             app.logger.error(
-                f"Error creating payment intent for event {event_id}: {str(e)}", exc_info=True
+                f"Error creating payment intent for event {event_id}: {str(e)}",
+                exc_info=True,
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             return (
@@ -224,20 +236,19 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-      
-    
+
     @route("/payments/kyc/create-intent", methods=["POST"])
     @jwt_required
     async def create_kyc_intent(self):
         """Create KYC payment intent"""
         try:
             user_id = get_jwt_identity()
-            
+
             # Create a stripe payment intent
             intent = await self.create_kyc_stripe_intent(
                 user_id=user_id,
             )
-             
+
             # return the intent client secret
             return (
                 jsonify(
@@ -254,7 +265,8 @@ class BaseView(QuartClassful):
             )
         except Exception as e:
             app.logger.error(
-                f"Error creating payment intent for KYC {event_id}: {str(e)}", exc_info=True
+                f"Error creating payment intent for KYC {event_id}: {str(e)}",
+                exc_info=True,
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             return (
@@ -264,7 +276,7 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-      
+
     @route("/payments/webhook", methods=["POST"])
     async def payments_webhook(self):
         """
@@ -283,7 +295,9 @@ class BaseView(QuartClassful):
         # Get the raw request body
         payload = await request.get_data()
         # Get the Stripe signature from the header
-        sig_header = request.headers.get('STRIPE_SIGNATURE') or request.headers.get('Stripe-Signature')
+        sig_header = request.headers.get("STRIPE_SIGNATURE") or request.headers.get(
+            "Stripe-Signature"
+        )
 
         event = None
 
@@ -293,7 +307,9 @@ class BaseView(QuartClassful):
             event = stripe.Webhook.construct_event(
                 payload, sig_header, STRIPE_WEBHOOK_SECRET
             )
-            app.logger.info(f"Stripe event constructed successfully. Type: {event.type}")
+            app.logger.info(
+                f"Stripe event constructed successfully. Type: {event.type}"
+            )
         except ValueError as e:
             # Invalid payload
             app.logger.error(f"Invalid payload: {e}")
@@ -315,18 +331,24 @@ class BaseView(QuartClassful):
             # Extract ticket_id from payment_intent metadata
             # This metadata was set when creating the PaymentIntent in /create-payment-intent
             metadata = payment_intent.get("metadata")
-            
+
             if "ticket_count" in metadata:
-                ticket_count, user_id, event_id = int(metadata.get("ticket_count")), metadata.get("user_id"), metadata.get("event_id")
+                ticket_count, user_id, event_id = (
+                    int(metadata.get("ticket_count")),
+                    metadata.get("user_id"),
+                    metadata.get("event_id"),
+                )
 
                 for i in range(ticket_count):
-                    app.logger.info(f"Processing ticket {i + 1} for PaymentIntent {payment_intent['id']} | User ID: {user_id}")
-                    # Create ticket in DB
-                    await self.conn._create_ticket(
-                        {"user": user_id, "event": event_id}
+                    app.logger.info(
+                        f"Processing ticket {i + 1} for PaymentIntent {payment_intent['id']} | User ID: {user_id}"
                     )
-                    app.logger.info(f"Ticket created for user {user_id} and event {event_id}.")
-                
+                    # Create ticket in DB
+                    await self.conn._create_ticket({"user": user_id, "event": event_id})
+                    app.logger.info(
+                        f"Ticket created for user {user_id} and event {event_id}."
+                    )
+
                 # Register the user as attending the event
                 await self.conn.create_attendance(
                     {
@@ -335,9 +357,11 @@ class BaseView(QuartClassful):
                         "status": "paid",
                     }
                 )
-                app.logger.info(f"User {user_id} registered as attending event {event_id}.")
+                app.logger.info(
+                    f"User {user_id} registered as attending event {event_id}."
+                )
                 # Here you might send a confirmation email or notification to the user
-                
+
             elif "type" in metadata and metadata["type"] == "KYC_PAYMENT":
                 user_id = metadata.get("user_id")
                 app.logger.info(f"KYC payment successful for user {user_id}.")
@@ -348,8 +372,10 @@ class BaseView(QuartClassful):
                 await self.conn._update_user(data)
                 app.logger.info(f"User {user_id} KYC status updated to 'verified'.")
             else:
-                app.logger.warning(f"No ticket data found in metadata for PaymentIntent {payment_intent['id']}. Cannot create ticket.")
-        
+                app.logger.warning(
+                    f"No ticket data found in metadata for PaymentIntent {payment_intent['id']}. Cannot create ticket."
+                )
+
         elif event["type"] == "payment_intent.payment_failed":
             ...
             # payment_intent = event["data"]["object"]
@@ -361,7 +387,7 @@ class BaseView(QuartClassful):
             #     app.logger.info(f"Ticket '{ticket_id}' marked as payment_failed.")
             # # Here you might update the ticket status to 'failed' or 'cancelled'
             # # and notify the user.
-        
+
         else:
             # Log other event types that you might not be handling explicitly
             app.logger.info(f"Unhandled event type: {event['type']}")

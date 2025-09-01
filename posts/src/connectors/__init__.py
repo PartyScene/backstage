@@ -49,7 +49,7 @@ class PostsDB:
             result = await conn.query(query, params)
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
-    
+
     async def fetch_user_posts(self, id: str) -> dict:
         """
         Asynchronously fetches all posts associated with the given user.
@@ -144,7 +144,7 @@ class PostsDB:
         """
         async with self.pool.acquire() as conn:
             await conn.let("users", RecordID("users", author))
-            media_query_result = { "id": None }  # Initialize media_query_result
+            media_query_result = {"id": None}  # Initialize media_query_result
             if "event" not in data:
                 raise ValueError("Event ID is required to create a post.")
             if "content" not in data:
@@ -152,25 +152,28 @@ class PostsDB:
 
             data["creator"] = RecordID("users", author)
             data["event"] = RecordID("events", data["event"])
-            
+
             # Check if post is close to event location
             event_info = await conn.select(data["event"])
             if "coordinates" in data and "location" in event_info:
                 event_coordinates = event_info["location"]["coordinates"]
                 post_coordinates = data["coordinates"]
                 if not event_coordinates or not post_coordinates:
-                    raise ValueError("Coordinates are required for both event and post.")
-                
+                    raise ValueError(
+                        "Coordinates are required for both event and post."
+                    )
+
                 # For example, you could calculate the distance between the two coordinates
-                distance = await conn.query("RETURN geo::distance($post_location, $event_location);", 
-                                            {
-                                                "post_location": post_coordinates,
-                                                "event_location": event_coordinates
-                                            })
+                distance = await conn.query(
+                    "RETURN geo::distance($post_location, $event_location);",
+                    {
+                        "post_location": post_coordinates,
+                        "event_location": event_coordinates,
+                    },
+                )
                 if distance > 500:  # Example threshold in meters
                     raise ValueError("Post is too far from the event location.")
-                
-            
+
             if "filename" in data and "type" in data:
                 filename = data["filename"]
                 media_type = data["type"]
@@ -227,11 +230,11 @@ class PostsDB:
         """
         async with self.pool.acquire() as conn:
             result = await conn.query(
-                    """
+                """
                     RETURN fn::fetch_post(type::thing('posts', $post_id));
                     """,
-                    {"post_id": id},
-                )
+                {"post_id": id},
+            )
             # result = await conn.select(RecordID("posts", id))
         self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)

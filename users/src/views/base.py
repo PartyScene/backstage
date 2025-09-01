@@ -75,7 +75,7 @@ class BaseView(QuartClassful):
             jsonify(data=health_status, message=message, status=status_code.phrase),
             status_code,
         )
-        
+
     @route("/user/events", methods=["GET"])
     @jwt_required
     async def get_user_events(self):
@@ -90,7 +90,7 @@ class BaseView(QuartClassful):
                     jsonify(message="No events found", status=status_code.phrase),
                     status_code,
                 )
-            
+
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -162,7 +162,7 @@ class BaseView(QuartClassful):
                     status_code,
                 )
             # Consider triggering cleanup tasks (e.g., delete associated data in other services)
-            status_code = HTTPStatus.NO_CONTENT
+            status_code = HTTPStatus.OK
             return (
                 jsonify(message="User deleted successfully", status=status_code.phrase),
                 status_code,
@@ -197,11 +197,13 @@ class BaseView(QuartClassful):
                 )
 
             data["id"] = user_id  # Ensure ID is set for the update operation
-            
+
             # Data checks
-            if 'kyc_payment_status' in data:
-                data['kyc_payment_status'] = data.get('kyc_payment_status', 'false') == 'true'
-                
+            if "kyc_payment_status" in data:
+                data["kyc_payment_status"] = (
+                    data.get("kyc_payment_status", "false") == "true"
+                )
+
             result = await self.conn.update(data)
             if not result:  # Handle case where update fails or user doesn't exist
                 # Check if user exists first? Might be redundant if update handles it.
@@ -599,7 +601,7 @@ class BaseView(QuartClassful):
 
             result = await self.conn.delete_connection(connection_id)
             if result:  # Assuming delete returns True or affected count > 0
-                status_code = HTTPStatus.NO_CONTENT
+                status_code = HTTPStatus.OK
                 return (
                     jsonify(
                         message="Connection deleted successfully.",

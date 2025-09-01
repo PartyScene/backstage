@@ -35,7 +35,7 @@ class AuthDB:
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
-    
+
     async def update_user(self, data: dict) -> dict:
         """
         Update user data
@@ -55,8 +55,6 @@ class AuthDB:
         logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
-
-
     async def _reset_password(self, email: str, new_password: str) -> Optional[bool]:
         """Reset the password for the user with the given email.
 
@@ -68,21 +66,26 @@ class AuthDB:
         """
         try:
             async with self.pool.acquire() as conn:
-                result = await conn.query("""UPDATE users SET hashed_password = crypto::argon2::generate($new_password) WHERE crypto::argon2::compare(hashed_email, $email);""", 
-                                          {"email": email, "new_password": new_password}
-                                          )
-                
+                result = await conn.query(
+                    """UPDATE users SET hashed_password = crypto::argon2::generate($new_password) WHERE crypto::argon2::compare(hashed_email, $email);""",
+                    {"email": email, "new_password": new_password},
+                )
+
                 # Expect a list with a single dict representing the updated record
                 if not result or not isinstance(result[0], dict):
-                    logger.warning("Password reset affected 0 rows for %s – result=%s", email, result)
+                    logger.warning(
+                        "Password reset affected 0 rows for %s – result=%s",
+                        email,
+                        result,
+                    )
                     return False
-                    
+
                 return True
-            
+
         except Exception as e:
             logger.exception(f"Error resetting password for {email}: {e}")
             return None
-    
+
     async def _fetch_user_by_email(self, email: str) -> Optional[dict]:
         """
         Fetch user data from the database by email.
@@ -94,8 +97,10 @@ class AuthDB:
             Optional[dict]: User data if found, or None if not found
         """
         return await self._fetch_user(email, "email")
-    
-    async def _fetch_user(self, param: str, type: typing.Literal["email", "username"]) -> Optional[dict]:
+
+    async def _fetch_user(
+        self, param: str, type: typing.Literal["email", "username"]
+    ) -> Optional[dict]:
         """
         Fetch user data from the database by email or username.
         Args:
@@ -125,7 +130,7 @@ class AuthDB:
         except Exception as e:
             logger.error(f"Error fetching user by {type}: {e}")
             return None
-        
+
         logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         # SurrealDB can return `[[]]` when no rows matched
         first = result[0] if result and result[0] else None
@@ -244,6 +249,7 @@ class AuthDB:
         except Exception as e:
             logger.error(f"Error creating user: {e}")
             return None
+
     async def sso_store(self, form):
         """
         Store or create a new user in the database after SSO authentication.
@@ -260,7 +266,7 @@ class AuthDB:
             "hashed_email": form.get("email", ""),
             "auth_provider": form.get("auth_provider", "sso"),
             "google_sub": form.get("google_sub", None),
-            "hashed_password": None,  # SSO users typically don't have a password
+            # "hashed_password": None,  # SSO users typically don't have a password
         }
         # Generate Crypto credentials
         credentials = await self.envelope_service.encrypt(form.get("email").encode())
@@ -273,17 +279,23 @@ class AuthDB:
                     await self.bloom_filter.add("email", form.get("email"))
                     # await self.bloom_filter.add("username", form.get("username"))
 
-                    await conn.create("credentials", {**credentials, "user": result["id"]})
+                    await conn.create(
+                        "credentials", {**credentials, "user": result["id"]}
+                    )
 
-                    logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                    logger.debug(
+                        json.dumps(result, option=json.OPT_INDENT_2, default=str)
+                    )
                     return record_id_to_json(result)
                 else:
-                    logger.warning("User creation returned unexpected result: %s", result)
+                    logger.warning(
+                        "User creation returned unexpected result: %s", result
+                    )
                     return None
         except Exception as e:
             logger.error(f"Error creating user: {e}")
             return None
-        
+
     async def _store_after_verify(self, form):
         """
         Store or create a new user in the database after verifying the user's email.
@@ -312,12 +324,18 @@ class AuthDB:
                     await self.bloom_filter.add("email", form.get("email"))
                     await self.bloom_filter.add("username", form.get("username"))
 
-                    await conn.create("credentials", {**credentials, "user": result["id"]})
+                    await conn.create(
+                        "credentials", {**credentials, "user": result["id"]}
+                    )
 
-                    logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                    logger.debug(
+                        json.dumps(result, option=json.OPT_INDENT_2, default=str)
+                    )
                     return record_id_to_json(result)
                 else:
-                    logger.warning("User creation returned unexpected result: %s", result)
+                    logger.warning(
+                        "User creation returned unexpected result: %s", result
+                    )
                     return None
         except Exception as e:
             logger.error(f"Error creating user: {e}")

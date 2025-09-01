@@ -101,6 +101,7 @@ class RMQBroker(RabbitBroker):
             image_bytes,
             attributes={"Content-Type": data["content-type"]},
         )
+
     async def sign_put_urls(self, filenames: Sequence[str]):
         signed_urls = await obs.sign_async(
             self.OBS_STORE,

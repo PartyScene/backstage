@@ -1,6 +1,6 @@
 DEFINE DATABASE OVERWRITE partyscene;
 -- Define the main atomic table, the users table
-DEFINE TABLE OVERWRITE users schemafull;
+DEFINE TABLE OVERWRITE users SCHEMALESS;
 DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
@@ -13,7 +13,8 @@ DEFINE FIELD OVERWRITE hashed_password ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE hashed_email ON TABLE users TYPE option<string>;
 DEFINE FIELD auth_provider ON TABLE users TYPE string DEFAULT "password";
 DEFINE FIELD google_sub ON TABLE users TYPE option<string>;
-
+DEFINE FIELD stripe_account_id ON TABLE users TYPE option<string>;
+DEFINE FIELD stripe_account_kyc_status ON TABLE users TYPE option<bool>;
 
 
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
@@ -278,11 +279,11 @@ DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: reco
 
 DEFINE FUNCTION OVERWRITE fn::find_relationships($origin: record) {
     LET $result = SELECT
-                            @.{1}<->friends.{id, in, out, status} AS degree_1,
-                            @.{2}<->friends.{id, in, out, status} AS degree_2,
-                            @.{3}<->friends.{id, in, out, status} AS degree_3,
-                            @.{4}<->friends.{id, in, out, status} AS degree_4,
-                            @.{5}<->friends.{id, in, out, status} AS degree_5
+                            @.{1}<->friends.{id, in.*, out.*, status} AS degree_1,
+                            @.{2}<->friends.{id, in.*, out.*, status} AS degree_2,
+                            @.{3}<->friends.{id, in.*, out.*, status} AS degree_3,
+                            @.{4}<->friends.{id, in.*, out.*, status} AS degree_4,
+                            @.{5}<->friends.{id, in.*, out.*, status} AS degree_5
     FROM ONLY $origin;
     RETURN $result
 };

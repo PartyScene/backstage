@@ -21,6 +21,7 @@ import uuid_utils as ruuid
 
 from surrealdb import RecordID
 
+
 class BaseView(QuartClassful):
 
     def __init__(self) -> None:
@@ -205,7 +206,7 @@ class BaseView(QuartClassful):
             if (
                 result
             ):  # Adjust condition based on what delete_comment returns on success
-                status_code = HTTPStatus.NO_CONTENT
+                status_code = HTTPStatus.OK
                 return (
                     jsonify(
                         message="Comment deleted successfully.",
@@ -305,7 +306,6 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-
     @route("/posts/user/<id>", methods=["GET"])
     @jwt_required  # Added JWT requirement assuming it's needed
     async def fetch_user_posts(self, id: str):
@@ -354,11 +354,14 @@ class BaseView(QuartClassful):
                     jsonify(message="Content is required", status=status_code.phrase),
                     status_code,
                 )
-            
+
             if not files:
                 status_code = HTTPStatus.BAD_REQUEST
                 return (
-                    jsonify(message="At least one media file is required", status=status_code.phrase),
+                    jsonify(
+                        message="At least one media file is required",
+                        status=status_code.phrase,
+                    ),
                     status_code,
                 )
 
@@ -374,7 +377,7 @@ class BaseView(QuartClassful):
                 for file in files.values()
             ]
             data["types"] = [file.content_type for file in files.values()]
-            
+
             # Publish media upload tasks to RMQ
             media_publish_tasks = []
             for i, file in enumerate(files.values()):
@@ -477,7 +480,7 @@ class BaseView(QuartClassful):
             # Check if deletion was successful (adjust based on connector's return value)
             if result:
                 # Consider deleting associated media from storage here or via another mechanism
-                status_code = HTTPStatus.NO_CONTENT
+                status_code = HTTPStatus.OK
                 return (
                     jsonify(
                         message="Post deleted successfully.", status=status_code.phrase

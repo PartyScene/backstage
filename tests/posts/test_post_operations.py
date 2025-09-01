@@ -13,11 +13,11 @@ class TestPostOperations(TestPostsBase):
     async def test_create_post(self, posts_client, mock_post, bearer):
         """Test creating a new post."""
         files = [
-                {
-                    "filename": fake.file_name(category="image", extension="jpg"),
-                    "type": "image/jpeg",
-                }
-            ]
+            {
+                "filename": fake.file_name(category="image", extension="jpg"),
+                "type": "image/jpeg",
+            }
+        ]
 
         response = await self.create_post(posts_client, files, mock_post, bearer)
         assert response.status_code == HTTPStatus.CREATED
@@ -26,12 +26,12 @@ class TestPostOperations(TestPostsBase):
         assert response_json["status"] == HTTPStatus.CREATED.phrase
         assert "data" in response_json
         created_post = response_json["data"][0]
-        
+
         assert "id" in created_post
         mock_post["id"] = created_post["id"]
         assert created_post["content"] == mock_post["content"]
         assert created_post["event"] == mock_post["event"]
-        
+
     async def test_fetch_post(self, posts_client, mock_post, bearer):
         """Test retrieving a specific post."""
         # Assuming mock_post fixture provides a created post ID
@@ -154,10 +154,10 @@ class TestPostOperations(TestPostsBase):
         response = await self.delete_comment(
             posts_client, mock_post["id"], mock_comment["id"], bearer
         )
-        assert response.status_code == HTTPStatus.NO_CONTENT
+        assert response.status_code == HTTPStatus.OK
 
         response_json = await response.get_json()
-        assert response_json["status"] == HTTPStatus.NO_CONTENT.phrase
+        assert response_json["status"] == HTTPStatus.OK.phrase
         assert "deleted successfully" in response_json["message"]
 
     # Add tests for reporting non-existent post/comment
@@ -166,13 +166,13 @@ class TestPostOperations(TestPostsBase):
     async def test_delete_post(self, posts_client, mock_post, bearer):
         """Test deleting a post."""
         response = await self.delete_post(posts_client, mock_post["id"], bearer)
-        assert response.status_code == HTTPStatus.NO_CONTENT
+        assert response.status_code == HTTPStatus.OK
 
         response_json = (
             await response.get_json()
-        )  # NO_CONTENT might have empty body or specific message
+        )  # OK might have empty body or specific message
         if response_json:  # Check if there's a body
-            assert response_json["status"] == HTTPStatus.NO_CONTENT.phrase
+            assert response_json["status"] == HTTPStatus.OK.phrase
             assert "deleted successfully" in response_json["message"]
 
         # Verify deletion by trying to fetch it again

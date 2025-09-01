@@ -139,7 +139,7 @@ class BaseView(QuartClassful):
         try:
             stream_deleted = await self.scenes_client.delete_stream(event_id)
             if stream_deleted:
-                return "", HTTPStatus.NO_CONTENT
+                return "", HTTPStatus.OK
             return "", HTTPStatus.NOT_FOUND
         except:
             return (

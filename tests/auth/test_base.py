@@ -9,9 +9,12 @@ class TestAuthBase:
         """Helper method to register a user"""
         return await client.post("/auth/register", json=user_data)
 
-    async def verify_otp(self, client: QuartClient, user_data: dict, otp: str, context: str):
+    async def verify_otp(
+        self, client: QuartClient, user_data: dict, otp: str, context: str
+    ):
         return await client.post(
-            "/auth/verify", json={"email": user_data["email"], "otp": otp, "context": context}
+            "/auth/verify",
+            json={"email": user_data["email"], "otp": otp, "context": context},
         )
 
     async def login_user(self, client: QuartClient, credentials: dict):
@@ -35,11 +38,20 @@ class TestAuthBase:
 
     async def forget_password(self, client: QuartClient, user_data):
         """Helper method to request a password reset"""
-        return await client.post("/auth/forgot-password", json={"email": user_data["email"]})
+        return await client.post(
+            "/auth/forgot-password", json={"email": user_data["email"]}
+        )
 
     async def reset_password(self, client: QuartClient, user_data):
         """Helper method to reset a user's password"""
-        return await client.post("/auth/reset-password", json={"email": user_data["email"], "new_password": user_data["new_password"], "otp": user_data["forgot_password_otp"]})
+        return await client.post(
+            "/auth/reset-password",
+            json={
+                "email": user_data["email"],
+                "new_password": user_data["new_password"],
+                "otp": user_data["forgot_password_otp"],
+            },
+        )
 
     async def check_email_exists(self, client: QuartClient, user_data):
         """Helper method to check if an email exists"""

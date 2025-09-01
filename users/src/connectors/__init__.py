@@ -6,7 +6,6 @@ from shared.utils import record_id_to_json
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 
-
 import orjson as json
 
 
@@ -87,8 +86,7 @@ class UsersDB:
                 result = {"attended": result, "created": created_events}
 
         return record_id_to_json(result)
-    
-    
+
     async def create_friend_relationship(self, data: dict):
         """
         Create a bidirectional friend relationship between two users.

@@ -31,12 +31,13 @@ import uuid_utils as ruuid
 
 from surrealdb import RecordID
 
+
 class BaseView(QuartClassful):
 
     def __init__(self):
         self.conn: EventsDB = app.conn
         self.redis = app.redis
-        
+
     async def _store_live_query(self, event_id: str, live_id: str):
         """Store live query ID in Redis"""
         key = f"live_query:{event_id}"
@@ -104,14 +105,14 @@ class BaseView(QuartClassful):
             jsonify(data=health_status, message=message, status=status_code.phrase),
             status_code,
         )
-        
+
     @route("/events/<event_id>/attend", methods=["POST"])
     @jwt_required
     async def mark_attendance(self, event_id: str):
         """Mark attendance for an event"""
         try:
             user_id = get_jwt_identity()
-            
+
             event = await self.conn.fetch(event_id)
             if not event:
                 status_code = HTTPStatus.NOT_FOUND
@@ -128,12 +129,14 @@ class BaseView(QuartClassful):
             }
 
             # Assuming you have a method to create the relationship in your database
-            await self.conn.create_attendance(attendance_data)
+            result = await self.conn.create_attendance(attendance_data)
 
             status_code = HTTPStatus.OK
             return (
                 jsonify(
-                    message="Ticket purchased successfully", status=status_code.phrase
+                    message="Ticket purchased successfully",
+                    status=status_code.phrase,
+                    data=result,
                 ),
                 status_code,
             )
@@ -241,7 +244,7 @@ class BaseView(QuartClassful):
 
                 result = await self.conn.fetch_by_distance(location, distance)
                 result = await recursively_sign_event_media(result)
-                            
+
                 status_code = HTTPStatus.OK
                 return (
                     jsonify(
@@ -381,7 +384,7 @@ class BaseView(QuartClassful):
             data["categories"] = form.getlist("categories[]")
             data["host"] = get_jwt_identity()
             data["creator"] = get_jwt_identity()
-            
+
             # filename flow
             data["filenames"] = [
                 f"events/{data['host']}/{data['event_id'].id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}"
@@ -410,10 +413,9 @@ class BaseView(QuartClassful):
                     f"Uploading new event media to GCP: {data['filename']}"
                 )
                 await app.RMQ._publish_media(data, file)
-            
 
             app.logger.debug(f"Creating event data: {data}")
-            
+
             if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
@@ -471,7 +473,7 @@ class BaseView(QuartClassful):
                 )
 
             await self.conn.delete_event(event_id)
-            status_code = HTTPStatus.NO_CONTENT
+            status_code = HTTPStatus.OK
             return (
                 jsonify(
                     message="Event deleted successfully", status=status_code.phrase
@@ -501,7 +503,7 @@ class BaseView(QuartClassful):
         try:
             result = await self.conn.fetch_private(user, page, limit)
             result = await recursively_sign_event_media(result)
-                            
+
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -535,7 +537,7 @@ class BaseView(QuartClassful):
             distance = int(request.args.get("distance", 1000))
             result = await self.conn.fetch_by_distance(location, distance, user=user)
             result = await recursively_sign_event_media(result)
-                        
+
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -773,7 +775,7 @@ class BaseView(QuartClassful):
                 app.logger.info(
                     f"Successfully stopped live updates for event {event_id}"
                 )
-                status_code = HTTPStatus.NO_CONTENT
+                status_code = HTTPStatus.OK
                 return (
                     jsonify(
                         message="Live updates stopped successfully.",
@@ -783,14 +785,14 @@ class BaseView(QuartClassful):
                 )
 
             app.logger.info(f"No live updates running for event {event_id}")
-            status_code = HTTPStatus.OK  # Or NO_CONTENT if preferred
+            status_code = HTTPStatus.OK  # Or OK if preferred
             return (
                 jsonify(
                     message="No live updates running for this event.",
                     status=status_code.phrase,
                 ),
                 status_code,
-            )  # Or NO_CONTENT if preferred
+            )  # Or OK if preferred
 
         except Exception as e:
             app.logger.error(
@@ -805,4 +807,3 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-
