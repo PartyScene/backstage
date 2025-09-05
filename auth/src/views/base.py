@@ -394,10 +394,10 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-    @route("/auth/kyc/update", methods=["PATCH"])
+    @route("/auth/kyc/update", methods=["POST", "PATCH"])
     @jwt_required
     async def update_kyc_status(self):
-        """"""
+        """Update the KYC status of the user."""
         user_id = get_jwt_identity()
         data = await request.get_json()
         status = data.get("kyc_status", "false") == "true"
@@ -418,7 +418,7 @@ class BaseView(QuartClassful):
     @jwt_required
     async def create_kyc_session(self):
         """"""
-        veriff_resp = await self.__veriff_client.create_session()
+        veriff_resp = await self.__veriff_client.create_session(user_id=get_jwt_identity())
         if not veriff_resp:
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             return (
@@ -565,13 +565,13 @@ class BaseView(QuartClassful):
     async def create_stripe_account(self):
         data = await request.json
         user_id = get_jwt_identity()
-        user_email = data.get("email")  # From your authenticated user
         user_country = data.get("country", "US")  # Default to US
-
+        
+        # Get user email
+        user_email = await self.conn.decrypt_credentials(user_id)
         try:
-            print("URLS")
             # Create Express account
-            account = stripe.Account.create(
+            account = await stripe.Account.create_async(
                 type="express",
                 country=user_country,
                 email=user_email,
@@ -579,24 +579,19 @@ class BaseView(QuartClassful):
                     "card_payments": {"requested": True},
                     "transfers": {"requested": True},
                 },
-                controller={
-                    "fees": {"payer": "account"},
-                    "losses": {"payments": "application"},
-                    "stripe_dashboard": {"type": "express"},
-                },
                 business_type="individual",  # Or 'company'; adjust based on user
             )
-            print(url_for(
-                    ".reauth_stripe", account_id=account.id, _external=True
-                ))
 
+            app.logger.warning("%s | %s  | %s | %s", user_id, user_email, account.id, account)
+            app.logger.warning("Attempting to update user with stripe account id %s", account.id)
+            
             # Store account.id in your DB for this user
             await self.conn.update_user(
                 {"id": user_id, "stripe_account_id": account.id}
             )
 
             # Create onboarding link
-            account_link = stripe.AccountLink.create(
+            account_link = await stripe.AccountLink.create_async(
                 account=account.id,
                 refresh_url=url_for(
                     ".reauth_stripe", account_id=account.id, _external=True
@@ -617,10 +612,8 @@ class BaseView(QuartClassful):
             return jsonify(error=str(e)), status_code
 
     @route("/auth/stripe-return", methods=["GET"])
-    @jwt_required
     async def stripe_return(self):
         # User completed (or exited) onboarding
-        user_id = get_jwt_identity()
         account_id = request.args.get(
             "account_id"
         )  # Retrieve from your session or DB (pass via state if needed)
@@ -640,9 +633,19 @@ class BaseView(QuartClassful):
 
     @route("/auth/reauth-stripe", methods=["GET"])
     async def reauth_stripe(self):
+        """
+        Regenerate a new Stripe account link if the previous one has expired.
+        
+        Returns:
+            tuple: A tuple containing (response, status_code) where response is a JSON object
+            with the new account link URL and status_code is HTTP 200 OK.
+        
+        Raises:
+            StripeError: If there is an error creating the new account link.
+        """
         account_id = request.args.get("account_id")  # Retrieve from your session or DB
         # Regenerate a new link if expired
-        account_link = stripe.AccountLink.create(
+        account_link = await stripe.AccountLink.create_async(
             account=account_id,
             refresh_url=url_for(".reauth_stripe", account_id=account_id, _external=True),
             return_url=url_for(".stripe_return", account_id=account_id, _external=True),
@@ -696,6 +699,31 @@ class BaseView(QuartClassful):
         except Exception as e:
             logger.error(f"OTP generation error: {e}")
             raise
+
+    
+    @route("/auth/veriff-webhook", methods=["POST"])
+    async def veriff_webhook(self):
+        raw_body = await request.get_data()  # Raw bytes for signature verification
+        # received_signature = request.headers.get("X-HMAC-SIGNATURE")
+
+        # # Verify signature
+        # expected_signature = hmac.new(VERIFF_SECRET, raw_body, hashlib.sha256).hexdigest()
+        # if not hmac.compare_digest(expected_signature, received_signature):
+        #     return jsonify({"error": "Invalid signature"}), 403
+
+        data = await request.json
+
+        # Process the decision (e.g., update user status in DB)
+        user_id = data.get("verification").get("vendorData")
+        status = data.get("verification").get("decision").get("status")
+        if status == "approved":
+            # Mark user as verified
+            await self.conn.update_user({"id": user_id, "kyc_status": True})
+        elif status == "declined":
+            # Handle rejection
+            await self.conn.update_user({"id": user_id, "kyc_status": False})
+
+        return jsonify({"status": "received"}), 200
 
     async def verify_otp(
         self,

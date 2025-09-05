@@ -8,6 +8,7 @@
 		}
 	],
 	"settings": {
-		"github.copilot.chat.codeGeneration.useInstructionFiles": true
+		"github.copilot.chat.codeGeneration.useInstructionFiles": true,
+		"postman.settings.dotenv-detection-notification-visibility": false
 	}
 }

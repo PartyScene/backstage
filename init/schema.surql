@@ -12,13 +12,27 @@ DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE hashed_password ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE hashed_email ON TABLE users TYPE option<string>;
 DEFINE FIELD auth_provider ON TABLE users TYPE string DEFAULT "password";
-DEFINE FIELD google_sub ON TABLE users TYPE option<string>;
-DEFINE FIELD stripe_account_id ON TABLE users TYPE option<string>;
-DEFINE FIELD stripe_account_kyc_status ON TABLE users TYPE option<bool>;
-
+DEFINE FIELD OVERWRITE google_sub ON TABLE users TYPE option<string>;
+DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE option<string> DEFAULT false;
+DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE option<bool> DEFAULT false;
 
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
+
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE users WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE events WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE posts WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE comments WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE friends WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE attends WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE tickets WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE scenes WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE livestreams WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE media WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE credentials WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE leads WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+DEFINE EVENT OVERWRITE update_updated_at ON TABLE reports WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
+
 
 
 DEFINE TABLE OVERWRITE credentials SCHEMAFULL;
@@ -215,7 +229,17 @@ DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number) {
         SELECT fn::fetch_event(id) AS event, created_at FROM events
     ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
     )
-    
+};
+
+DEFINE FUNCTION OVERWRITE fn::fetch_user_tickets($origin: record, $page: option<number>, $limit: option<number>) {
+
+    LET $page = IF (type::is::number($page)) THEN $page ELSE 1 END;
+    LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
+
+    RETURN (
+        SELECT * FROM tickets WHERE user = $origin
+        LIMIT $limit START ($page - 1) * $limit
+    )
 };
 
 DEFINE FUNCTION OVERWRITE fn::fetch_attended_events($origin: record, $page: option<number>, $limit: option<number>) {
@@ -224,7 +248,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_attended_events($origin: record, $page: opti
     LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
 
     RETURN (
-        SELECT ->attends->events.* AS events FROM ONLY $origin
+        SELECT ->attends.{out.*, id} AS events_attended FROM ONLY $origin
         LIMIT $limit START ($page - 1) * $limit
     )
 };

@@ -57,6 +57,30 @@ class UsersDB:
                 {"origin": RecordID("users", origin_id)},
             )
         return record_id_to_json(result)
+    
+    async def fetch_user_tickets(self, user_id: Any, page: int = 1, limit: int = 50):
+        """
+        Fetch tickets bought by this user
+
+        Args:
+            user_id (str, required): The origin user ID
+            page (int, optional): The page number (default: 1)
+            limit (int, optional): The number of tickets per page (default: 50)
+        Returns:
+            list: The created relationship details
+        """
+
+        async with self.pool.acquire() as conn:
+
+            result = await conn.query(
+                "RETURN fn::fetch_bought_tickets($origin, $page, $limit);",
+                {
+                    "origin": RecordID("users", user_id),
+                    "page": page,
+                    "limit": limit,
+                },
+            )
+        return record_id_to_json(result)
 
     async def fetch_user_events(self, user_id: Any, created: bool = False):
         """

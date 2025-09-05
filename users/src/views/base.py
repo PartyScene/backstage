@@ -76,6 +76,41 @@ class BaseView(QuartClassful):
             status_code,
         )
 
+    @route("/user/tickets", methods=["GET"])
+    @jwt_required
+    async def get_tickets(self):
+        user_id = get_jwt_identity()
+        try:
+            tickets = await self.conn.fetch_user_tickets(user_id)
+            if not tickets:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="No tickets found", status=status_code.phrase),
+                    status_code,
+                )
+
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    data=tickets,
+                    message="User tickets fetched successfully.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching user tickets ({user_id}): {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to fetch user tickets: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
     @route("/user/events", methods=["GET"])
     @jwt_required
     async def get_user_events(self):

@@ -35,6 +35,18 @@ class AuthDB:
     async def _info(self):
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
+    
+    async def get_credentials(self, user_id:str):
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "SELECT * OMIT user FROM credentials WHERE user = $user_id;",
+                {"user_id": user_id},
+            )
+            return result
+    
+    async def decrypt_credentials(self, user_id:str):
+        creds = await self.get_credentials(user_id)
+        return await self.envelope_service.decrypt(creds)
 
     async def update_user(self, data: dict) -> dict:
         """
