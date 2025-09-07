@@ -2,7 +2,7 @@ import os
 from typing import Optional, Dict, Any
 import logging
 import typing
-from surrealdb import AsyncSurreal
+from surrealdb import AsyncSurreal, RecordID
 from shared.utils import record_id_to_json, AsyncEnvelopeCipherService
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
 from redis import Redis
@@ -40,13 +40,19 @@ class AuthDB:
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 "SELECT * OMIT user FROM credentials WHERE user = $user_id;",
-                {"user_id": user_id},
+                {"user_id": RecordID("users", user_id)},
             )
             return result
     
     async def decrypt_credentials(self, user_id:str):
         creds = await self.get_credentials(user_id)
-        return await self.envelope_service.decrypt(creds)
+        print(creds)
+        return await self.envelope_service.decrypt(
+            encrypted_data=creds[0]["encrypted_data"],
+            encrypted_dek=creds[0]["encrypted_decryption_key"],
+            data_initialization_vector=creds[0]["data_initialization_vector"],
+            decryption_key_initialization_vector=creds[0]["decryption_key_initialization_vector"],
+        )
 
     async def update_user(self, data: dict) -> dict:
         """

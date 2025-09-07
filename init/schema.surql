@@ -11,10 +11,10 @@ DEFINE FIELD OVERWRITE kyc_payment_status ON TABLE users TYPE bool DEFAULT false
 DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE hashed_password ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE hashed_email ON TABLE users TYPE option<string>;
-DEFINE FIELD auth_provider ON TABLE users TYPE string DEFAULT "password";
+DEFINE FIELD OVERWRITE auth_provider ON TABLE users TYPE string DEFAULT "password";
 DEFINE FIELD OVERWRITE google_sub ON TABLE users TYPE option<string>;
-DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE option<string> DEFAULT false;
-DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE option<bool> DEFAULT false;
+DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAULT false;
 
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};

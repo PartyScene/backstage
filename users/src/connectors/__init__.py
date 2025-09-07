@@ -73,7 +73,7 @@ class UsersDB:
         async with self.pool.acquire() as conn:
 
             result = await conn.query(
-                "RETURN fn::fetch_bought_tickets($origin, $page, $limit);",
+                "RETURN fn::fetch_user_tickets($origin, $page, $limit);",
                 {
                     "origin": RecordID("users", user_id),
                     "page": page,
