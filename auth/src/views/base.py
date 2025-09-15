@@ -617,19 +617,36 @@ class BaseView(QuartClassful):
         account_id = request.args.get(
             "account_id"
         )  # Retrieve from your session or DB (pass via state if needed)
-        account = stripe.Account.retrieve(account_id)
+        app.logger.warning("JWT Identity may not exist")
+        app.logger.warning(get_jwt_identity())
+        
+        user = await self.conn._fetch_user(account_id, "stripe_account_id")
 
-        if account.charges_enabled and account.payouts_enabled:
-            # Onboarding complete; update DB, notify user
-            await self.conn.update_user(
-                {"id": user_id, "stripe_account_kyc_status": True}
-            )
-            # return redirect('/dashboard?onboarding=success')
-            return jsonify(onboarding="success"), HTTPStatus.OK
-        else:
-            # Incomplete; prompt to resume
-            # return redirect('/dashboard?onboarding=incomplete')
-            return jsonify(onboarding="incomplete"), HTTPStatus.OK
+        if not user:
+            return jsonify(message="User not found", status=HTTPStatus.NOT_FOUND.phrase), HTTPStatus.NOT_FOUND
+        
+        account = await stripe.Account.retrieve_async(account_id)
+
+        app.logger.warning("%s | %s | %s", user["id"], account.id, account)
+        app.logger.warning("Attempting to update user with stripe account id %s", account.id)
+
+        await self.conn.update_user(
+            {"id": user["id"], "stripe_account_kyc_status": True}
+        )
+        # return redirect('/dashboard?onboarding=success')
+        return jsonify(message="onboarding success"), HTTPStatus.OK
+
+        # if account.charges_enabled and account.payouts_enabled:
+        #     # Onboarding complete; update DB, notify user
+        #     await self.conn.update_user(
+        #         {"id": user_id, "stripe_account_kyc_status": True}
+        #     )
+        #     # return redirect('/dashboard?onboarding=success')
+        #     return jsonify(onboarding="success"), HTTPStatus.OK
+        # else:
+        #     # Incomplete; prompt to resume
+        #     # return redirect('/dashboard?onboarding=incomplete')
+        #     return jsonify(onboarding="incomplete"), HTTPStatus.OK
 
     @route("/auth/reauth-stripe", methods=["GET"])
     async def reauth_stripe(self):
@@ -685,13 +702,11 @@ class BaseView(QuartClassful):
                 await self.redis.set(
                     f"users:pending:{email}", json.dumps(data), ex=800
                 )  # Expire a little later
-
+            
+            ip_addr = request.headers.get("X-Forwarded-For").split(',')[0] if request.headers.get("X-Forwarded-For") else request.headers.get("Remote-Addr") or request.remote_addr  # type: ignore
             await self.__notification_manager.send_otp_notification(
                 user_id=user_id,
-                ip_address=request.headers.get("REMOTE_ADDR")
-                or request.headers.get("HTTP_X_FORWARDED_FOR")
-                or request.headers.get("HTTP_X_REAL_IP")
-                or request.remote_addr,  # type: ignore
+                ip_address=ip_addr,
                 otp=otp,
             )
 

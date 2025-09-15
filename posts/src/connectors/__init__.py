@@ -5,6 +5,7 @@ import orjson as json
 from surrealdb import AsyncSurreal, RecordID
 from typing import Literal
 from shared.utils import record_id_to_json
+import shared.utils
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 
@@ -158,6 +159,7 @@ class PostsDB:
             if "coordinates" in data and "location" in event_info:
                 event_coordinates = event_info["location"]["coordinates"]
                 post_coordinates = data["coordinates"]
+                post_coordinates = shared.utils.coordinates_to_geometry_point(post_coordinates)
                 if not event_coordinates or not post_coordinates:
                     raise ValueError(
                         "Coordinates are required for both event and post."
@@ -171,8 +173,9 @@ class PostsDB:
                         "event_location": event_coordinates,
                     },
                 )
-                if distance > 500:  # Example threshold in meters
-                    raise ValueError("Post is too far from the event location.")
+                if int(distance) > 500:  # Example threshold in meters
+                    ...
+                    # raise ValueError("Post is too far from the event location.")
 
             if "filename" in data and "type" in data:
                 filename = data["filename"]

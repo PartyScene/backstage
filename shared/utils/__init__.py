@@ -3,6 +3,7 @@ from .signer import generate_cdn_signed_url
 from .veriff import VeriffClient
 
 from surrealdb import RecordID
+from surrealdb.data.types import geometry
 import orjson as json
 import os
 from typing import Optional, Any, Dict
@@ -101,6 +102,13 @@ async def recursively_sign_event_media(obj: Any) -> Any:
 #     else:
 #         return obj
 
+def coordinates_to_geometry_point(coordinates: list[float]) -> geometry.GeometryPoint:
+    coordinates = tuple(float(x) for x in coordinates)
+
+    try:
+        return geometry.GeometryPoint.parse_coordinates(coordinates)
+    except ValueError as exc:
+        raise ValueError("Invalid coordinates") from exc
 
 async def sign_media_object(obj: Any) -> Any:
     """

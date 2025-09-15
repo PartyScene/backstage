@@ -117,7 +117,7 @@ class AuthDB:
         return await self._fetch_user(email, "email")
 
     async def _fetch_user(
-        self, param: str, type: typing.Literal["email", "username"]
+        self, param: str, type: typing.Literal["email", "username", "stripe_account_id"]
     ) -> Optional[dict]:
         """
         Fetch user data from the database by email or username.
@@ -136,8 +136,13 @@ class AuthDB:
                 query = """
                 SELECT * OMIT password FROM users WHERE username = $param;
                 """
+            case "stripe_account_id":
+                query = """
+                SELECT * OMIT password FROM users WHERE stripe_account_id = $param;
+                """
             case _:
-                raise ValueError("Invalid type specified. Use 'email' or 'username'.")
+                raise ValueError("Invalid type specified. Use 'email', 'username' or 'stripe_account_id'.")
+                
         # Execute the query to fetch user data
         try:
             async with self.pool.acquire() as conn:

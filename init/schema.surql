@@ -5,7 +5,7 @@ DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE username ON TABLE users TYPE option<string> DEFAULT "";
-DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE string | record<media> DEFAULT "";
+DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE kyc_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE kyc_payment_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
@@ -15,25 +15,10 @@ DEFINE FIELD OVERWRITE auth_provider ON TABLE users TYPE string DEFAULT "passwor
 DEFINE FIELD OVERWRITE google_sub ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE updated_at ON TABLE users TYPE datetime VALUE time::now();
 
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
-
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE users WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE events WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE posts WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE comments WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE friends WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE attends WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE tickets WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE scenes WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE livestreams WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE media WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE credentials WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE leads WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-DEFINE EVENT OVERWRITE update_updated_at ON TABLE reports WHEN $event INSIDE ["CREATE","UPDATE"] THEN {UPDATE $after SET updated_at = time::now()};
-
-
 
 DEFINE TABLE OVERWRITE credentials SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE credentials TYPE record<users>;
@@ -41,7 +26,7 @@ DEFINE FIELD OVERWRITE encrypted_data ON TABLE credentials TYPE bytes;
 DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE credentials TYPE bytes;
 DEFINE FIELD OVERWRITE encrypted_decryption_key ON TABLE credentials TYPE bytes;
 DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE credentials TYPE bytes;
-
+DEFINE FIELD OVERWRITE updated_at ON TABLE credentials TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE credentials TYPE datetime DEFAULT time::now();
 
 
@@ -52,13 +37,14 @@ DEFINE FIELD OVERWRITE encrypted_data ON TABLE leads TYPE bytes;
 DEFINE FIELD OVERWRITE data_initialization_vector ON TABLE leads TYPE bytes;
 DEFINE FIELD OVERWRITE encrypted_decryption_key ON TABLE leads TYPE bytes;
 DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE leads TYPE bytes;
-
+DEFINE FIELD OVERWRITE updated_at ON TABLE leads TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE leads TYPE datetime DEFAULT time::now();
 
 
 DEFINE TABLE OVERWRITE reports SCHEMALESS;
 DEFINE FIELD OVERWRITE reporter ON TABLE reports TYPE record<users>;
 DEFINE FIELD OVERWRITE reason ON TABLE reports TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON TABLE reports TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE reports TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE status ON TABLE reports TYPE string DEFAULT "pending";
 DEFINE FIELD OVERWRITE metadata ON TABLE reports FLEXIBLE TYPE option<object> DEFAULT {};
@@ -78,6 +64,7 @@ DEFINE FIELD OVERWRITE status ON TABLE events TYPE string DEFAULT 'scheduled';
 DEFINE FIELD OVERWRITE is_private ON TABLE events TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE is_free ON TABLE events TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE host ON TABLE events TYPE record<users>;
+DEFINE FIELD OVERWRITE updated_at ON TABLE events TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE time ON TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE categories ON TABLE events TYPE array<string> DEFAULT [];
@@ -95,6 +82,7 @@ DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text H
 DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE record<users>;
 DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
+DEFINE FIELD OVERWRITE updated_at ON TABLE tickets TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE tickets TYPE datetime DEFAULT time::now();
 
 -- Relate Events to Media
@@ -115,6 +103,7 @@ DEFINE FIELD OVERWRITE input_uid ON TABLE scenes TYPE STRING;
 DEFINE FIELD OVERWRITE srt ON TABLE scenes FLEXIBLE TYPE OBJECT;
 DEFINE FIELD OVERWRITE event ON TABLE scenes TYPE record<events>;
 DEFINE FIELD OVERWRITE srtPlayback ON TABLE scenes TYPE OBJECT;
+DEFINE FIELD OVERWRITE updated_at ON TABLE scenes TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE scenes TYPE datetime DEFAULT time::now();
 
 -- A table for posts
@@ -122,6 +111,7 @@ DEFINE TABLE OVERWRITE posts SCHEMALESS TYPE RELATION IN users TO media;
 DEFINE FIELD OVERWRITE out ON TABLE posts TYPE record<media>;
 DEFINE FIELD OVERWRITE in ON TABLE posts TYPE record<users>;
 DEFINE FIELD OVERWRITE content ON TABLE posts TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON TABLE posts TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE posts TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE metadata ON TABLE posts FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE event ON TABLE posts TYPE record<events>;
@@ -136,6 +126,7 @@ DEFINE TABLE OVERWRITE comments TYPE RELATION IN users TO posts;
 DEFINE FIELD OVERWRITE out ON TABLE comments TYPE record<posts>;
 DEFINE FIELD OVERWRITE in ON TABLE comments TYPE record<users>;
 DEFINE FIELD OVERWRITE content ON TABLE comments TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON TABLE comments TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE comments TYPE datetime DEFAULT time::now();
 DEFINE INDEX unique_comments ON TABLE comments COLUMNS in, out UNIQUE;
 
@@ -144,16 +135,19 @@ DEFINE TABLE OVERWRITE friends TYPE RELATION IN users to users;
 DEFINE FIELD OVERWRITE out ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE in ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();
-
+DEFINE FIELD OVERWRITE updated_at ON TABLE friends TYPE datetime VALUE time::now();
+DEFINE FIELD OVERWRITE created_at ON TABLE friends TYPE datetime DEFAULT time::now();
 DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 
 -- & Finally? A table for media
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
-DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "vod";
+DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "video/quicktime" | "vod";
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE status ON media TYPE string DEFAULT "pending";
+DEFINE FIELD OVERWRITE updated_at ON media TYPE datetime VALUE time::now();
+DEFINE FIELD OVERWRITE created_at ON media TYPE datetime DEFAULT time::now();
 
 -- Metadata fields
 DEFINE FIELD OVERWRITE uploaded_at ON media TYPE datetime DEFAULT time::now();

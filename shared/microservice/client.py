@@ -16,6 +16,15 @@ from typing import Callable
 from shared.classful import QuartClassful
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
 
+# Import middleware components
+from shared.middleware import (
+    RateLimitMiddleware, 
+    ValidationMiddleware, 
+    SecurityMiddleware, 
+    ErrorHandlerMiddleware
+)
+from shared.middleware.security import SecurityConfig
+
 # Configure logging
 dictConfig(
     {
@@ -86,10 +95,16 @@ class MicroService(Quart):
         self.initialize_database = initialize_database
         self.microservice_instance = Microservice(instance)
 
-        # Set dev environment settings
+        # Initialize security middleware
+        self.security = SecurityMiddleware(self)
+        
+        # Configure security settings based on environment
         if os.getenv("ENVIRONMENT") == "dev":
             self.config["DEBUG"] = True
             self.config["TESTING"] = True
+            self.config["CORS_ORIGINS"] = SecurityConfig.DEV_CORS_ORIGINS
+        else:
+            self.config["CORS_ORIGINS"] = SecurityConfig.PROD_CORS_ORIGINS
 
         @self.before_request
         async def log_request():
