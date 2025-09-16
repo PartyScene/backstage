@@ -6,9 +6,10 @@ WORKDIR /media
 # Set PYTHONPATH for shared libraries
 ENV PYTHONPATH="/"
 
-# Install system dependencies
+# Install system dependencies including FFmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements files

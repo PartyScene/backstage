@@ -17,3 +17,6 @@ google-cloud-secret-manager
 uuid-utils
 ormsgpack
 obstore
+bleach
+email-validator
+python-ffmpeg

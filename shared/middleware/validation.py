@@ -1,9 +1,10 @@
 import re
 import logging
 from typing import Dict, Any, Optional, List
-from quart import request, jsonify
 from functools import wraps
+
 import bleach
+from quart import request, jsonify
 from email_validator import validate_email, EmailNotValidError
 
 logger = logging.getLogger(__name__)

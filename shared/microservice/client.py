@@ -95,8 +95,11 @@ class MicroService(Quart):
         self.initialize_database = initialize_database
         self.microservice_instance = Microservice(instance)
 
-        # Initialize security middleware
+        # Initialize middleware components
         self.security = SecurityMiddleware(self)
+        self.validation = ValidationMiddleware()
+        self.error_handler = ErrorHandlerMiddleware(self)
+        self.rate_limiter = RateLimitMiddleware()
         
         # Configure security settings based on environment
         if os.getenv("ENVIRONMENT") == "dev":

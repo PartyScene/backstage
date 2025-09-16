@@ -26,8 +26,8 @@ steps:
   args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts',  '-f', 'posts/Dockerfile', '.']
   # waitFor: ['test']
 
-# - name: 'gcr.io/cloud-builders/docker'
-#   args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',  '-f', 'users/Dockerfile', '.']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',  '-f', 'users/Dockerfile', '.']
 #   # waitFor: ['test']
 
 # - name: 'gcr.io/cloud-builders/docker'
@@ -60,7 +60,7 @@ images:
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth'
 # - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events'
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.posts'
-# - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users'
 # - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media'
 # - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.payments'
 # - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.r18e'

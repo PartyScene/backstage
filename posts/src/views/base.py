@@ -348,6 +348,8 @@ class BaseView(QuartClassful):
             user_id = get_jwt_identity()
             content = data.get("content")
 
+
+
             if not content:
                 status_code = HTTPStatus.BAD_REQUEST
                 return (
@@ -372,11 +374,26 @@ class BaseView(QuartClassful):
                 if not data.get("id", None)
                 else RecordID("posts", data["id"])
             )
-            data["filenames"] = [
-                f"posts/{user_id}/{data['post_id'].id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}"
-                for file in files.values()
-            ]
-            data["types"] = [file.content_type for file in files.values()]
+            # Process filenames and detect MOV files for conversion
+            processed_filenames = []
+            processed_types = []
+            
+            for file in files.values():
+                original_ext = os.path.splitext(file.filename)[-1].lower()
+                # Convert MOV to MP4 for iOS compatibility
+                if original_ext == '.mov' and file.content_type.startswith('video/'):
+                    final_ext = '.mp4'
+                    content_type = 'video/mp4'
+                else:
+                    final_ext = original_ext
+                    content_type = file.content_type
+                
+                filename = f"posts/{user_id}/{data['post_id'].id}/{str(ruuid.uuid4()).split('-')[-1]}{final_ext}"
+                processed_filenames.append(filename)
+                processed_types.append(content_type)
+            
+            data["filenames"] = processed_filenames
+            data["types"] = processed_types
 
             # Publish media upload tasks to RMQ
             media_publish_tasks = []
