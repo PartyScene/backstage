@@ -1,5 +1,6 @@
 import time
 import logging
+from quart import Quart
 from typing import Optional, Dict, Any
 from quart import request, jsonify, current_app
 from redis.asyncio import Redis
@@ -11,8 +12,8 @@ logger = logging.getLogger(__name__)
 class RateLimitMiddleware:
     """Production-ready rate limiting middleware using Redis sliding window"""
     
-    def __init__(self, redis: Redis):
-        self.redis = redis
+    def __init__(self, app: Quart):
+        self.app = app
         
     def rate_limit(
         self,
@@ -103,7 +104,7 @@ class RateLimitMiddleware:
             window_key = f"{key}:{window_name}:{current_time // window_size}"
             
             try:
-                current_count = await self.redis.get(window_key)
+                current_count = await self.app.redis.get(window_key)
                 current_count = int(current_count) if current_count else 0
                 
                 if current_count >= limit:
@@ -129,7 +130,7 @@ class RateLimitMiddleware:
         ]
         
         try:
-            pipe = self.redis.pipeline()
+            pipe = self.app.redis.pipeline()
             
             for window_size, window_name in windows:
                 window_key = f"{key}:{window_name}:{current_time // window_size}"

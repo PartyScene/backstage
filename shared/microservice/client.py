@@ -99,7 +99,7 @@ class MicroService(Quart):
         self.security = SecurityMiddleware(self)
         self.validation = ValidationMiddleware()
         self.error_handler = ErrorHandlerMiddleware(self)
-        self.rate_limiter = RateLimitMiddleware()
+        self.rate_limiter = RateLimitMiddleware(self)
         
         # Configure security settings based on environment
         if os.getenv("ENVIRONMENT") == "dev":
