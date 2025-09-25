@@ -213,7 +213,7 @@ class EventsDB:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                    RETURN fn::fetch_all_events($page, $limit);
+                    RETURN fn::fetch_public_events($page, $limit);
                     """,
                     {"page": page, "limit": limit},
                 )
@@ -236,7 +236,7 @@ class EventsDB:
             limit (int, optional): The number of events per page. Defaults to 20.
 
         Returns:
-            List[Dict[str, Any]]: List of public events
+            List[Dict[str, Any]]: List of private events
         """
         try:
             async with self.pool.acquire() as conn:
@@ -249,7 +249,7 @@ class EventsDB:
             self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
             return record_id_to_json(result)
         except Exception as e:
-            self.logger.error(f"Failed to fetch all public events: {str(e)}")
+            self.logger.error(f"Failed to fetch all private events: {str(e)}")
             raise
 
     async def fetch(self, event_id: str) -> Optional[Dict[str, Any]]:

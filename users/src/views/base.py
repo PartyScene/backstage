@@ -14,6 +14,8 @@ import os
 import orjson as json
 from aiocache import cached
 from shared.workers.rmq import RMQBroker
+from shared.utils import recursively_sign_object_media
+
 
 
 class BaseView(QuartClassful):
@@ -161,6 +163,8 @@ class BaseView(QuartClassful):
                     jsonify(message="User not found", status=status_code.phrase),
                     status_code,
                 )
+            
+            user = await recursively_sign_object_media(user)
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -309,6 +313,7 @@ class BaseView(QuartClassful):
                 )
             # Could filter sensitive information here if needed before returning
             # Example: user.pop('email', None)
+            user = await recursively_sign_object_media(user)
             status_code = HTTPStatus.OK
             return (
                 jsonify(

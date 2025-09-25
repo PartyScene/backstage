@@ -7,7 +7,7 @@ import uuid
 
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
-from shared.utils import recursively_sign_event_media
+from shared.utils import recursively_sign_object_media
 
 from dataclasses import dataclass
 from pprint import pprint
@@ -206,7 +206,7 @@ class BaseView(QuartClassful):
                     status_code = HTTPStatus.OK
                     # Check if the event has media and sign it
                     try:
-                        result = await recursively_sign_event_media(result)
+                        result = await recursively_sign_object_media(result)
                     except Exception as e:
                         app.logger.warning(f"Failed to sign media URLS: {str(e)}")
                         # continue
@@ -243,7 +243,7 @@ class BaseView(QuartClassful):
                     )
 
                 result = await self.conn.fetch_by_distance(location, distance)
-                result = await recursively_sign_event_media(result)
+                result = await recursively_sign_object_media(result)
 
                 status_code = HTTPStatus.OK
                 return (
@@ -256,7 +256,7 @@ class BaseView(QuartClassful):
                 )
 
             result = await self.conn.fetch_all(page, limit)
-            result = await recursively_sign_event_media(result)
+            result = await recursively_sign_object_media(result)
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -513,7 +513,7 @@ class BaseView(QuartClassful):
         user = get_jwt_identity()
         try:
             result = await self.conn.fetch_private(user, page, limit)
-            result = await recursively_sign_event_media(result)
+            result = await recursively_sign_object_media(result)
 
             status_code = HTTPStatus.OK
             return (
@@ -547,7 +547,7 @@ class BaseView(QuartClassful):
             user = get_jwt_identity()
             distance = int(request.args.get("distance", 1000))
             result = await self.conn.fetch_by_distance(location, distance, user=user)
-            result = await recursively_sign_event_media(result)
+            result = await recursively_sign_object_media(result)
 
             status_code = HTTPStatus.OK
             return (

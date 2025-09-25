@@ -44,12 +44,12 @@ async def generate_signed_url(filenames: Sequence[str]) -> Dict[str, str]:
             raise RuntimeError("Malformed response from media service") from exc
 
 
-async def recursively_sign_event_media(obj: Any) -> Any:
+async def recursively_sign_object_media(obj: Any) -> Any:
     # Recursively sign media objects in the event data
     # Event data will either be a list of events, or an object with a "live" or "upcoming" key with value as a list of events
     if isinstance(obj, list):
         # Handle list of events
-        return [await recursively_sign_event_media(item) for item in obj]
+        return [await recursively_sign_object_media(item) for item in obj]
     elif isinstance(obj, dict):
         # Handle single event object
         if "event" in obj and "media" in obj["event"]:
@@ -59,12 +59,16 @@ async def recursively_sign_event_media(obj: Any) -> Any:
             obj["post"]["media"] = await sign_media_object(obj["post"]["media"])
         if "media" in obj:
             obj["media"] = await sign_media_object(obj["media"])
+
+        if "filename" in obj:
+            obj["avatar"] = await sign_media_object(obj["filename"])
+
         # Recursively handle nested dictionaries
         return obj
     return obj
 
 
-# async def recursively_sign_event_media(obj: Any) -> Any:
+# async def recursively_sign_object_media(obj: Any) -> Any:
 #     # Recursively sign media objects in the event data
 #     # Event data will either be a list of events, or an object with a "live" or "upcoming" key with value as a list of events
 #     if isinstance(obj, list):
@@ -80,7 +84,7 @@ async def recursively_sign_event_media(obj: Any) -> Any:
 #                     item["event"]["media"] = await sign_media_object(item["event"]["media"])
 #         return result
 #     elif isinstance(obj, dict):
-#         result = {k: await recursively_sign_event_media(v['media']) for k, v in obj.items()}
+#         result = {k: await recursively_sign_object_media(v['media']) for k, v in obj.items()}
 #         # Check if any of the values in the dictionary have a media object
 #         # This assumes that the media object is nested under an "event" key
 #         # and that the media object is a list of media objects

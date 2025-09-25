@@ -5,7 +5,7 @@ DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE username ON TABLE users TYPE option<string> DEFAULT "";
-DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE string | record<media> DEFAULT "";
 DEFINE FIELD OVERWRITE kyc_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE kyc_payment_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE sharedLoc ON TABLE users TYPE option<bool> DEFAULT false;
@@ -82,11 +82,18 @@ DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text H
 DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE record<users>;
 DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
-DEFINE FIELD OVERWRITE ticket_number ON TABLE tickets TYPE option<number>;
+DEFINE FIELD OVERWRITE ticket_number ON TABLE tickets TYPE option<string>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE tickets TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE tickets TYPE datetime DEFAULT time::now();
 
-DEFINE EVENT OVERWRITE update_ticket_id ON TABLE tickets WHEN $event = "CREATE" THEN {UPDATE $after SET ticket_number = array::len(select count() from tickets) + 1};
+DEFINE EVENT OVERWRITE update_ticket_number ON TABLE tickets WHEN $event = "CREATE" THEN {UPDATE $after SET ticket_number = 
+    "TKT-" 
+    + string::slice(<string>$after.event.id, 7, 4)
+    + "-" 
+    + rand::string(4)
+    };
+
+
 
 -- Relate Events to Media
 DEFINE TABLE OVERWRITE has_media TYPE RELATION IN events TO media;
@@ -204,7 +211,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_events_by_location($coordinates: Point, $dis
 
 
 -- 
-DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number) {
+DEFINE FUNCTION OVERWRITE fn::fetch_public_events($page: number, $limit: number) {
 
 
     LET $page =
@@ -223,8 +230,8 @@ DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number) {
 
     RETURN (
 
-        SELECT fn::fetch_event(id) AS event, created_at FROM events
-    ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
+        SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false
+     ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
     )
 };
 
@@ -269,7 +276,6 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
         host.{id, first_name, last_name},
-        array::len(<-attends<-users) as attendees_count
     OMIT embeddings
     FROM ONLY $event_id
     )

@@ -16,7 +16,7 @@ from datetime import datetime
 from aiocache import cached
 
 from shared.workers.rmq import RMQBroker
-from shared.utils import recursively_sign_event_media
+from shared.utils import recursively_sign_object_media
 import uuid_utils as ruuid
 
 from surrealdb import RecordID
@@ -319,7 +319,7 @@ class BaseView(QuartClassful):
         """Fetch all posts for a given event"""
         try:
             result = await self.__posts_handler.fetch_event_posts(id)
-            reuslt = await recursively_sign_event_media(result)
+            reuslt = await recursively_sign_object_media(result)
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -348,7 +348,7 @@ class BaseView(QuartClassful):
         """Fetch all posts for a user"""
         try:
             result = await self.__posts_handler.fetch_user_posts(id)
-            reuslt = await recursively_sign_event_media(result)
+            reuslt = await recursively_sign_object_media(result)
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -487,7 +487,7 @@ class BaseView(QuartClassful):
         """
         try:
             if result := await self.__posts_handler.fetch_post(id):
-                result = await recursively_sign_event_media(result)
+                result = await recursively_sign_object_media(result)
                 status_code = HTTPStatus.OK
                 return (
                     jsonify(

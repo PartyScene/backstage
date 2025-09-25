@@ -341,7 +341,9 @@ class AuthDB:
 
         try:
             async with self.pool.acquire() as conn:
-
+                form.pop("password", None)
+                form.pop("email", None)
+                
                 result = await conn.create("users", {**form, **data})
                 if isinstance(result, dict):
                     await self.bloom_filter.add("email", form.get("email"))

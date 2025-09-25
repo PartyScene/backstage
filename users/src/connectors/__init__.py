@@ -238,9 +238,11 @@ class UsersDB:
                     )
                 )
 
-                if isinstance(media_query_result, dict):
-                    data["avatar"] = media_query_result["id"]
-
+                # if isinstance(media_query_result, dict):
+                #     data["avatar"] = media_query_result["id"]
+        
+        data.pop("type", None)
+        
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 "UPDATE ONLY type::thing('users', $record_id) MERGE $content RETURN AFTER;",
