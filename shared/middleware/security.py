@@ -120,27 +120,58 @@ class SecurityMiddleware:
                     })
             except ValueError:
                 pass
-    
+        
     async def _check_content_type(self):
-        """Validate content type for POST/PUT requests"""
-        from quart import abort
+        """
+        Validates content type based on content length for POST/PUT/PATCH.
+        - If Content-Length > 0, Content-Type must be present and allowed.
+        - If Content-Length is 0 or absent, Content-Type must also be absent.
+        """
+        from quart import abort, request
+        # Assuming 'logger' is defined elsewhere in your class/module
+
         if request.method in ['POST', 'PUT', 'PATCH']:
-            content_type = request.headers.get('Content-Type', '')
-            
-            # Allow common content types
-            allowed_types = [
-                'application/json',
-                'multipart/form-data',
-                'application/x-www-form-urlencoded'
-            ]
-            
-            if not any(allowed_type in content_type for allowed_type in allowed_types):
-                logger.warning(f"Invalid content type: {content_type}")
-                abort(415, description={
-                    "error": "Invalid content type",
-                    "message": f"Content type {content_type} not allowed",
-                    "allowed_types": allowed_types
-                })
+            content_type = request.headers.get('Content-Type')
+            content_length_str = request.headers.get('Content-Length')
+
+            # Safely determine the content length as an integer.
+            content_length = 0
+            if content_length_str and content_length_str.isdigit():
+                content_length = int(content_length_str)
+
+            # --- Scenario 1: Request has a body ---
+            if content_length > 0:
+                # A body exists, so Content-Type is mandatory.
+                if not content_type:
+                    abort(415, description={
+                        "error": "Unsupported Media Type",
+                        "message": "Content-Type header is required for requests with a body."
+                    })
+                
+                allowed_types = [
+                    'application/json',
+                    'multipart/form-data',
+                    'application/x-www-form-urlencoded'
+                ]
+                    
+                # The Content-Type must be one of the allowed types.
+                if not any(allowed in content_type for allowed in allowed_types):
+                    logger.warning(f"Invalid content type for non-empty body: {content_type}")
+                    abort(415, description={
+                        "error": "Unsupported Media Type",
+                        "message": f"Content-Type '{content_type}' is not allowed.",
+                        "allowed_types": allowed_types
+                    })
+
+            # --- Scenario 2: Request has NO body ---
+            else: # This means content_length is 0.
+                # No body, so a Content-Type header is invalid.
+                if content_type:
+                    logger.warning(f"Extraneous Content-Type '{content_type}' for empty body.")
+                    abort(400, description={
+                        "error": "Bad Request",
+                        "message": "Content-Type header cannot be present for requests with an empty body."
+                    })
     
     def _add_security_headers(self, response):
         """Add security headers to response"""

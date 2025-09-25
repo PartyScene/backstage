@@ -82,8 +82,11 @@ DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text H
 DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE record<users>;
 DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
+DEFINE FIELD OVERWRITE ticket_number ON TABLE tickets TYPE option<number>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE tickets TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE tickets TYPE datetime DEFAULT time::now();
+
+DEFINE EVENT OVERWRITE update_ticket_id ON TABLE tickets WHEN $event = "CREATE" THEN {UPDATE $after SET ticket_number = array::len(select count() from tickets) + 1};
 
 -- Relate Events to Media
 DEFINE TABLE OVERWRITE has_media TYPE RELATION IN events TO media;
@@ -298,11 +301,11 @@ DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: reco
 
 DEFINE FUNCTION OVERWRITE fn::find_relationships($origin: record) {
     LET $result = SELECT
-                            @.{1}<->friends.{id, in.*, out.*, status} AS degree_1,
-                            @.{2}<->friends.{id, in.*, out.*, status} AS degree_2,
-                            @.{3}<->friends.{id, in.*, out.*, status} AS degree_3,
-                            @.{4}<->friends.{id, in.*, out.*, status} AS degree_4,
-                            @.{5}<->friends.{id, in.*, out.*, status} AS degree_5
+                            @.{1}<->friends<->users AS degree_1,
+                            @.{2}<->friends<->users AS degree_2,
+                            @.{3}<->friends<->users AS degree_3,
+                            @.{4}<->friends<->users AS degree_4,
+                            @.{5}<->friends<->users AS degree_5
     FROM ONLY $origin;
     RETURN $result
 };
@@ -311,7 +314,7 @@ DEFINE FUNCTION OVERWRITE fn::exists_in_degree($origin: record, $target: record,
     LET $tree = fn::find_relationships($origin);
     FOR $i IN 1..=$degree {
       LET $field = "degree_" + <string>$i;
-        IF $target IN $tree[$field].in OR $target IN $tree[$field].out{
+        IF $target IN $tree[$field] OR $target IN $tree[$field]{
             RETURN true;
         }
     };

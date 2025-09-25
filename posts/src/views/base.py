@@ -82,6 +82,42 @@ class BaseView(QuartClassful):
             status_code,
         )
 
+    @route("/posts/<post_id>/report", methods=["POST"])
+    @jwt_required
+    async def report_post(self, post_id):
+        """This endpoints reports a specific post"""
+        reporter = get_jwt_identity()
+        data = await request.get_json()
+        reason = data.get("reason", "")
+        if not reason:
+            status_code = HTTPStatus.BAD_REQUEST
+            return (
+                jsonify(message="Reason is required", status=status_code.phrase),
+                status_code,
+            )
+
+        # Check if the event exists
+
+        post_info = await self.__posts_handler.fetch_post(post_id)
+        if not post_info:
+            status_code = HTTPStatus.NOT_FOUND
+            return (
+                jsonify(message="Post not found", status=status_code.phrase),
+                status_code,
+            )
+
+        if result := await self.__posts_handler._report_resource(
+            {"reason": reason, "reporter": reporter, "resource": post_info["id"]},
+            "posts",
+        ):
+            status_code = HTTPStatus.CREATED
+            return (
+                jsonify(
+                    message="Resource reported", data=result, status=status_code.phrase
+                ),
+                status_code,
+            )
+
     @route("/posts/<post_id>/comments", methods=["GET"])
     @jwt_required
     async def get_comments(self, post_id):
@@ -521,42 +557,6 @@ class BaseView(QuartClassful):
                 jsonify(
                     message=f"Failed to delete post: {str(e)}",
                     status=status_code.phrase,
-                ),
-                status_code,
-            )
-
-    @route("/posts/<post_id>/report", methods=["POST"])
-    @jwt_required
-    async def report_post(self, post_id):
-        """This endpoints reports a specific post"""
-        reporter = get_jwt_identity()
-        data = await request.get_json()
-        reason = data.get("reason", "")
-        if not reason:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Reason is required", status=status_code.phrase),
-                status_code,
-            )
-
-        # Check if the event exists
-
-        post_info = await self.__posts_handler.fetch_post(post_id)
-        if not post_info:
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="Post not found", status=status_code.phrase),
-                status_code,
-            )
-
-        if result := await self.__posts_handler._report_resource(
-            {"reason": reason, "reporter": reporter, "resource": post_info["id"]},
-            "posts",
-        ):
-            status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    message="Resource reported", data=result, status=status_code.phrase
                 ),
                 status_code,
             )

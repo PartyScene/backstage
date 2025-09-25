@@ -347,6 +347,17 @@ class BaseView(QuartClassful):
         try:
             form = await request.form
             files = await request.files
+            
+            if not files:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="At least one media file is required",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+                
             data = form.to_dict()
 
             # Validate required fields
