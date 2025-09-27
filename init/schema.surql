@@ -230,7 +230,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_public_events($page: number, $limit: number)
 
     RETURN (
 
-        SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false
+        SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false AND time > time::now()
      ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
     )
 };
@@ -275,7 +275,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         *,
         (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
-        host.{id, first_name, last_name},
+        host.{id, first_name, last_name, avatar, filename}
     OMIT embeddings
     FROM ONLY $event_id
     )
@@ -346,7 +346,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_private_events_for_user($user: record, $page
 
     RETURN (
         SELECT fn::fetch_event(id) AS event, created_at FROM events
-    WHERE is_private = true AND fn::exists_in_degree($user, host, degree_of_freedom)
+    WHERE is_private = true AND fn::exists_in_degree($user, host, degree_of_freedom) AND time > time::now()
     ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
     )
 };

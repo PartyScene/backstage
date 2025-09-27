@@ -60,7 +60,7 @@ async def recursively_sign_object_media(obj: Any) -> Any:
         if "media" in obj:
             obj["media"] = await sign_media_object(obj["media"])
 
-        if "filename" in obj:
+        if "filename" in obj and obj['filename'] != "":
             obj["avatar"] = await sign_media_object(obj["filename"])
 
         # Recursively handle nested dictionaries

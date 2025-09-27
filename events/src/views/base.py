@@ -207,6 +207,7 @@ class BaseView(QuartClassful):
                     # Check if the event has media and sign it
                     try:
                         result = await recursively_sign_object_media(result)
+                        result['host'] = await recursively_sign_object_media(result['host'])
                     except Exception as e:
                         app.logger.warning(f"Failed to sign media URLS: {str(e)}")
                         # continue
@@ -244,6 +245,8 @@ class BaseView(QuartClassful):
 
                 result = await self.conn.fetch_by_distance(location, distance)
                 result = await recursively_sign_object_media(result)
+                for event in result:
+                    event['host'] = await recursively_sign_object_media(event['host'])
 
                 status_code = HTTPStatus.OK
                 return (
@@ -257,6 +260,8 @@ class BaseView(QuartClassful):
 
             result = await self.conn.fetch_all(page, limit)
             result = await recursively_sign_object_media(result)
+            for event in result:
+                event['host'] = await recursively_sign_object_media(event['host'])
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -514,7 +519,8 @@ class BaseView(QuartClassful):
         try:
             result = await self.conn.fetch_private(user, page, limit)
             result = await recursively_sign_object_media(result)
-
+            for event in result:
+                event['host'] = await recursively_sign_object_media(event['host'])
             status_code = HTTPStatus.OK
             return (
                 jsonify(
@@ -548,6 +554,8 @@ class BaseView(QuartClassful):
             distance = int(request.args.get("distance", 1000))
             result = await self.conn.fetch_by_distance(location, distance, user=user)
             result = await recursively_sign_object_media(result)
+            for event in result:
+                event['host'] = await recursively_sign_object_media(event['host'])
 
             status_code = HTTPStatus.OK
             return (
