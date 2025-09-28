@@ -684,7 +684,8 @@ class BaseView(QuartClassful):
         """
         user_id = get_jwt_identity()  # Get user_id early for logging
         try:
-            file = (await request.files).get("file")
+            
+            file = next((f for f in (await request.files).values() if f.filename), None)
 
             if not file or not file.filename:
                 status_code = HTTPStatus.BAD_REQUEST
