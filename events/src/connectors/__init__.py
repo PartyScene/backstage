@@ -410,13 +410,38 @@ class EventsDB:
                 RELATE $user -> attends -> $event SET status = $status;
                 """
                 result = await conn.query(query, {"status": data["status"]})
+                await self._create_ticket(data, is_free=True)
+
+
             if "err" in result:
                 raise Exception(f"Error creating attendance: {result}")
             return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to create attendance: {str(e)}")
             raise
+        
+    async def _create_ticket(self, data, is_free: bool = False):
+        """
+        Create a ticket in the database.
 
+        Args:
+            data (dict): The ticket data to create
+
+        Returns:
+            dict: The created ticket object
+        """
+        data["user"] = RecordID("users", data.pop("user"))
+        data["event"] = RecordID("events", data.pop("event"))
+        data["is_free"] = is_free
+
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.create("tickets", data)
+            return record_id_to_json(result)
+
+        except Exception as e:
+            self.logger.error(f"Failed to create ticket: {str(e)}")
+            raise
 
 async def init_db(app) -> tuple[EventsDB, SurrealDBPoolManager]:
     """

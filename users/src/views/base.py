@@ -85,7 +85,7 @@ class BaseView(QuartClassful):
         try:
             tickets = await self.conn.fetch_user_tickets(user_id)
             if not tickets:
-                status_code = HTTPStatus.NOT_FOUND
+                status_code = HTTPStatus.OK
                 return (
                     jsonify(message="No tickets found", status=status_code.phrase),
                     status_code,
