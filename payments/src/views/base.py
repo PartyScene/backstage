@@ -191,6 +191,28 @@ class BaseView(QuartClassful):
             data: dict = await request.get_json()
             ticket_count = data.get("ticket_count", 1)
 
+            # Validate ticket count
+            if not isinstance(ticket_count, int) or ticket_count < 1:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="Ticket count must be a positive integer",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            # Apply business limit (max 100 tickets per transaction)
+            if ticket_count > 100:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="Maximum 100 tickets per transaction",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+
             # Verify the event exists
             event = await self.conn._fetch(event_id)
             if not event:

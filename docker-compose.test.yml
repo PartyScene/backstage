@@ -49,16 +49,19 @@ services:
   microservices.media:
     container_name: microservices.media
     build:
-      target: prodkill
+      target: prodkill  # Message queue consumer, not test runner
       context: .
       dockerfile: media/Dockerfile
     depends_on:
       microservices.auth:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
-      - ENVIRONMENT=dev
+      - ENVIRONMENT=test
+      - SCHEMA_FILE=/home/schema.surql
     env_file: .env
 
   # microservices.livestream:
@@ -83,7 +86,9 @@ services:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
       microservices.media:
-        condition: service_started # service_completed_successfully
+        condition: service_started  # Media is consumer, tests run simultaneously
+    environment:
+      - SCHEMA_FILE=/home/schema.surql
     env_file: .env
 
   microservices.posts:
@@ -96,7 +101,9 @@ services:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
       microservices.media:
-        condition: service_started # service_completed_successfully
+        condition: service_completed_successfully
+    environment:
+      - SCHEMA_FILE=/home/schema.surql
 
   microservices.users:
     container_name: microservices.users

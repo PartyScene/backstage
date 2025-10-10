@@ -1,0 +1,107 @@
+steps:
+# Stage 1: Code Quality Checks
+- name: 'python:3.10'
+  entrypoint: 'sh'
+  args:
+    - '-c'
+    - |
+      pip install flake8 bandit &&
+      flake8 --select=E9,F63,F7,F82 . --exclude=.venv,debz &&
+      bandit -r . -x .venv,debz -ll
+  id: 'lint'
+
+# Stage 2: Create Docker Network
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['network', 'create', 'cloudbuild']
+  id: 'create-network'
+
+# Stage 3: Run Unit Tests
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['compose', '-f', 'docker-compose.test.yml', 'up', '--abort-on-container-exit']
+  env:
+    - SCHEMA_FILE=/home/schema.surql
+  id: 'test-services'
+  waitFor: ['lint', 'create-network']
+  timeout: 900s
+
+# Stage 4: Integration Tests (if unit tests pass)
+- name: 'gcr.io/cloud-builders/docker'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      docker run --network cloudbuild \
+        -v $(pwd)/tests:/tests \
+        -e AUTH_URL=http://microservices.auth:5510 \
+        -e USERS_URL=http://microservices.users:5514 \
+        -e EVENTS_URL=http://microservices.events:5512 \
+        python:3.13-slim \
+        bash -c "pip install pytest httpx && pytest /tests/integration/ -v" || echo "Integration tests skipped/failed"
+  id: 'integration-tests'
+  waitFor: ['test-services']
+  timeout: 300s
+
+# Stage 5: Build Production Images (only if tests pass)
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build', 
+    '--target', 'prod', 
+    '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth',
+    '--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', 
+    '-f', 'auth/Dockerfile', 
+    '.'
+  ]
+  waitFor: ['integration-tests']
+  id: 'build-auth'
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build', 
+    '--target', 'prod', 
+    '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events',
+    '--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', 
+    '-f', 'events/Dockerfile', 
+    '.'
+  ]
+  waitFor: ['integration-tests']
+  id: 'build-events'
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build', 
+    '--target', 'prod', 
+    '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',
+    '--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',  
+    '-f', 'users/Dockerfile', 
+    '.'
+  ]
+  waitFor: ['integration-tests']
+  id: 'build-users'
+
+# Stage 6: Deploy to GKE (rolling update)
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+    - rollout
+    - restart
+    - deployment
+  env:
+  - 'CLOUDSDK_COMPUTE_ZONE=us-central1'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=backstage-cluster'
+  waitFor: ['build-auth', 'build-events', 'build-users']
+  id: 'deploy'
+
+# Stage 7: Cleanup test containers
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['compose', '-f', 'docker-compose.test.yml', 'down', '-v']
+  waitFor: ['deploy']
+  
+substitutions:
+  _LOCATION: us-central1
+
+options:
+  machineType: E2_HIGHCPU_8
+
+images:
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users'

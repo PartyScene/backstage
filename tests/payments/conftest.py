@@ -108,6 +108,48 @@ def performance_profiling(request):
     return request.config.getoption("--profile")
 
 
+@pytest.fixture(scope="session")
+def mock_webhook_payload(mock_user, mock_event):
+    """Mock Stripe webhook payload for testing."""
+    import json
+    payload = {
+        "type": "payment_intent.succeeded",
+        "data": {
+            "object": {
+                "id": "pi_test_123",
+                "amount": 2500,
+                "currency": "usd",
+                "metadata": {
+                    "user_id": mock_user["id"],
+                    "event_id": mock_event["id"],
+                    "ticket_count": "1"
+                }
+            }
+        }
+    }
+    return json.dumps(payload).encode()
+
+
+@pytest.fixture(scope="session")
+def mock_stripe_signature(mock_webhook_payload):
+    """Mock Stripe signature for webhook testing."""
+    import hmac
+    import hashlib
+    import time
+    
+    secret = os.getenv("STRIPE_WEBHOOK_SECRET", "whsec_test_secret")
+    timestamp = int(time.time())
+    
+    signed_payload = f"{timestamp}.{mock_webhook_payload.decode()}"
+    signature = hmac.new(
+        secret.encode(),
+        signed_payload.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return f"t={timestamp},v1={signature}"
+
+
 # def pytest_configure(config):
 #     """Configure pytest markers and settings."""
 #     config.addinivalue_line(

@@ -18,7 +18,16 @@ import httpx
 from datetime import datetime, timedelta
 import io
 from unittest.mock import MagicMock
-import uvloop
+import sys
+
+# Conditionally import uvloop (not available on Windows)
+if sys.platform != 'win32':
+	try:
+		import uvloop
+		asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+	except ImportError:
+		pass
+
 from surrealdb import AsyncSurreal
 
 # Configure logging
