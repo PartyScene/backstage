@@ -44,7 +44,7 @@ Your current CI/CD framework has a **strong foundation** but **critical gaps** t
 ### Implementation Files Created
 
 1. **`.github/workflows/ci-test-deploy.yaml`** - Full GitHub Actions pipeline with:
-   - Code quality (flake8, black, mypy, bandit, safety)
+   - Code quality (flake8, black, mypy)
    - Parallel unit test execution per service
    - Integration tests
    - Contract tests (Postman/API)
@@ -222,7 +222,7 @@ Add to GitHub Actions:
 - [ ] On-call rotation defined
 
 ### Security
-- [x] Dependency vulnerability scanning (bandit)
+- [ ] Dependency vulnerability scanning
 - [ ] Container image scanning
 - [ ] Secrets management (not hardcoded)
 - [ ] API rate limiting

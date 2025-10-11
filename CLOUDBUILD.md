@@ -35,7 +35,6 @@ Pull Request → Test Pipeline → Merge → Production Deploy
 
 **Test Pipeline** (cloudbuild-test.yaml):
 - Flake8 linting
-- Bandit security scan  
 - Integration tests (all services)
 
 **Deploy Pipeline** (cloudbuild.yaml):

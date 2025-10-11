@@ -26,7 +26,7 @@ docker-compose -f docker-compose.test.yml down -v
 - Duration: 8-12 minutes
 
 **`cloudbuild-test.yaml`** - Quality gates
-- Linting (flake8) + Security (bandit)
+- Linting (flake8)
 - Integration tests (all services)
 - Duration: 12-15 minutes
 
@@ -41,7 +41,7 @@ docker-compose -f docker-compose.test.yml down -v
 | 3 | Missing env vars | ✅ Hardcoded connection strings |
 | 4 | Media consumer hangs | ✅ Changed to `service_started` |
 | 5 | No health checks | ✅ Wait for DB readiness |
-| 6 | Bandit scans usr/ | ✅ Excluded usr,tests dirs |
+| 6 | Flake8 scans usr/ | ✅ Excluded usr dir |
 | 7 | Network exists error | ✅ Continues if exists |
 | 8 | Wrong exit condition | ✅ Exit on users (last service) |
 | 9 | 15min timeout | ✅ Increased to 20min |
