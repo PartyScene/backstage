@@ -1,9 +1,18 @@
-# requirements.txt
-surrealdb
-transformers
-torch
-torchvision
-torchaudio
-Pillow
-accelerate
-obstore
+# Core dependencies
+surrealdb>=0.3.0
+transformers>=4.35.0
+torch>=2.0.0  # PyTorch 2.0+ required for torch.compile
+torchvision>=0.15.0
+torchaudio>=2.0.0
+Pillow>=10.0.0
+
+# Optimization libraries
+accelerate>=0.24.0  # Memory efficient model loading
+optimum>=1.14.0  # BetterTransformer and other HF optimizations
+
+# Cloud storage
+obstore>=0.1.0
+
+# Optional GPU acceleration (install separately based on CUDA version)
+# For CUDA 11.8: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# For CUDA 12.1: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121

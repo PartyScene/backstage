@@ -11,12 +11,22 @@ services:
       dockerfile: auth/Dockerfile
       target: test
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
+      surrealdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: on-failure
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
       - SCHEMA_FILE=/home/schema.surql
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URI=redis://redis:6379
 
   microservices.r18e:
     container_name: microservices.r18e
@@ -25,12 +35,17 @@ services:
       dockerfile: r18e/Dockerfile
       target: test
     depends_on:
-        microservices.auth:
-          condition: service_completed_successfully
+      microservices.auth:
+        condition: service_completed_successfully
+      surrealdb:
+        condition: service_healthy
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
       - SCHEMA_FILE=/home/schema.surql
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
   
   microservices.payments:
     container_name: microservices.payments
@@ -39,17 +54,25 @@ services:
       dockerfile: payments/Dockerfile
       target: test
     depends_on:
-        microservices.auth:
-          condition: service_completed_successfully
+      microservices.auth:
+        condition: service_completed_successfully
+      surrealdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
       - SCHEMA_FILE=/home/schema.surql
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - REDIS_URI=redis://redis:6379
 
   microservices.media:
     container_name: microservices.media
     build:
-      target: prodkill  # Message queue consumer, not test runner
+      target: prod  # Message queue consumer, runs in background
       context: .
       dockerfile: media/Dockerfile
     depends_on:
@@ -57,12 +80,19 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_started
+      surrealdb:
+        condition: service_healthy
     volumes:
       - ./init/schema.surql:/home/schema.surql
     environment:
       - ENVIRONMENT=test
       - SCHEMA_FILE=/home/schema.surql
-    env_file: .env
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URI=redis://redis:6379
+      - GCS_BUCKET_NAME=partyscene-test
 
   # microservices.livestream:
   #   container_name: microservices.livestream
@@ -86,10 +116,18 @@ services:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
       microservices.media:
-        condition: service_started  # Media is consumer, tests run simultaneously
+        condition: service_started
+      surrealdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - SCHEMA_FILE=/home/schema.surql
-    env_file: .env
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URI=redis://redis:6379
 
   microservices.posts:
     container_name: microservices.posts
@@ -101,9 +139,18 @@ services:
       - ./init/schema.surql:/home/schema.surql
     depends_on:
       microservices.media:
-        condition: service_completed_successfully
+        condition: service_started
+      surrealdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - SCHEMA_FILE=/home/schema.surql
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URI=redis://redis:6379
 
   microservices.users:
     container_name: microservices.users
@@ -116,15 +163,52 @@ services:
     depends_on:
       microservices.events:
         condition: service_completed_successfully
+      surrealdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URI=redis://redis:6379
+
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: surrealdb
+    command: start --user root --pass root memory
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
 
   rabbitmq:
-    image: rabbitmq:management
+    image: rabbitmq:3-management-alpine
     container_name: rabbitmq
     ports:
-      - "15672:15672"  # RabbitMQ Management UI
-      - "5672:5672"    # RabbitMQ AMQP protocol port
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+      - "15672:15672"
+      - "5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     
 volumes:
   rabbitmq_data:
