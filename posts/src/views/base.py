@@ -1,17 +1,14 @@
 import httpx
 import orjson as json
-import uuid
 import asyncio
+import os
 
-from pprint import pprint
-from quart import make_response, render_template, current_app as app, request, jsonify
-from quart.datastructures import FileStorage
+from quart import current_app as app, request, jsonify
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from posts.src.connectors import PostsDB
 from shared.classful import route, QuartClassful
 from http import HTTPStatus
-import os
 from datetime import datetime
 from aiocache import cached
 
@@ -23,7 +20,6 @@ from surrealdb import RecordID
 
 
 class BaseView(QuartClassful):
-
     def __init__(self) -> None:
         self.__posts_handler: PostsDB = app.conn
         self.redis = app.redis
@@ -427,7 +423,7 @@ class BaseView(QuartClassful):
                 filename = f"posts/{user_id}/{data['post_id'].id}/{str(ruuid.uuid4()).split('-')[-1]}{final_ext}"
                 processed_filenames.append(filename)
                 processed_types.append(content_type)
-            
+                
             data["filenames"] = processed_filenames
             data["types"] = processed_types
 
@@ -435,9 +431,14 @@ class BaseView(QuartClassful):
             media_publish_tasks = []
             for i, file in enumerate(files.values()):
                 if file.filename:  # Process only if file has a name
-                    data["filename"] = data["filenames"][i]
-                    data["type"] = data["types"][i]
-                    media_publish_tasks.append(app.RMQ._publish_media(data, file))
+                    # Create isolated data dict for each file to prevent race conditions
+                    file_data = {
+                        "filename": data["filenames"][i],
+                        "type": data["types"][i],
+                        "creator": user_id,
+                        "post_id": data["post_id"],
+                    }
+                    media_publish_tasks.append(app.RMQ._publish_media(file_data, file))
 
             if media_publish_tasks:
                 await asyncio.gather(*media_publish_tasks)  # Upload media concurrently

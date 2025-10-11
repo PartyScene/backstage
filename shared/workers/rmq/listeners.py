@@ -234,11 +234,15 @@ class RMQBroker(RabbitBroker):
             data (dict): Dictionary containing the data to be published
             file (bytes): File to be published
         """
+        # Snapshot values immediately to prevent race conditions
+        filename = data.get("filename")
+        content_type = data.get("type")
+        
         file_bytes: bytes = ormsgpack.packb(file.read())
         await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(
             file_bytes,
             headers={
-                "filename": data.get("filename"),
-                "content-type": data.get("type"),
+                "filename": filename,
+                "content-type": content_type,
             },
         )

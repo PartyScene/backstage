@@ -277,28 +277,6 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-    # @route("/friends", methods=["GET"])
-    # @jwt_required
-    # async def get_friends(self) -> Tuple[Dict[str, Any], int]:
-    #     """Get user's friends with specified degree of separation"""
-    #     try:
-    #         user_id = get_jwt_identity()
-    #         degree = request.args.get('degree', type=int, default=1)
-    #         target_id = request.args.get('target')
-
-    #         data = {"origin": user_id}
-    #         if target_id:
-    #             data["target"] = target_id
-
-    #         result = await self.conn.find_friend_relationship(data, degree)
-    #         # Refactor this return
-    #         status_code = HTTPStatus.OK
-    #         return jsonify(data={"friends": result}, message="Friends retrieved successfully.", status=status_code.phrase), status_code
-    #     except Exception as e:
-    #         # Refactor this return
-    #         status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-    #         return jsonify(message=f"Failed to retrieve friends: {str(e)}", status=status_code.phrase), status_code
-
     @route("/users/<user_id>", methods=["GET"])
     @jwt_required
     async def get_user(self, user_id: str):
@@ -494,8 +472,9 @@ class BaseView(QuartClassful):
                 notification_sent = False
                 if isinstance(result, dict) and "in" in result and "out" in result:
                     try:
+                        recipient = await self.conn.fetch(result["out"])
                         await self.__notification_manager.send_friend_request_notification(
-                            sender=result["in"], recipient_id=result["out"]
+                            sender=result["in"], recipient_id=result["out"], recipient_name=recipient["first_name"]
                         )
                         notification_sent = True
                     except Exception as notify_err:
@@ -574,16 +553,7 @@ class BaseView(QuartClassful):
                     status_code,
                 )
 
-            # Optional: Check if the current user is the recipient of the request and allowed to update
-            # user_id = get_jwt_identity()
-            # connection_details = await self.conn.fetch_connection(connection_id) # Need a fetch_connection method
-            # if not connection_details:
-            #     status_code = HTTPStatus.NOT_FOUND
-            #     return jsonify(message="Connection not found.", status=status_code.phrase), status_code
-            # if connection_details.get("out") != user_id: # Assuming 'out' is the recipient
-            #     status_code = HTTPStatus.FORBIDDEN
-            #     return jsonify(message="Unauthorized to update this connection.", status=status_code.phrase), status_code
-
+            # TODO: Add authorization check - verify current user is recipient of friend request
             result = await self.conn.update_friend_relationship(connection_id, data)
             if result:  # Assuming update returns the updated connection or True
                 # Send notification on acceptance/block?
@@ -629,16 +599,7 @@ class BaseView(QuartClassful):
     async def delete_connection(self, connection_id: str):
         """Delete a friendship connection or cancel/reject a request"""
         try:
-            # Optional: Check if the current user is part of the connection and allowed to delete
-            # user_id = get_jwt_identity()
-            # connection_details = await self.conn.fetch_connection(connection_id)
-            # if not connection_details:
-            #     status_code = HTTPStatus.NOT_FOUND
-            #     return jsonify(message="Connection not found.", status=status_code.phrase), status_code
-            # if user_id not in [connection_details.get("in"), connection_details.get("out")]:
-            #     status_code = HTTPStatus.FORBIDDEN
-            #     return jsonify(message="Unauthorized to delete this connection.", status=status_code.phrase), status_code
-
+            # TODO: Add authorization check - verify current user is part of connection
             result = await self.conn.delete_connection(connection_id)
             if result:  # Assuming delete returns True or affected count > 0
                 status_code = HTTPStatus.OK
@@ -750,25 +711,3 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
-
-    # Commented out friend request logic - handled by POST /friends
-    # async def create_friend_request(self, sender_id: str, recipient_id: str):
-    # """
-    # Send a friend request notification
-    # """
-    # try:
-    #     # Assuming create_friend_relationship is an existing method in Users connector
-    #     friend_request = await self.conn.create_friend_relationship(
-    #         {"origin": sender_id, "target": recipient_id, "status": "pending"}
-    #     )
-
-    #     # Send notification to the recipient
-    #     self.__notification_manager.send_friend_request_notification(
-    #         sender_id=sender_id, recipient_id=recipient_id
-    #     )
-
-    #     return friend_request
-    # except Exception as e:
-    #     # Log the error and handle appropriately
-    #     app.logger.error(f"Friend request error: {e}")
-    #     raise

@@ -161,7 +161,7 @@ class NotificationManager:
             raise
 
     async def send_friend_request_notification(
-        self, sender: str, recipient_id: str, workflow_id: str = "friend-request"
+        self, sender: str, recipient_id: str, recipient_name: str, workflow_id: str = "friend-request"
     ):
         """
         Send friend request notification
@@ -169,6 +169,7 @@ class NotificationManager:
         Args:
             sender (str): Name of the sender
             recipient_id (str): User ID of the recipient
+            recipient_name (str): Name of the recipient
             workflow_id (str): Novu workflow identifier for friend requests
 
         Returns:
@@ -179,7 +180,7 @@ class NotificationManager:
                 trigger_event_request_dto=TriggerEventRequestDto(
                     workflow_id=workflow_id,
                     to={"subscriber_id": recipient_id},
-                    payload={"sender": sender},
+                    payload={"sender": recipient_name},
                 )
             )
         except Exception as e:

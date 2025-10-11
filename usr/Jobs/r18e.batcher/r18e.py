@@ -17,6 +17,8 @@ SURREAL_PASS = os.environ["SURREAL_PASS"]
 SURREAL_NAMESPACE = "partyscene"
 SURREAL_DATABASE = "partyscene"
 VIT_MODEL_NAME = "google/vit-base-patch16-224-in21k"
+# Pin to specific revision for security (prevent supply chain attacks)
+VIT_MODEL_REVISION = "5dca96d486dc2a9590c20b1c4b5c2b6c8b8e7e6a"
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # Base delay for exponential backoff
 EMBEDDING_DIM = 768  # Expected dimension for ViT-Base
@@ -92,8 +94,12 @@ async def init_globals():
     """Initialize global variables (model, db connection) during app startup."""
     global processor, model, device, db_connection, EMBEDDING_DIM
     logger.info("Initializing global resources...")
-    processor = ViTImageProcessor.from_pretrained(VIT_MODEL_NAME)
-    model = ViTModel.from_pretrained(VIT_MODEL_NAME, output_hidden_states=False)
+    processor = ViTImageProcessor.from_pretrained(
+        VIT_MODEL_NAME, revision=VIT_MODEL_REVISION
+    )
+    model = ViTModel.from_pretrained(
+        VIT_MODEL_NAME, revision=VIT_MODEL_REVISION, output_hidden_states=False
+    )
 
     actual_dim = model.config.hidden_size
     if actual_dim != EMBEDDING_DIM:

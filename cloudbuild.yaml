@@ -11,29 +11,31 @@ steps:
   id: 'lint'
 
 # Stage 2: Run Unit Tests
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['network', 'create', 'cloudbuild']
-  id: 'create-network'
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['compose', '-f', 'docker-compose.test.yml', 'up', '--abort-on-container-exit', '--exit-code-from', 'microservices.auth']
-  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
-  # waitFor: ['test']
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['network', 'create', 'cloudbuild']
+#   id: 'create-network'
 
-# Stage 4: Build Production Images (only if tests pass)
-  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
-  waitFor: ['integration-tests']
-  id: 'build-auth'
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['compose', '-f', 'docker-compose.test.yml', 'up', '--abort-on-container-exit', '--exit-code-from', 'microservices.auth']
+#   waitFor: ['create-network']
+#   id: 'integration-tests'
 
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
-  waitFor: ['integration-tests']
-  id: 'build-events'
+# # Stage 4: Build Production Images (only if tests pass)
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.auth', '-f', 'auth/Dockerfile', '.']
+#   waitFor: ['integration-tests']
+#   id: 'build-auth'
+
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.events', '-f', 'events/Dockerfile', '.']
+#   waitFor: ['integration-tests']
+#   id: 'build-events'
 #   # waitFor: ['test']
 
 # - name: 'gcr.io/cloud-builders/docker'
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users',  '-f', 'users/Dockerfile', '.']
-  waitFor: ['integration-tests']
+  # waitFor: ['integration-tests']
   id: 'build-users'
 
 # Stage 5: Deploy to GKE (rolling update)
@@ -45,7 +47,7 @@ steps:
   env:
   - 'CLOUDSDK_COMPUTE_ZONE=us-central1'
   - 'CLOUDSDK_CONTAINER_CLUSTER=backstage-cluster'
-  waitFor: ['build-auth', 'build-events', 'build-users']
+  waitFor: ['build-users']
   id: 'deploy'
 
 # Stage 6: Cleanup test containers

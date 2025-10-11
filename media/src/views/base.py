@@ -3,8 +3,7 @@ from quart.datastructures import FileStorage
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from google.cloud import storage
 import google.auth
-from datetime import timedelta
-import werkzeug.datastructures
+from datetime import timedelta, datetime
 
 from shared.classful import route, QuartClassful
 from shared.utils import signer
@@ -13,8 +12,6 @@ from http import HTTPStatus
 
 import os
 import io
-import werkzeug
-from datetime import datetime, timedelta
 import redis.exceptions
 from aiocache import cached
 

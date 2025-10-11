@@ -7,6 +7,7 @@ import hmac
 import hashlib
 import time
 import json as json_lib
+import pytest
 from typing import Dict, Any, Optional
 from faker import Faker
 from datetime import datetime, timedelta

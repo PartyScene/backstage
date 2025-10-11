@@ -423,12 +423,18 @@ class BaseView(QuartClassful):
             )  # Default to False if not specified
 
             for i, file in enumerate(files.values()):
-                data["filename"] = data["filenames"][i]
-                data["type"] = data["types"][i]
+                # Create isolated data dict for each file to prevent race conditions
+                file_data = {
+                    "filename": data["filenames"][i],
+                    "type": data["types"][i],
+                    "host": data["host"],
+                    "event_id": data["event_id"],
+                    "creator": data["creator"],
+                }
                 app.logger.warning(
-                    f"Uploading new event media to GCP: {data['filename']}"
+                    f"Uploading new event media to GCP: {file_data['filename']}"
                 )
-                await app.RMQ._publish_media(data, file)
+                await app.RMQ._publish_media(file_data, file)
 
             app.logger.debug(f"Creating event data: {data}")
 

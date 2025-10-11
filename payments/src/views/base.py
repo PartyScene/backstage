@@ -1,37 +1,21 @@
 from datetime import datetime
-import random
-import orjson as json
-import asyncio
 import os
-import uuid
 import stripe
+import orjson as json
 
-from typing import AsyncGenerator, Dict, Any, Tuple, Optional
+from typing import Dict, Any, Optional
 from http import HTTPStatus
-from shared.utils import sign_media_object
 
-
-from dataclasses import dataclass
-from pprint import pprint
 from quart import (
-    Response,
-    make_response,
-    render_template,
     current_app as app,
     request,
     jsonify,
-    websocket,
 )
 from payments.src.connectors import PaymentsDB
 from shared.classful import route, QuartClassful
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
-
-from shared.workers.rmq import RMQBroker
-import uuid_utils as ruuid
-
-from surrealdb import RecordID
 
 from stripe import StripeClient
 
@@ -287,7 +271,7 @@ class BaseView(QuartClassful):
             )
         except Exception as e:
             app.logger.error(
-                f"Error creating payment intent for KYC {event_id}: {str(e)}",
+                f"Error creating KYC payment intent: {str(e)}",
                 exc_info=True,
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -399,16 +383,9 @@ class BaseView(QuartClassful):
                 )
 
         elif event["type"] == "payment_intent.payment_failed":
-            ...
-            # payment_intent = event["data"]["object"]
-            # app.logger.warning(f"PaymentIntent failed: {payment_intent['id']}")
-            # # Extract ticket_id if available to update its status to 'failed'
-            # ticket_id = payment_intent["metadata"].get("ticket_id")
-            # if ticket_id:
-            #     await update_ticket_status(ticket_id, "payment_failed")
-            #     app.logger.info(f"Ticket '{ticket_id}' marked as payment_failed.")
-            # # Here you might update the ticket status to 'failed' or 'cancelled'
-            # # and notify the user.
+            payment_intent = event.data.object
+            app.logger.warning(f"PaymentIntent failed: {payment_intent['id']}")
+            # TODO: Implement failed payment handling (ticket status update, user notification)
 
         else:
             # Log other event types that you might not be handling explicitly

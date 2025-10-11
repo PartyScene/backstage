@@ -2,13 +2,10 @@ from dataclasses import dataclass
 from datetime import timedelta, datetime
 from http import HTTPStatus
 from quart import (
-    make_response,
-    render_template,
     current_app as app,
     request,
     jsonify,
     url_for,
-    redirect,
 )
 from quart_jwt_extended import create_access_token
 from quart_jwt_extended import jwt_required, get_jwt_identity
@@ -29,7 +26,6 @@ from shared.utils import veriff
 from shared.workers.novu import NotificationManager
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
-import os
 import stripe
 
 logger = logging.getLogger(__name__)
@@ -633,20 +629,7 @@ class BaseView(QuartClassful):
         await self.conn.update_user(
             {"id": user["id"], "stripe_account_kyc_status": True}
         )
-        # return redirect('/dashboard?onboarding=success')
         return jsonify(message="onboarding success"), HTTPStatus.OK
-
-        # if account.charges_enabled and account.payouts_enabled:
-        #     # Onboarding complete; update DB, notify user
-        #     await self.conn.update_user(
-        #         {"id": user_id, "stripe_account_kyc_status": True}
-        #     )
-        #     # return redirect('/dashboard?onboarding=success')
-        #     return jsonify(onboarding="success"), HTTPStatus.OK
-        # else:
-        #     # Incomplete; prompt to resume
-        #     # return redirect('/dashboard?onboarding=incomplete')
-        #     return jsonify(onboarding="incomplete"), HTTPStatus.OK
 
     @route("/auth/reauth-stripe", methods=["GET"])
     async def reauth_stripe(self):
