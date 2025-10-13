@@ -177,9 +177,9 @@ class PostsDB:
                     ...
                     # raise ValueError("Post is too far from the event location.")
 
-            if "filename" in data and "type" in data:
-                filename = data["filename"]
-                media_type = data["type"]
+            if "filenames" in data and "types" in data:
+                filename = data["filenames"][0]
+                media_type = data["types"][0]
                 media_query_result = await conn.create(
                     "media",
                     {
