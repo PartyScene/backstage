@@ -304,14 +304,19 @@ DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: reco
     }
 };
 
+DEFINE FUNCTION OVERWRITE fn::get_friends($origin: record) {
+    RETURN (
+        SELECT ->friends.{id, in, out, status} AS friends FROM $origin
+    )
+};
 
 DEFINE FUNCTION OVERWRITE fn::find_relationships($origin: record) {
     LET $result = SELECT
-                            @.{1}<->friends<->users AS degree_1,
-                            @.{2}<->friends<->users AS degree_2,
-                            @.{3}<->friends<->users AS degree_3,
-                            @.{4}<->friends<->users AS degree_4,
-                            @.{5}<->friends<->users AS degree_5
+                            @.{1}<->(friends WHERE status='accepted')<->users AS degree_1,
+                            @.{2}<->(friends WHERE status='accepted')<->users AS degree_2,
+                            @.{3}<->(friends WHERE status='accepted')<->users AS degree_3,
+                            @.{4}<->(friends WHERE status='accepted')<->users AS degree_4,
+                            @.{5}<->(friends WHERE status='accepted')<->users AS degree_5
     FROM ONLY $origin;
     RETURN $result
 };

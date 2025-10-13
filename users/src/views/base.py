@@ -401,7 +401,7 @@ class BaseView(QuartClassful):
                     status_code,
                 )
 
-            result = await self.conn.find_connections_at_degree(user_id, max_degree)
+            result = await self.conn.get_connections_at_degree(user_id, max_degree)
             status_code = HTTPStatus.OK
             return (
                 jsonify(

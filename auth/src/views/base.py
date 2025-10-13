@@ -44,7 +44,7 @@ class BaseView(QuartClassful):
 
     def generate_jwt_secret(self, identity):
         """Generate a JWT secret for the given identity."""
-        return create_access_token(identity=identity, expires_delta=timedelta(days=1))
+        return create_access_token(identity=identity, expires_delta=timedelta(days=180))
 
     @route("/", methods=["GET"])
     async def index(self):

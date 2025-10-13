@@ -30,7 +30,7 @@ class UsersDB:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
-    async def find_connections_at_degree(self, origin_id: str, max_degree: int = 3):
+    async def get_connections_at_degree(self, origin_id: str, max_degree: int = 3):
         """
         Find all connections up to N degrees of separation
 
@@ -44,16 +44,10 @@ class UsersDB:
         if max_degree < 1 or max_degree > 6:
             return {"error": "Degree must be between 1 and 6"}
 
-        # Build the SELECT fields dynamically based on max_degree
-        select_fields = []
-        for i in range(1, max_degree + 1):
-            path = "->friends->users" * i
-            select_fields.append(f"{path}.* AS degree_{i}")
-
         async with self.pool.acquire() as conn:
 
             result = await conn.query(
-                "RETURN fn::find_relationships($origin);",
+                "RETURN fn::get_friends($origin);",
                 {"origin": RecordID("users", origin_id)},
             )
         return record_id_to_json(result)
