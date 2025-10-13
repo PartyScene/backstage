@@ -306,7 +306,7 @@ DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: reco
 
 DEFINE FUNCTION OVERWRITE fn::get_friends($origin: record) {
     RETURN (
-        SELECT ->friends.{id, in, out, status} AS friends FROM $origin
+        SELECT <->friends.{id, in, out, status} AS friends FROM $origin
     )
 };
 
