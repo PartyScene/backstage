@@ -30,7 +30,7 @@ import stripe
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "your-google-client-id")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "288617366843-b4uvkfpaqcavca7tcc9co7die2opu62k.apps.googleusercontent.com")
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # Use env vars for security
 
 

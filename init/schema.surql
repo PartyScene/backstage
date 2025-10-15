@@ -293,10 +293,13 @@ DEFINE FUNCTION OVERWRITE fn::fetch_post($post_id: record) {
 DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: record, $status: string) {
     -- Check existing relationship
     LET $existing = (SELECT VALUE <->(friends WHERE out = $target OR in = $target).* FROM ONLY $origin);
-    LET $new = IF !$existing THEN
+    LET $new = IF !$existing {
         (RELATE ONLY $origin -> friends -> $target SET status = $status, created_at = time::now())
-    ELSE
+    } ELSE IF $existing.status == 'removed' {
+        UPDATE $existing SET status = 'pending'
+    } ELSE {
         $existing[0]
+    }
     END;
     RETURN {
         is_new: !$existing,
