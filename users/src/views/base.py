@@ -600,7 +600,7 @@ class BaseView(QuartClassful):
         """Delete a friendship connection or cancel/reject a request"""
         try:
             # TODO: Add authorization check - verify current user is part of connection
-            result = await self.conn.delete_connection(connection_id)
+            result = await self.conn.update_friend_relationship(connection_id, {"status": "removed"})
             if result:  # Assuming delete returns True or affected count > 0
                 status_code = HTTPStatus.OK
                 return (
