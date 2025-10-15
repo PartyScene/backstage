@@ -238,7 +238,7 @@ class AuthDB:
         """
         try:
             result = await self.pool.execute_query(
-                "SELECT * FROM users WHERE crypto::argon2::compare(hashed_password, $password) AND crypto::argon2::compare(hashed_email, $email);",
+                "SELECT * FROM users WHERE auth_provider = 'password' AND hashed_password != NONE AND crypto::argon2::compare(hashed_password, $password) AND crypto::argon2::compare(hashed_email, $email);",
                 {"password": data["password"], "email": data["email"]},
             )
             logger.debug(json.dumps(result, default=str, option=json.OPT_INDENT_2))

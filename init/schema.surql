@@ -295,12 +295,11 @@ DEFINE FUNCTION OVERWRITE fn::create_relationship($origin: record, $target: reco
     LET $existing = (SELECT VALUE <->(friends WHERE out = $target OR in = $target).* FROM ONLY $origin);
     LET $new = IF !$existing {
         (RELATE ONLY $origin -> friends -> $target SET status = $status, created_at = time::now())
-    } ELSE IF $existing.status == 'removed' {
-        UPDATE $existing SET status = 'pending'
+    } ELSE IF $existing[0].status == 'removed' {
+        UPDATE $existing[0] SET status = 'pending' RETURN AFTER
     } ELSE {
         $existing[0]
-    }
-    END;
+    };
     RETURN {
         is_new: !$existing,
         relationship: $new
