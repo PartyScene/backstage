@@ -363,7 +363,7 @@ class BaseView(QuartClassful):
                     status_code,
                 )
                 
-            data = form.to_dict()
+            data = form.to_dict().copy()
 
             # Validate required fields
             required_fields = [
@@ -391,7 +391,8 @@ class BaseView(QuartClassful):
                 (RecordID("events", str(ruuid.uuid4()).split("-")[-1]))
                 if not data.get("id", None)
                 else RecordID("events", data["id"])
-            )
+            ) # Generate a new event ID if none is provided
+            
             data["coordinates"] = form.getlist("coordinates[]", type=float)
             if len(data["coordinates"]) == 1:
                 # Probably only one coordinate provided, monkey patch

@@ -73,9 +73,35 @@ class EventsDB:
                 "coordinates": GeometryPoint.parse_coordinates(coordinates),
             }
 
+            # Extract and clean data before event creation
+            event_id = data.pop("event_id", None)
+            filenames = data.pop("filenames", None)
+            types = data.pop("types", None)
+            data.pop("id", None)
+            data.pop("filename", None)
+            data.pop("type", None)
+            data.pop("categories[]", None)
+            data.pop("coordinates[]", None)
+
+            # Create the event FIRST to get the actual event ID
+            async with self.pool.acquire() as conn:
+                result = await conn.create(event_id, data)
+                if isinstance(result, str):
+                    raise Exception(f"Error creating event: {result}")
+                
+                if not isinstance(result, dict):
+                    raise Exception(f"Unexpected result type: {type(result)}")
+                
+                # Use the newly created event's ID
+                created_event_id = result["id"]
+                self.logger.warning(
+                    f"Created event: {json.dumps(result, option=json.OPT_INDENT_2, default=str)}"
+                )
+
+            # Now create media records with the CORRECT event ID
             media_ids = []
-            for i, filename in enumerate(data["filenames"]):
-                media_type = data["types"][i]
+            for i, filename in enumerate(filenames):
+                media_type = types[i]
                 async with self.pool.acquire() as conn:
                     media_query_result = await conn.create(
                         "media",
@@ -83,46 +109,25 @@ class EventsDB:
                             "filename": filename,
                             "type": media_type,
                             "creator": data["creator"],
-                            "event": data["event_id"],
+                            "event": created_event_id,
                         },
                     )
                     if isinstance(media_query_result, dict):
                         media_ids.append(media_query_result["id"])
                 self.logger.warning(
-                    json.dumps(
-                        media_query_result, option=json.OPT_INDENT_2, default=str
-                    )
-                )
-                self.logger.warning(
-                    json.dumps(media_ids, option=json.OPT_INDENT_2, default=str)
+                    f"Created media: {json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)}"
                 )
 
-            data.pop("id", None)
-            data.pop("filenames", None)
-            data.pop("filename", None)
-            data.pop("type", None)
-            data.pop("categories[]", None)
-            data.pop("coordinates[]", None)
-            data.pop("types", None)
-
+            # Create relations using the correct event ID
             async with self.pool.acquire() as conn:
-                event_id = data.pop("event_id", None)
-                result = await conn.create(event_id, data)
-                if isinstance(result, dict):
-                    await conn.query(
-                        "RELATE $event -> has_media -> $media_ids",
-                        {
-                            "event": event_id,
-                            "media_ids": media_ids,
-                        },
-                    )
-                    self.logger.warning(
-                        json.dumps(result, option=json.OPT_INDENT_2, default=str)
-                    )
-                    result = await conn.select(event_id)
-
-                elif isinstance(result, str):
-                    raise Exception(f"Error creating event: {result}")
+                await conn.query(
+                    "RELATE $event -> has_media -> $media_ids",
+                    {
+                        "event": created_event_id,
+                        "media_ids": media_ids,
+                    },
+                )
+                result = await conn.select(created_event_id)
 
             return record_id_to_json(result)
 
