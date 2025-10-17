@@ -8,6 +8,7 @@ import uuid
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
 from shared.utils import recursively_sign_object_media
+from shared.middleware.validation import ValidationMiddleware
 
 from dataclasses import dataclass
 from pprint import pprint
@@ -346,6 +347,10 @@ class BaseView(QuartClassful):
             )
 
     @route("/events", methods=["POST"])
+    @ValidationMiddleware.validate_file_upload(
+        max_size=50 * 1024 * 1024,
+        required=True
+    )
     @jwt_required
     async def create_event(self):
         """Create an event"""
@@ -353,16 +358,6 @@ class BaseView(QuartClassful):
             form = await request.form
             files = await request.files
             
-            if not files:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="At least one media file is required",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
-                
             data = form.to_dict().copy()
 
             # Validate required fields

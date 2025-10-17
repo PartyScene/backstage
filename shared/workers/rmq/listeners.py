@@ -92,18 +92,18 @@ class RMQBroker(RabbitBroker):
             except:
                 return None
 
-    async def convert_mov_to_mp4(self, input_bytes: bytes) -> bytes:
-        """Convert MOV to MP4 using FFmpeg async API with hardware acceleration for iOS compatibility"""
+    async def compress_video(self, input_bytes: bytes, filename: str) -> bytes:
+        """Compress video with optimized settings for size reduction while preserving quality"""
         import tempfile
         from ffmpeg.asyncio import FFmpeg
         from ffmpeg.errors import FFmpegError
         
         # Create temporary files
-        with tempfile.NamedTemporaryFile(suffix='.mov', delete=False) as temp_input:
+        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1], delete=False) as temp_input:
             temp_input.write(input_bytes)
             temp_input_path = temp_input.name
         
-        temp_output_path = temp_input_path.replace('.mov', '.mp4')
+        temp_output_path = temp_input_path.replace(os.path.splitext(filename)[1], '.mp4')
         
         try:
             # Try hardware acceleration first (NVIDIA)
@@ -117,20 +117,24 @@ class RMQBroker(RabbitBroker):
                         temp_output_path,
                         {
                             "codec:v": "h264_nvenc",     # NVIDIA hardware encoder
-                            "preset": "fast",            # Balance speed vs compression
-                            "crf": "23",                 # Good quality/size balance
-                            "profile:v": "baseline",     # iOS compatibility
-                            "level": "3.0",              # iOS compatibility
-                            "codec:a": "aac",            # AAC audio for iOS
+                            "preset": "slow",            # Better compression than "fast"
+                            "crf": "28",                 # More aggressive compression (was 23)
+                            "maxrate": "5M",             # 5Mbps max bitrate
+                            "bufsize": "10M",            # Buffer size
+                            "profile:v": "high",         # Better quality than baseline
+                            "level": "4.0",              # Support higher resolutions
+                            "codec:a": "aac",            # AAC audio
                             "ar": "44100",               # Standard audio sample rate
+                            "b:a": "128k",               # Audio bitrate 128k
                             "movflags": "+faststart",    # Enable progressive download
-                            "pix_fmt": "yuv420p"         # iOS compatible pixel format
+                            "pix_fmt": "yuv420p",        # Compatible pixel format
+                            "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
                         }
                     )
                 )
                 
                 await ffmpeg_hw.execute()
-                self.logger.info("Successfully converted MOV to MP4 using hardware acceleration")
+                self.logger.info("Successfully compressed video using hardware acceleration")
                 
             except FFmpegError as e:
                 self.logger.info(f"Hardware acceleration unavailable, using software: {e}")
@@ -143,34 +147,67 @@ class RMQBroker(RabbitBroker):
                     .output(
                         temp_output_path,
                         {
-                            "codec:v": "libx264",        # H.264 codec for iOS compatibility
-                            "preset": "fast",            # Balance speed vs compression
-                            "crf": "23",                 # Good quality/size balance
-                            "profile:v": "baseline",     # iOS compatibility
-                            "level": "3.0",              # iOS compatibility
-                            "codec:a": "aac",            # AAC audio for iOS
+                            "codec:v": "libx264",        # H.264 codec for compatibility
+                            "preset": "slow",            # Better compression than "fast"
+                            "crf": "28",                 # More aggressive compression (was 23)
+                            "maxrate": "5M",             # 5Mbps max bitrate
+                            "bufsize": "10M",            # Buffer size
+                            "profile:v": "high",         # Better quality than baseline
+                            "level": "4.0",              # Support higher resolutions
+                            "codec:a": "aac",            # AAC audio
                             "ar": "44100",               # Standard audio sample rate
+                            "b:a": "128k",               # Audio bitrate 128k
                             "movflags": "+faststart",    # Enable progressive download
-                            "pix_fmt": "yuv420p"         # iOS compatible pixel format
+                            "pix_fmt": "yuv420p",        # Compatible pixel format
+                            "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
                         }
                     )
                 )
                 
                 await ffmpeg_sw.execute()
-                self.logger.info("Successfully converted MOV to MP4 using software encoding")
+                self.logger.info("Successfully compressed video using software encoding")
             
-            # Read converted file
+            # Read compressed file
             with open(temp_output_path, 'rb') as f:
-                converted_bytes = f.read()
+                compressed_bytes = f.read()
                 
-            self.logger.info(f"Successfully converted MOV to MP4. Original: {len(input_bytes)} bytes, Converted: {len(converted_bytes)} bytes")
-            return converted_bytes
+            self.logger.info(f"Video compressed: {len(input_bytes)} -> {len(compressed_bytes)} bytes ({filename})")
+            return compressed_bytes
             
         finally:
             # Clean up temp files
             for path in [temp_input_path, temp_output_path]:
                 if os.path.exists(path):
                     os.unlink(path)
+
+    async def compress_image(self, image_bytes: bytes) -> bytes:
+        """Compress image while preserving quality"""
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Convert to RGB if necessary (for JPEG compatibility)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # Create white background for transparent images
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'RGBA':
+                background.paste(img, mask=img.split()[-1])  # Use alpha as mask
+            else:
+                background.paste(img)
+            img = background
+        
+        # Resize if too large (max 2048px on longest side)
+        max_dimension = 2048
+        if max(img.size) > max_dimension:
+            ratio = max_dimension / max(img.size)
+            new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+        
+        # Compress with high quality
+        output = io.BytesIO()
+        img.save(output, 'JPEG', quality=90, optimize=True, progressive=True)
+        compressed_bytes = output.getvalue()
+        
+        self.logger.info(f"Image compressed: {len(image_bytes)} -> {len(compressed_bytes)} bytes")
+        return compressed_bytes
 
     async def upload_to_bucket(self, data, file_bytes: bytes):
         import obstore as obs
@@ -179,17 +216,29 @@ class RMQBroker(RabbitBroker):
         filename = data["filename"]
         content_type = data["content-type"]
         
-        if filename.lower().endswith('.mov') and content_type.startswith('video/'):
+        # Compress images
+        if content_type.startswith('image/'):
             try:
-                # Convert MOV to MP4
-                file_bytes = await self.convert_mov_to_mp4(file_bytes)
-                # Update filename and content type
-                data["filename"] = filename.replace('.mov', '.mp4').replace('.MOV', '.mp4')
-                data["content-type"] = 'video/mp4'
-                self.logger.info(f"Converted MOV to MP4: {filename} -> {data['filename']}")
+                file_bytes = await self.compress_image(file_bytes)
+                self.logger.info(f"Compressed image: {filename}")
             except Exception as e:
-                self.logger.error(f"Failed to convert MOV to MP4 for {filename}: {e}")
-                # Continue with original file if conversion fails
+                self.logger.error(f"Failed to compress image {filename}: {e}")
+                # Continue with original file if compression fails
+        
+        # Compress videos (convert MOV to MP4 and optimize all videos)
+        if content_type.startswith('video/'):
+            try:
+                file_bytes = await self.compress_video(file_bytes, filename)
+                # Update filename and content type to MP4
+                if not filename.lower().endswith('.mp4'):
+                    data["filename"] = os.path.splitext(filename)[0] + '.mp4'
+                    data["content-type"] = 'video/mp4'
+                    self.logger.info(f"Converted video to MP4: {filename} -> {data['filename']}")
+                else:
+                    self.logger.info(f"Compressed video: {filename}")
+            except Exception as e:
+                self.logger.error(f"Failed to process video {filename}: {e}")
+                # Continue with original file if processing fails
         
         await obs.put_async(
             self.OBS_STORE,

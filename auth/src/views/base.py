@@ -27,6 +27,7 @@ from shared.workers.novu import NotificationManager
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import stripe
+from stripe import StripeError
 
 logger = logging.getLogger(__name__)
 
@@ -612,7 +613,7 @@ class BaseView(QuartClassful):
                 jsonify(url=account_link.url),
                 status_code,
             )  # Frontend redirects to this URL
-        except stripe.error.StripeError as e:
+        except StripeError as e:
             status_code = HTTPStatus.BAD_REQUEST
             return jsonify(error=str(e)), status_code
 

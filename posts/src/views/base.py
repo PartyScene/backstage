@@ -14,6 +14,7 @@ from aiocache import cached
 
 from shared.workers.rmq import RMQBroker
 from shared.utils import recursively_sign_object_media
+from shared.middleware.validation import ValidationMiddleware
 import uuid_utils as ruuid
 
 from surrealdb import RecordID
@@ -368,6 +369,10 @@ class BaseView(QuartClassful):
             )
 
     @route("/posts", methods=["POST"])
+    @ValidationMiddleware.validate_file_upload(
+        max_size=50 * 1024 * 1024,
+        required=True
+    )
     @jwt_required
     async def create_post(self):
         """
@@ -386,16 +391,6 @@ class BaseView(QuartClassful):
                 status_code = HTTPStatus.BAD_REQUEST
                 return (
                     jsonify(message="Content is required", status=status_code.phrase),
-                    status_code,
-                )
-
-            if not files:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="At least one media file is required",
-                        status=status_code.phrase,
-                    ),
                     status_code,
                 )
 
