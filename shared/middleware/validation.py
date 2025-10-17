@@ -130,8 +130,8 @@ class ValidationMiddleware:
                         }), 400
                     
                     # Check file size
-                    file_size = len(await file.read())
-                    await file.seek(0)  # Reset file pointer
+                    file_size = len(file.read())
+                    file.seek(0)  # Reset file pointer
                     
                     max_allowed = max_size or ValidationMiddleware.MAX_FILE_SIZE
                     if file_size > max_allowed:
