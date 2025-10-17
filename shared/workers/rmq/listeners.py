@@ -107,66 +107,163 @@ class RMQBroker(RabbitBroker):
         
         try:
             # Try hardware acceleration first (NVIDIA)
+            # try:
+            #     ffmpeg_hw = (
+            #         FFmpeg()
+            #         .option("y")  # Overwrite output file
+            #         .option("hwaccel", "cuda")  # Hardware acceleration
+            #         .input(temp_input_path)
+            #         .output(
+            #             temp_output_path,
+            #             {
+            #                 "codec:v": "h264_nvenc",     # NVIDIA hardware encoder
+            #                 "preset": "slow",            # Better compression than "fast"
+            #                 "crf": "28",                 # More aggressive compression (was 23)
+            #                 "maxrate": "5M",             # 5Mbps max bitrate
+            #                 "bufsize": "10M",            # Buffer size
+            #                 "profile:v": "high",         # Better quality than baseline
+            #                 "level": "4.0",              # Support higher resolutions
+            #                 "codec:a": "aac",            # AAC audio
+            #                 "ar": "44100",               # Standard audio sample rate
+            #                 "b:a": "128k",               # Audio bitrate 128k
+            #                 "movflags": "+faststart",    # Enable progressive download
+            #                 "pix_fmt": "yuv420p",        # Compatible pixel format
+            #                 "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
+            #             }
+            #         )
+            #     )
+                
+            #     await ffmpeg_hw.execute()
+            #     self.logger.info("Successfully compressed video using hardware acceleration")
+                
+            # except FFmpegError as e:
+            #     self.logger.info(f"Hardware acceleration unavailable, using software: {e}")
+                
+            #     # Fall back to software encoding
+            #     ffmpeg_sw = (
+            #         FFmpeg()
+            #         .option("y")  # Overwrite output file
+            #         .input(temp_input_path)
+            #         .output(
+            #             temp_output_path,
+            #             {
+            #                 "codec:v": "libx264",        # H.264 codec for compatibility
+            #                 "preset": "slow",            # Better compression than "fast"
+            #                 "crf": "28",                 # More aggressive compression (was 23)
+            #                 "maxrate": "5M",             # 5Mbps max bitrate
+            #                 "bufsize": "10M",            # Buffer size
+            #                 "profile:v": "high",         # Better quality than baseline
+            #                 "level": "4.0",              # Support higher resolutions
+            #                 "codec:a": "aac",            # AAC audio
+            #                 "ar": "44100",               # Standard audio sample rate
+            #                 "b:a": "128k",               # Audio bitrate 128k
+            #                 "movflags": "+faststart",    # Enable progressive download
+            #                 "pix_fmt": "yuv420p",        # Compatible pixel format
+            #                 "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
+            #             }
+            #         )
+            #     )
+                
+            #     await ffmpeg_sw.execute()
+            #     self.logger.info("Successfully compressed video using software encoding")
+            
+
             try:
                 ffmpeg_hw = (
                     FFmpeg()
-                    .option("y")  # Overwrite output file
-                    .option("hwaccel", "cuda")  # Hardware acceleration
+                    .option("y")
+                    .option("hwaccel", "cuda")
+                    .option("hwaccel_output_format", "cuda")  # Keep frames on GPU
                     .input(temp_input_path)
                     .output(
                         temp_output_path,
                         {
-                            "codec:v": "h264_nvenc",     # NVIDIA hardware encoder
-                            "preset": "slow",            # Better compression than "fast"
-                            "crf": "28",                 # More aggressive compression (was 23)
-                            "maxrate": "5M",             # 5Mbps max bitrate
-                            "bufsize": "10M",            # Buffer size
-                            "profile:v": "high",         # Better quality than baseline
-                            "level": "4.0",              # Support higher resolutions
-                            "codec:a": "aac",            # AAC audio
-                            "ar": "44100",               # Standard audio sample rate
-                            "b:a": "128k",               # Audio bitrate 128k
-                            "movflags": "+faststart",    # Enable progressive download
-                            "pix_fmt": "yuv420p",        # Compatible pixel format
-                            "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
+                            "codec:v": "h264_nvenc",
+                            
+                            # NVENC-specific settings (different from libx264!)
+                            "preset": "p5",              # p1-p7, p5=medium quality/speed
+                            "tune": "hq",                # High quality mode
+                            "rc": "vbr",                 # Variable bitrate (better than CQ for NVENC)
+                            "cq": "28",                  # Quality level (NOT crf!)
+                            "b:v": "0",                  # Let cq control quality
+                            "maxrate": "5M",             # Cap at 5Mbps
+                            "bufsize": "10M",            # 2x maxrate recommended
+                            
+                            "profile:v": "main",         # 'main' better than 'high' for mobile
+                            "level": "4.1",              # 4.1 for 1080p60 support
+                            "spatial-aq": "1",           # Spatial adaptive quantization
+                            "temporal-aq": "1",          # Temporal adaptive quantization
+                            "rc-lookahead": "32",        # Lookahead frames for better decisions
+                            
+                            # Audio settings
+                            "codec:a": "aac",
+                            "ar": "44100",
+                            "b:a": "96k",                # Instagram-standard audio
+                            
+                            # Format settings
+                            "movflags": "+faststart",
+                            "pix_fmt": "yuv420p",
+                            
+                            # Scaling (fixed - removed forced padding)
+                            "vf": "scale_cuda='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease"
                         }
                     )
                 )
                 
                 await ffmpeg_hw.execute()
-                self.logger.info("Successfully compressed video using hardware acceleration")
-                
-            except FFmpegError as e:
-                self.logger.info(f"Hardware acceleration unavailable, using software: {e}")
-                
-                # Fall back to software encoding
-                ffmpeg_sw = (
-                    FFmpeg()
-                    .option("y")  # Overwrite output file
-                    .input(temp_input_path)
-                    .output(
-                        temp_output_path,
-                        {
-                            "codec:v": "libx264",        # H.264 codec for compatibility
-                            "preset": "slow",            # Better compression than "fast"
-                            "crf": "28",                 # More aggressive compression (was 23)
-                            "maxrate": "5M",             # 5Mbps max bitrate
-                            "bufsize": "10M",            # Buffer size
-                            "profile:v": "high",         # Better quality than baseline
-                            "level": "4.0",              # Support higher resolutions
-                            "codec:a": "aac",            # AAC audio
-                            "ar": "44100",               # Standard audio sample rate
-                            "b:a": "128k",               # Audio bitrate 128k
-                            "movflags": "+faststart",    # Enable progressive download
-                            "pix_fmt": "yuv420p",        # Compatible pixel format
-                            "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
-                        }
-                    )
-                )
-                
-                await ffmpeg_sw.execute()
-                self.logger.info("Successfully compressed video using software encoding")
+                self.logger.info("✅ Hardware acceleration: Video compressed successfully")
             
+            except FFmpegError as e:
+                self.logger.warning(f"⚠️ Hardware acceleration failed: {e}")
+                self.logger.info("Falling back to software encoding...")
+                
+                # ============================================
+                # SOFTWARE FALLBACK (libx264)
+                # ============================================
+                try:
+                    ffmpeg_sw = (
+                        FFmpeg()
+                        .option("y")
+                        .input(temp_input_path)
+                        .output(
+                            temp_output_path,
+                            {
+                                "codec:v": "libx264",
+                                
+                                # libx264-specific settings
+                                "preset": "medium",          # Faster than 'slow', minimal quality loss
+                                "crf": "28",                 # Quality-based encoding
+                                # Note: removed maxrate/bufsize - let CRF work alone
+                                
+                                "profile:v": "main",         # Better mobile support
+                                "level": "4.1",              # 1080p60 support
+                                "tune": "film",              # Better for real-world content
+                                
+                                # x264 optimization flags
+                                "x264-params": "ref=4:bframes=3:b-adapt=2:direct=auto:me=umh:subme=7:trellis=1:rc-lookahead=50",
+                                
+                                # Audio settings
+                                "codec:a": "aac",
+                                "ar": "44100",
+                                "b:a": "96k",
+                                
+                                # Format settings
+                                "movflags": "+faststart",
+                                "pix_fmt": "yuv420p",
+                                
+                                # Scaling (fixed - removed forced padding)
+                                "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease"
+                            }
+                        )
+                    )
+                    
+                    await ffmpeg_sw.execute()
+                    self.logger.info("✅ Software encoding: Video compressed successfully")
+                    
+                except FFmpegError as e:
+                    self.logger.error(f"❌ Software encoding failed: {e}")
+                    raise
+
             # Read compressed file
             with open(temp_output_path, 'rb') as f:
                 compressed_bytes = f.read()

@@ -93,7 +93,8 @@ class ValidationMiddleware:
             return decorated_function
         return decorator
     
-    def validate_file_upload(self, 
+    @staticmethod
+    def validate_file_upload( 
                            allowed_types: Optional[set] = None,
                            max_size: Optional[int] = None,
                            required: bool = True):
@@ -132,7 +133,7 @@ class ValidationMiddleware:
                     file_size = len(await file.read())
                     await file.seek(0)  # Reset file pointer
                     
-                    max_allowed = max_size or self.MAX_FILE_SIZE
+                    max_allowed = max_size or ValidationMiddleware.MAX_FILE_SIZE
                     if file_size > max_allowed:
                         return jsonify({
                             "error": "File too large",
