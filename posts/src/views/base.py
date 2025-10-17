@@ -370,7 +370,7 @@ class BaseView(QuartClassful):
 
     @route("/posts", methods=["POST"])
     @ValidationMiddleware.validate_file_upload(
-        max_size=50 * 1024 * 1024,
+        max_size=50 * 1024 * 1024,  # 50MB for posts
         required=True
     )
     @jwt_required

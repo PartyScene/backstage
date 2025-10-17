@@ -101,6 +101,9 @@ class MicroService(Quart):
         self.error_handler = ErrorHandlerMiddleware(self)
         self.rate_limiter = RateLimitMiddleware(self)
         
+        # Configure content length limit before middleware (Quart processes this early)
+        self.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+        
         # Configure security settings based on environment
         if os.getenv("ENVIRONMENT") == "dev":
             self.config["DEBUG"] = True
@@ -312,7 +315,7 @@ class MicroService(Quart):
         @self.after_request
         async def after_request(response):
             endpoint = request.path
-            resp_time = time.time() - request.start_time
+            resp_time = time.time() - getattr(request, 'start_time', time.time())
             REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint).observe(
                 resp_time
             )

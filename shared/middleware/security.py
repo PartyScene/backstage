@@ -17,7 +17,6 @@ class SecurityMiddleware:
     
     def init_app(self, app):
         """Initialize security middleware with Quart app"""
-        app.config['MAX_CONTENT_LENGTH'] = 25 * 1024 * 1024  # 25MB
         app.config.setdefault('CORS_ORIGINS', ['https://partyscene.app', 'https://api.partyscene.app'])
         app.config.setdefault('SECURITY_HEADERS', True)
         
