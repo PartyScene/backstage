@@ -332,6 +332,7 @@ class BaseView(QuartClassful):
         # Check if there's an existing Novu subscriber for this email
         existing_subscriber = await self.__notification_manager.get_subscriber_by_email(data.get("email"))
         if existing_subscriber:
+            logger.warning("User already exists in Novu, reusing subscriber_id %s for user %s", existing_subscriber.subscriber_id, data.get("email"))
             # Reuse the existing subscriber_id as user_id
             data["id"] = existing_subscriber.subscriber_id
         else:
