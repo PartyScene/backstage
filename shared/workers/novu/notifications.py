@@ -4,7 +4,7 @@ import logging
 import httpx
 
 from datetime import datetime
-from novu_py import Novu, TriggerEventRequestDto, To
+from novu_py import Novu, SubscriberResponseDto, TriggerEventRequestDto, To
 from typing import Tuple
 import uuid
 from typing import Dict, List, Union, Optional
@@ -44,6 +44,27 @@ class NotificationManager:
         # except Exception as e:
         #     logger.error(f"Failed to get Location from IP {e}")
         #     return "", ""
+    async def get_subscriber_by_email(self, email: str) -> Union[Dict, SubscriberResponseDto, None]:
+        """
+        Get subscriber by email address
+        
+        Args:
+            email (str): Email address to search for
+            
+        Returns:
+            Union[Dict, SubscriberResponseDto, None]: Subscriber data if found, None otherwise
+        """
+        try:
+            result = await self.novu_client.subscribers.search_async(
+                request={"email": email}
+            )
+            if result and result.result.data:
+                return result.result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Subscriber search error: {e}")
+            return None
+        
 
     async def create_subscriber(
         self,
@@ -75,8 +96,8 @@ class NotificationManager:
                 request={"email": email}
             ):
                 if len(exists.result.data) >= 1:
-                    logger.info("Found a Novu Subscriber with %s " % email)
-                    logger.info(exists.result)
+                    logger.warning("Found a Novu Subscriber with %s " % email)
+                    logger.warning(exists.result)
                     return await self.novu_client.subscribers.patch_async(
                         subscriber_id=exists.result.data[0].subscriber_id,
                         patch_subscriber_request_dto=subscriber_data,

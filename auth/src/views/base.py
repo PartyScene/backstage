@@ -328,11 +328,19 @@ class BaseView(QuartClassful):
     async def register_user(self):
         """Register a user account into the SurrealDB."""
         data = await request.get_json()
-        data["id"] = (
-            str(ruuid.uuid4()).split("-")[-1]
-            if not data.get("id", None)
-            else data["id"]
-        )
+        
+        # Check if there's an existing Novu subscriber for this email
+        existing_subscriber = await self.__notification_manager.get_subscriber_by_email(data.get("email"))
+        if existing_subscriber:
+            # Reuse the existing subscriber_id as user_id
+            data["id"] = existing_subscriber.subscriber_id
+        else:
+            # Generate a random ID if none is provided and no existing subscriber
+            data["id"] = (
+                str(ruuid.uuid4()).split("-")[-1]
+                if not data.get("id", None)
+                else data["id"]
+            )
 
         try:
             result = await self.conn._check_exists(
