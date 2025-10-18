@@ -127,16 +127,37 @@ class BaseView(QuartClassful):
         app.logger.debug(
             f"Creating payment intent for user {user_id} with amount {total_amount} for event {event_id} and ticket count {ticket_count}"
         )
+
+        CALCULATION = await stripe.tax.Calculation.create_async(
+            currency="usd",
+            line_items=[
+                {
+                    "amount": int(total_amount * 100),
+                    "quantity": ticket_count,
+                }
+            ],
+            customer_details={"address": {"country": "US"}}
+        ) # Calculate tax
+
         # Create a Stripe payment intent with the total amount and user metadata
         payment_intent = await self.stripe_client.payment_intents.create_async(
             {
-                "amount": int(total_amount * 100),  # Convert to cents
+                "amount": CALCULATION.amount_total,  # Convert to cents
                 "currency": "usd",
                 "metadata": {
                     "user_id": user_id,
                     "ticket_count": str(ticket_count),
                     "event_id": event_id,
                 },
+                "auto_payment_methods": {
+                    "enabled": True,
+                },
+                "application_fee_amount": int(0.03 * (total_amount * 100)), # Our fee is 3% of the total amount,
+                "hooks": {
+                    "tax": {
+                        "calculation": CALCULATION.id,
+                    }
+                }
             }
         )
         return payment_intent
