@@ -121,7 +121,7 @@ class BaseView(QuartClassful):
         )
 
     async def create_payment_stripe_intent(
-        self, amount: int, user_id, event_id, ticket_count: int = 1, ip_address: str = "127.0.0.1"
+        self, amount: int, user_id, event_id, ticket_count: int = 1, ip_address: str = "127.0.0.1", host_stripe_account_id: str = None
     ) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
@@ -143,23 +143,33 @@ class BaseView(QuartClassful):
             customer_details={"ip_address": ip_address}
         ) # Calculate tax
 
-        # Create a Stripe payment intent with the total amount and user metadata
-        payment_intent = await self.stripe_client.payment_intents.create_async(
-            {
-                "amount": CALCULATION.amount_total,  # Convert to cents
-                "currency": "usd",
-                "metadata": {
-                    "user_id": user_id,
-                    "ticket_count": str(ticket_count),
-                    "event_id": event_id,
-                    "tax_calculation_id": CALCULATION.id,  # Store for reference
-                },
-                "automatic_payment_methods": {
-                    "enabled": True,
-                },
-                "application_fee_amount": int(0.03 * CALCULATION.amount_total), # Our fee is 3% of the total amount
+        # Build payment intent parameters
+        payment_params = {
+            "amount": CALCULATION.amount_total,  # Total includes tax
+            "currency": "usd",
+            "metadata": {
+                "user_id": user_id,
+                "ticket_count": str(ticket_count),
+                "event_id": event_id,
+                "tax_calculation_id": CALCULATION.id,  # Store for reference
+            },
+            "automatic_payment_methods": {
+                "enabled": True,
+            },
+        }
+        
+        # Add destination charge if host has Stripe Connect account
+        if host_stripe_account_id:
+            payment_params["transfer_data"] = {
+                "destination": host_stripe_account_id,
             }
-        )
+            payment_params["application_fee_amount"] = int(0.03 * CALCULATION.amount_total)  # 3% platform fee
+            app.logger.info(f"Creating destination charge to {host_stripe_account_id} with 3% platform fee")
+        else:
+            app.logger.warning(f"Event {event_id} host has no Stripe account - processing as direct charge")
+        
+        # Create a Stripe payment intent
+        payment_intent = await self.stripe_client.payment_intents.create_async(payment_params)
         return payment_intent
 
     def calculate_total_amount(self, base_amount: float) -> float:
@@ -227,13 +237,33 @@ class BaseView(QuartClassful):
                     status_code,
                 )
 
+            # Get host's Stripe Connect account ID if available
+            host_data = event.get("host", {})
+            host_stripe_account_id = host_data.get("stripe_account_id", "")
+            
+            # Validate host has completed Stripe onboarding for paid events
+            if event.get("price", 0) > 0 and not host_stripe_account_id:
+                app.logger.warning(
+                    f"Event {event_id} is paid but host {host_data.get('id')} has no Stripe account"
+                )
+                # Optionally enforce this as required:
+                # status_code = HTTPStatus.BAD_REQUEST
+                # return (
+                #     jsonify(
+                #         message="Event host must complete Stripe onboarding to sell tickets",
+                #         status=status_code.phrase
+                #     ),
+                #     status_code,
+                # )
+            
             # Create a stripe payment intent
             intent = await self.create_payment_stripe_intent(
                 amount=event.get("price", 0),
                 user_id=user_id,
                 event_id=event_id,
                 ticket_count=ticket_count,
-                ip_address=get_client_ip(request)
+                ip_address=get_client_ip(request),
+                host_stripe_account_id=host_stripe_account_id if host_stripe_account_id else None
             )
 
             # return the intent client secret

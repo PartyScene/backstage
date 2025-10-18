@@ -275,7 +275,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         *,
         (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
-        host.{id, first_name, last_name, avatar, filename}
+        host.{id, first_name, last_name, avatar, filename, stripe_account_id}
     OMIT embeddings
     FROM ONLY $event_id
     )
