@@ -111,6 +111,8 @@ class MicroService(Quart):
             self.config["CORS_ORIGINS"] = SecurityConfig.DEV_CORS_ORIGINS
         else:
             self.config["CORS_ORIGINS"] = SecurityConfig.PROD_CORS_ORIGINS
+            # Force HTTPS URLs in production for Stripe compatibility
+            self.config["PREFERRED_URL_SCHEME"] = "https"
 
         @self.before_request
         async def log_request():

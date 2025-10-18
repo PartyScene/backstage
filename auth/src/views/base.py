@@ -601,10 +601,10 @@ class BaseView(QuartClassful):
                 account=account.id,
                 refresh_url=url_for(
                     ".reauth_stripe", account_id=account.id, _external=True
-                ),  # Your reauth endpoint
+                ).replace("http://", "https://"),  # Force HTTPS for Stripe livemode
                 return_url=url_for(
                     ".stripe_return", account_id=account.id, _external=True
-                ),  # Your return endpoint
+                ).replace("http://", "https://"),  # Force HTTPS for Stripe livemode
                 type="account_onboarding",
             )
 
@@ -657,8 +657,8 @@ class BaseView(QuartClassful):
         # Regenerate a new link if expired
         account_link = await stripe.AccountLink.create_async(
             account=account_id,
-            refresh_url=url_for(".reauth_stripe", account_id=account_id, _external=True),
-            return_url=url_for(".stripe_return", account_id=account_id, _external=True),
+            refresh_url=url_for(".reauth_stripe", account_id=account_id, _external=True).replace("http://", "https://"),
+            return_url=url_for(".stripe_return", account_id=account_id, _external=True).replace("http://", "https://"),
             type="account_onboarding",
         )
         return jsonify(url=account_link.url), HTTPStatus.OK
