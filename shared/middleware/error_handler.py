@@ -6,6 +6,7 @@ from quart import jsonify, request, current_app
 from functools import wraps
 from datetime import datetime
 import sys
+from shared.utils import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ class ErrorHandlerMiddleware:
                 "path": request.path if request else None,
                 "method": request.method if request else None,
                 "user_agent": request.headers.get('User-Agent') if request else None,
-                "ip_address": request.remote_addr if request else None
+                "ip_address": get_client_ip(request) if request else None
             }
         )
         
@@ -140,7 +141,7 @@ class ErrorHandlerMiddleware:
                 "path": request.path if request else None,
                 "method": request.method if request else None,
                 "user_agent": request.headers.get('User-Agent') if request else None,
-                "ip_address": request.remote_addr if request else None
+                "ip_address": get_client_ip(request) if request else None
             },
             exc_info=True
         )

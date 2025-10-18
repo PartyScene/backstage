@@ -13,16 +13,19 @@ from quart import (
 )
 from payments.src.connectors import PaymentsDB
 from shared.classful import route, QuartClassful
+from shared.utils import get_client_ip
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
 
-from stripe import StripeClient
+import stripe
 
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PUB_KEY = os.environ.get("STRIPE_PUB_KEY", "")
 STRIPE_PRIV_KEY = os.environ.get("STRIPE_PRIV_KEY", "")
 PAYMENT_WEBHOOK_URL = os.environ.get("PAYMENT_WEBHOOK_URL", "")
+
+stripe.api_key = STRIPE_PRIV_KEY
 
 if not STRIPE_WEBHOOK_SECRET or not STRIPE_PUB_KEY or not STRIPE_PRIV_KEY:
     raise ValueError(
@@ -35,7 +38,7 @@ class BaseView(QuartClassful):
     def __init__(self):
         self.conn: PaymentsDB = app.conn
         self.redis = app.redis
-        self.stripe_client: Optional[StripeClient] = StripeClient(STRIPE_PRIV_KEY)
+        self.stripe_client: Optional[StripeClient] = stripe.StripeClient(STRIPE_PRIV_KEY)
         self.check_and_assign_webhook()
 
     def check_and_assign_webhook(self):
@@ -118,7 +121,7 @@ class BaseView(QuartClassful):
         )
 
     async def create_payment_stripe_intent(
-        self, amount: int, user_id, event_id, ticket_count: int = 1
+        self, amount: int, user_id, event_id, ticket_count: int = 1, ip_address: str = "127.0.0.1"
     ) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
@@ -134,9 +137,10 @@ class BaseView(QuartClassful):
                 {
                     "amount": int(total_amount * 100),
                     "quantity": ticket_count,
+                    "reference": event_id
                 }
             ],
-            customer_details={"address": {"country": "US"}}
+            customer_details={"ip_address": ip_address}
         ) # Calculate tax
 
         # Create a Stripe payment intent with the total amount and user metadata
@@ -148,16 +152,12 @@ class BaseView(QuartClassful):
                     "user_id": user_id,
                     "ticket_count": str(ticket_count),
                     "event_id": event_id,
+                    "tax_calculation_id": CALCULATION.id,  # Store for reference
                 },
-                "auto_payment_methods": {
+                "automatic_payment_methods": {
                     "enabled": True,
                 },
-                "application_fee_amount": int(0.03 * CALCULATION.amount_total), # Our fee is 3% of the total amount,
-                "hooks": {
-                    "tax": {
-                        "calculation": CALCULATION.id,
-                    }
-                }
+                "application_fee_amount": int(0.03 * CALCULATION.amount_total), # Our fee is 3% of the total amount
             }
         )
         return payment_intent
@@ -233,6 +233,7 @@ class BaseView(QuartClassful):
                 user_id=user_id,
                 event_id=event_id,
                 ticket_count=ticket_count,
+                ip_address=get_client_ip(request)
             )
 
             # return the intent client secret

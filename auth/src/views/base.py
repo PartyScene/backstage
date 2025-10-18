@@ -22,7 +22,7 @@ import orjson as json
 from auth.src.connectors import AuthDB
 from shared.classful import route, QuartClassful
 from shared.workers.brevo import Brevo
-from shared.utils import veriff
+from shared.utils import veriff, get_client_ip
 from shared.workers.novu import NotificationManager
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
@@ -453,7 +453,7 @@ class BaseView(QuartClassful):
             access_token = self.generate_jwt_secret(result["id"])
             await self.__notification_manager.recent_login_notification(
                 user_id=result["id"],
-                ip_address=request.remote_addr,
+                ip_address=get_client_ip(request),
             )
             status_code = HTTPStatus.OK
             return (
@@ -696,10 +696,9 @@ class BaseView(QuartClassful):
                     f"users:pending:{email}", json.dumps(data), ex=800
                 )  # Expire a little later
             
-            ip_addr = request.headers.get("X-Forwarded-For").split(',')[0] if request.headers.get("X-Forwarded-For") else request.headers.get("Remote-Addr") or request.remote_addr  # type: ignore
             await self.__notification_manager.send_otp_notification(
                 user_id=user_id,
-                ip_address=ip_addr,
+                ip_address=get_client_ip(request),
                 otp=otp,
             )
 

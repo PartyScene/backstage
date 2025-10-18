@@ -12,6 +12,29 @@ import httpx
 MEDIA_MICROSERVICE_URL = os.getenv("MEDIA_MICROSERVICE_URL", "")
 
 
+def get_client_ip(request) -> str:
+    """
+    Extract client IP address with proxy awareness.
+    
+    In production deployments behind load balancers, reverse proxies, or CDNs,
+    the X-Forwarded-For header contains the original client IP.
+    The first IP in the chain is the real client; subsequent IPs are proxies.
+    
+    Args:
+        request: Quart/Flask request object
+        
+    Returns:
+        str: Client IP address, or 'unknown' if unavailable
+    """
+    if forwarded := request.headers.get('X-Forwarded-For'):
+        # X-Forwarded-For format: "client, proxy1, proxy2"
+        # First IP is the original client
+        return forwarded.split(',')[0].strip()
+    
+    # Fallback to direct connection IP (reliable in dev, unreliable in prod)
+    return request.remote_addr or 'unknown'
+
+
 def record_id_to_json(obj: Any) -> Any:
     """
     Recursively convert RecordID to string and handle nested dictionaries and lists

@@ -6,6 +6,7 @@ from quart import request, jsonify, current_app
 from redis.asyncio import Redis
 from functools import wraps
 import hashlib
+from shared.utils import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class RateLimitMiddleware:
     
     async def _default_key_func(self) -> str:
         """Generate default rate limit key based on IP and user"""
-        ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        ip = get_client_ip(request)
         user_agent = request.headers.get('User-Agent', '')
         
         # Create a hash for privacy
