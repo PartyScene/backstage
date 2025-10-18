@@ -152,7 +152,7 @@ class BaseView(QuartClassful):
                 "auto_payment_methods": {
                     "enabled": True,
                 },
-                "application_fee_amount": int(0.03 * (total_amount * 100)), # Our fee is 3% of the total amount,
+                "application_fee_amount": int(0.03 * CALCULATION.amount_total), # Our fee is 3% of the total amount,
                 "hooks": {
                     "tax": {
                         "calculation": CALCULATION.id,
