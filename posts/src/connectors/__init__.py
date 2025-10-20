@@ -193,14 +193,14 @@ class PostsDB:
                         "event_location": event_coordinates,
                     },
                 )
-                if int(distance) > 500:  # Example threshold in meters
-                    raise ValueError("Post is too far from the event location.")
+                # if int(distance) > 500:  # Example threshold in meters
+                #     raise ValueError("Post is too far from the event location.")
 
             # Check if event starts in 1 hour
-            if "time" in event_info:
-                event_time = event_info["time"]
-                if event_time > datetime.datetime.now() + datetime.timedelta(hours=1):
-                    raise ValueError("Event needs to start in at least 1 hour.")
+            # if "time" in event_info:
+            #     event_time = event_info["time"]
+            #     if event_time > datetime.datetime.now() + datetime.timedelta(hours=1):
+            #         raise ValueError("Event needs to start in at least 1 hour.")
                 
 
             if "filenames" in data and "types" in data:

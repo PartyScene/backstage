@@ -247,9 +247,9 @@ class BaseView(QuartClassful):
 
             # Apply early adopter coupon
             events_count = await self.conn._get_events_count()
-            if events_count and events_count > 0:
+            if events_count and events_count < 110: # Apply coupon for first 110 events
                 coupon_code = "EARLY_ADOPTER"
-                app.logger.info(f"Applying EARLY_ADOPTER coupon for event {event_id}")
+                app.logger.warning(f"Applying EARLY_ADOPTER coupon for event {event_id}")
 
             # Get host's Stripe Connect account ID if available
             host_data = event.get("host", {})
