@@ -472,9 +472,9 @@ class BaseView(QuartClassful):
                 notification_sent = False
                 if isinstance(result, dict) and "in" in result and "out" in result:
                     try:
-                        recipient = await self.conn.fetch(result["out"])
+                        sender = await self.conn.fetch(result["in"])
                         await self.__notification_manager.send_friend_request_notification(
-                            sender=result["in"], recipient_id=result["out"], recipient_name=recipient["first_name"]
+                            recipient_id=result["out"], sender_name=sender["first_name"]
                         )
                         notification_sent = True
                     except Exception as notify_err:
