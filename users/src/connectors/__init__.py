@@ -140,7 +140,7 @@ class UsersDB:
             data (dict, required): The friend relationship data containing:
                 - origin: The ID of the first user
                 - target: The ID of the second user
-                - status: Optional relationship status ('pending', 'accepted', 'blocked')
+                - status: Optional relationship status ('pending', 'accepted', 'blocked', 'removed', 'rejected')
         Returns:
             dict: The updated relationship details
         """

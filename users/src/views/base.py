@@ -542,6 +542,9 @@ class BaseView(QuartClassful):
                 "accepted",
                 "blocked",
                 "pending",
+                "removed",
+                "rejected",
+                
             ]  # Include pending if needed
             if new_status not in allowed_statuses:
                 status_code = HTTPStatus.BAD_REQUEST

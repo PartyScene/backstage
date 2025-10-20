@@ -121,7 +121,7 @@ class BaseView(QuartClassful):
         )
 
     async def create_payment_stripe_intent(
-        self, amount: int, user_id, event_id, ticket_count: int = 1, ip_address: str = "127.0.0.1", host_stripe_account_id: str = None
+        self, amount: int, user_id, event_id, ticket_count: int = 1, ip_address: str = "127.0.0.1", host_stripe_account_id: str = None, coupon_code: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
@@ -131,17 +131,23 @@ class BaseView(QuartClassful):
             f"Creating payment intent for user {user_id} with amount {total_amount} for event {event_id} and ticket count {ticket_count}"
         )
 
-        CALCULATION = await stripe.tax.Calculation.create_async(
-            currency="usd",
-            line_items=[
+        if coupon_code:
+            COUPON = await stripe.Coupon.retrieve_async(coupon_code)
+            total_amount = total_amount * (COUPON.percent_off / 100)
+
+        tax_calculation_params = {
+            "currency": "usd",
+            "line_items": [
                 {
                     "amount": int(total_amount * 100),
                     "quantity": ticket_count,
                     "reference": event_id
                 }
             ],
-            customer_details={"ip_address": ip_address}
-        ) # Calculate tax
+            "customer_details": {"ip_address": ip_address}
+        }
+
+        CALCULATION = await stripe.tax.Calculation.create_async(**tax_calculation_params) # Calculate tax
 
         # Build payment intent parameters
         payment_params = {
@@ -237,6 +243,14 @@ class BaseView(QuartClassful):
                     status_code,
                 )
 
+            coupon_code = data.get("coupon_code", "")
+
+            # Apply early adopter coupon
+            events_count = await self.conn._get_events_count()
+            if events_count and events_count > 0:
+                coupon_code = "EARLY_ADOPTER"
+                app.logger.info(f"Applying EARLY_ADOPTER coupon for event {event_id}")
+
             # Get host's Stripe Connect account ID if available
             host_data = event.get("host", {})
             host_stripe_account_id = host_data.get("stripe_account_id", "")
@@ -263,7 +277,8 @@ class BaseView(QuartClassful):
                 event_id=event_id,
                 ticket_count=ticket_count,
                 ip_address=get_client_ip(request),
-                host_stripe_account_id=host_stripe_account_id if host_stripe_account_id else None
+                host_stripe_account_id=host_stripe_account_id if host_stripe_account_id else None,
+                coupon_code=coupon_code
             )
 
             # return the intent client secret

@@ -99,6 +99,26 @@ class PaymentsDB:
             self.logger.error(f"Failed to create ticket: {str(e)}")
             raise
 
+    async def _get_events_count(self) -> int:
+        """
+        Get the total number of events.
+
+        Returns:
+            int: The total number of events
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    RETURN count((SELECT * FROM events));
+                    """
+                )
+            self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+            return result if result else 0
+        except Exception as e:
+            self.logger.error(f"Failed to fetch events count: {str(e)}")
+            raise
+
     async def _fetch(self, event_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch a single event by ID.

@@ -147,6 +147,7 @@ DEFINE FIELD OVERWRITE in ON TABLE friends TYPE record<users>;
 DEFINE FIELD OVERWRITE since ON TABLE friends TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON TABLE friends TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE friends TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE status ON TABLE friends TYPE "pending" | "accepted" | "blocked" | "removed" | "rejected" DEFAULT "pending";
 DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 
 -- & Finally? A table for media

@@ -1,5 +1,6 @@
 from quart import Quart
 import os
+import datetime
 import orjson as json
 
 from surrealdb import AsyncSurreal, RecordID
@@ -133,6 +134,19 @@ class PostsDB:
         self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
+    async def user_has_ticket(self, user_id, event_id) -> bool:
+        """
+        Asynchronously checks if a user has a ticket for a given event.
+            Args:
+                user_id (str): The ID of the user.
+                event_id (str): The ID of the event.
+            Returns:
+                bool: True if the user has a ticket for the event, False otherwise.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query("SELECT * FROM tickets WHERE user = $user AND event = $event", {"user": user_id, "event": event_id})
+        return len(result) > 0
+
     async def create_post(self, data, author) -> dict:
         """
         Asynchronously creates a new post in the database.
@@ -154,8 +168,14 @@ class PostsDB:
             data["creator"] = RecordID("users", author)
             data["event"] = RecordID("events", data["event"])
 
-            # Check if post is close to event location
+            # Check if user has ticket
+            if not await self.user_has_ticket(data["creator"], data["event"]):
+                raise ValueError("User does not have a ticket for this event.")
+
+            
             event_info = await conn.select(data["event"])
+
+            # Check if post is close to event location
             if "coordinates" in data and "location" in event_info:
                 event_coordinates = event_info["location"]["coordinates"]
                 post_coordinates = data["coordinates"]
@@ -174,8 +194,14 @@ class PostsDB:
                     },
                 )
                 if int(distance) > 500:  # Example threshold in meters
-                    ...
-                    # raise ValueError("Post is too far from the event location.")
+                    raise ValueError("Post is too far from the event location.")
+
+            # Check if event starts in 1 hour
+            if "time" in event_info:
+                event_time = event_info["time"]
+                if event_time > datetime.datetime.now() + datetime.timedelta(hours=1):
+                    raise ValueError("Event needs to start in at least 1 hour.")
+                
 
             if "filenames" in data and "types" in data:
                 filename = data["filenames"][0]

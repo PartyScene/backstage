@@ -435,11 +435,11 @@ class BaseView(QuartClassful):
                     }
                     media_publish_tasks.append(app.RMQ._publish_media(file_data, file))
 
-            if media_publish_tasks:
-                await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
-
             # Create post in the database
             result = await self.__posts_handler.create_post(data=data, author=user_id)
+
+            if media_publish_tasks:
+                await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
 
             if result:  # Assuming create_post returns the created post object
                 status_code = HTTPStatus.CREATED
