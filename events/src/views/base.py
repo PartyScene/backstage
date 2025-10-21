@@ -382,11 +382,9 @@ class BaseView(QuartClassful):
                 )
 
             media_links = []
-            data["event_id"] = (
-                (RecordID("events", str(ruuid.uuid4()).split("-")[-1]))
-                if not data.get("id", None)
-                else RecordID("events", data["id"])
-            ) # Generate a new event ID if none is provided
+            # Always generate a new UUID for event creation, never trust client-provided IDs
+            data.pop("id", None)  # Remove any stale ID from client
+            data["event_id"] = RecordID("events", str(ruuid.uuid4()).split("-")[-1])
             
             data["coordinates"] = form.getlist("coordinates[]", type=float)
             if len(data["coordinates"]) == 1:

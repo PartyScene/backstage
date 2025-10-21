@@ -120,13 +120,19 @@ class EventsDB:
 
             # Create relations using the correct event ID
             async with self.pool.acquire() as conn:
-                await conn.query(
-                    "RELATE $event -> has_media -> $media_ids",
-                    {
-                        "event": created_event_id,
-                        "media_ids": media_ids,
-                    },
-                )
+                # Create individual RELATE statements for each media item
+                for media_id in media_ids:
+                    relation_result = await conn.query(
+                        "RELATE $event -> has_media -> $media",
+                        {
+                            "event": created_event_id,
+                            "media": media_id,
+                        },
+                    )
+                    self.logger.info(
+                        f"Created relation: {created_event_id} -> has_media -> {media_id}"
+                    )
+                self.logger.info(f"Created {len(media_ids)} media relations for event {created_event_id}")
                 result = await conn.select(created_event_id)
 
             return record_id_to_json(result)
