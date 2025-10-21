@@ -366,6 +366,168 @@ class AuthDB:
             logger.error(f"Error creating user: {e}")
             return None
 
+    async def delete_user_account(self, user_id: str) -> bool:
+        """
+        Delete a user account and all associated data.
+        
+        This method performs a comprehensive deletion of:
+        - User record
+        - Credentials
+        - Events created by user
+        - Posts, comments, and media
+        - Tickets, friendships, and attendance records
+        - Reports and livestream data
+        
+        Args:
+            user_id: The ID of the user to delete
+            
+        Returns:
+            bool: True if deletion succeeded, False otherwise
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                # Get user email before deletion for Redis cleanup
+                user_data = await conn.query(
+                    "SELECT * FROM type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                if not user_data or not user_data[0]:
+                    logger.warning(f"User {user_id} not found for deletion")
+                    return False
+                
+                user_record = user_data[0]
+                username = user_record.get("username")
+                
+                # Get encrypted email from credentials for Redis cleanup
+                creds = await self.get_credentials(user_id)
+                if creds and creds[0]:
+                    email = await self.envelope_service.decrypt(
+                        encrypted_data=creds[0]["encrypted_data"],
+                        encrypted_dek=creds[0]["encrypted_decryption_key"],
+                        data_initialization_vector=creds[0]["data_initialization_vector"],
+                        decryption_key_initialization_vector=creds[0]["decryption_key_initialization_vector"],
+                    )
+                    email = email.decode() if isinstance(email, bytes) else email
+                else:
+                    email = None
+                
+                # Delete all user-related data using a transaction-like approach
+                # Note: SurrealDB doesn't have traditional transactions, so we delete in order
+                
+                # 1. Delete credentials
+                await conn.query(
+                    "DELETE credentials WHERE user = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 2. Delete tickets
+                await conn.query(
+                    "DELETE tickets WHERE user = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 3. Delete attendance records
+                await conn.query(
+                    "DELETE attends WHERE in = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 4. Delete friendships (both directions)
+                await conn.query(
+                    "DELETE friends WHERE in = type::thing('users', $user_id) OR out = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 5. Delete comments
+                await conn.query(
+                    "DELETE comments WHERE in = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 6. Delete posts
+                await conn.query(
+                    "DELETE posts WHERE in = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 7. Delete reports made by user
+                await conn.query(
+                    "DELETE reports WHERE reporter = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 8. Get events created by user (to delete associated data)
+                events = await conn.query(
+                    "SELECT id FROM events WHERE host = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 9. Delete livestreams and scenes for user's events
+                if events and events[0]:
+                    for event in events[0]:
+                        await conn.query(
+                            "DELETE livestreams WHERE event = $event_id;",
+                            {"event_id": event["id"]}
+                        )
+                        await conn.query(
+                            "DELETE scenes WHERE event = $event_id;",
+                            {"event_id": event["id"]}
+                        )
+                
+                # 10. Delete has_media relations for user's events
+                await conn.query(
+                    "DELETE has_media WHERE in IN (SELECT id FROM events WHERE host = type::thing('users', $user_id));",
+                    {"user_id": user_id}
+                )
+                
+                # 11. Delete events created by user
+                await conn.query(
+                    "DELETE events WHERE host = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 12. Delete media uploaded by user
+                await conn.query(
+                    "DELETE media WHERE creator = type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # 13. Finally, delete the user record
+                result = await conn.query(
+                    "DELETE type::thing('users', $user_id);",
+                    {"user_id": user_id}
+                )
+                
+                # Clean up Redis bloom filter
+                if email:
+                    try:
+                        await self.bloom_filter.delete("email", email)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove email from bloom filter: {e}")
+                
+                if username:
+                    try:
+                        await self.bloom_filter.delete("username", username)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove username from bloom filter: {e}")
+                
+                # Clean up any pending OTP records in Redis
+                if email:
+                    try:
+                        await self.redis.delete(f"register-otp:{email}")
+                        await self.redis.delete(f"forgot-password-otp:{email}")
+                        await self.redis.delete(f"users:pending:{email}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove OTP records from Redis: {e}")
+                
+                logger.info(f"Successfully deleted user account: {user_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error deleting user account {user_id}: {e}")
+            return False
+    
     async def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None):
         """
         Execute a raw query against the database.

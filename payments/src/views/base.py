@@ -24,6 +24,7 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PUB_KEY = os.environ.get("STRIPE_PUB_KEY", "")
 STRIPE_PRIV_KEY = os.environ.get("STRIPE_PRIV_KEY", "")
 PAYMENT_WEBHOOK_URL = os.environ.get("PAYMENT_WEBHOOK_URL", "")
+HOST_KYC_PRICE = os.environ.get("HOST_KYC_PRICE", 10.00)
 
 stripe.api_key = STRIPE_PRIV_KEY
 
@@ -189,11 +190,17 @@ class BaseView(QuartClassful):
         total_amount = (base_amount + stripe_fixed) / (1 - stripe_percentage)
         return total_amount
 
-    async def create_kyc_stripe_intent(self, user_id) -> Dict[str, Any]:
+    async def create_kyc_stripe_intent(self, user_id, coupon_code = None) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
             raise ValueError("Stripe client is not initialized.")
-        total_amount = self.calculate_total_amount(10.00)
+
+        total_amount = self.calculate_total_amount(HOST_KYC_PRICE)
+
+        if coupon_code:
+            COUPON = await stripe.Coupon.retrieve_async(coupon_code)
+            total_amount = total_amount * (COUPON.percent_off / 100)
+
         payment_intent = await self.stripe_client.payment_intents.create_async(
             {
                 "amount": int(total_amount * 100),  # Convert to cents
@@ -245,11 +252,7 @@ class BaseView(QuartClassful):
 
             coupon_code = data.get("coupon_code", "")
 
-            # Apply early adopter coupon
-            events_count = await self.conn._get_events_count()
-            if events_count and events_count < 110: # Apply coupon for first 110 events
-                coupon_code = "EARLY_ADOPTER"
-                app.logger.warning(f"Applying EARLY_ADOPTER coupon for event {event_id}")
+
 
             # Get host's Stripe Connect account ID if available
             host_data = event.get("host", {})
@@ -317,9 +320,19 @@ class BaseView(QuartClassful):
         try:
             user_id = get_jwt_identity()
 
+            coupon_code = ""
+
+            # Apply early adopter coupon
+            events_count = await self.conn._get_events_count()
+            if events_count and events_count < 110: # Apply coupon for first 110 events
+                coupon_code = "EARLY_ADOPTER"
+                app.logger.warning(f"Applying EARLY_ADOPTER coupon for event {event_id}")
+
+
             # Create a stripe payment intent
             intent = await self.create_kyc_stripe_intent(
                 user_id=user_id,
+                coupon_code=coupon_code
             )
 
             # return the intent client secret

@@ -108,6 +108,24 @@ class NotificationManager:
         except Exception as e:
             logger.error(f"Subscriber creation error: {e}")
             raise
+    
+    async def delete_subscriber(self, user_id: str):
+        """
+        Delete a subscriber from Novu
+        
+        Args:
+            user_id (str): Subscriber ID to delete
+            
+        Returns:
+            bool: True if deletion succeeded, False otherwise
+        """
+        try:
+            await self.novu_client.subscribers.delete_async(subscriber_id=user_id)
+            logger.info(f"Deleted Novu subscriber: {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Subscriber deletion error: {e}")
+            return False
 
     async def send_otp_notification(
         self,

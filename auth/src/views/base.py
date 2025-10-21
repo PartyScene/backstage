@@ -732,6 +732,155 @@ class BaseView(QuartClassful):
 
         return jsonify({"status": "received"}), 200
 
+    @route("/auth/account", methods=["DELETE"])
+    @jwt_required
+    async def delete_account(self):
+        """
+        Schedule account deletion with a 30-day grace period.
+        
+        The account will be marked for deletion and actually deleted after 30 days.
+        During this period, users can cancel the deletion request.
+        
+        Returns:
+            JSON response confirming deletion scheduling
+        """
+        user_id = get_jwt_identity()
+        
+        try:
+            # Check if user already has a scheduled deletion
+            user_data = await self.conn.pool.execute_query(
+                "SELECT scheduled_deletion_at FROM type::thing('users', $user_id);",
+                {"user_id": user_id}
+            )
+            
+            if not user_data or not user_data[0]:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="User not found", status=status_code.phrase),
+                    status_code,
+                )
+            
+            # Check if deletion is already scheduled
+            if user_data[0].get("scheduled_deletion_at"):
+                status_code = HTTPStatus.CONFLICT
+                return (
+                    jsonify(
+                        message="Account deletion already scheduled",
+                        data={"scheduled_deletion_at": user_data[0]["scheduled_deletion_at"]},
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            # Schedule deletion for 30 days from now
+            deletion_date = datetime.now() + timedelta(days=30)
+            
+            # Update user record with scheduled deletion date
+            await self.conn.update_user({
+                "id": user_id,
+                "scheduled_deletion_at": deletion_date.isoformat()
+            })
+            
+            # Send notification about scheduled deletion
+            try:
+                email = await self.conn.decrypt_credentials(user_id)
+                email = email.decode() if isinstance(email, bytes) else email
+                
+                # You can add a notification workflow for deletion scheduling
+                logger.info(f"Scheduled account deletion for {user_id} at {deletion_date}")
+            except Exception as e:
+                logger.warning(f"Failed to send deletion notification: {e}")
+            
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    message="Account deletion scheduled. You have 30 days to cancel.",
+                    data={
+                        "scheduled_deletion_at": deletion_date.isoformat(),
+                        "days_remaining": 30
+                    },
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+        
+        except Exception as e:
+            logger.error(f"Account deletion scheduling error for user {user_id}: {e}")
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message="An error occurred while scheduling account deletion",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+    
+    @route("/auth/account/cancel-deletion", methods=["POST"])
+    @jwt_required
+    async def cancel_account_deletion(self):
+        """
+        Cancel a scheduled account deletion.
+        
+        Users can cancel their deletion request within the 30-day grace period.
+        
+        Returns:
+            JSON response confirming cancellation
+        """
+        user_id = get_jwt_identity()
+        
+        try:
+            # Check if user has a scheduled deletion
+            user_data = await self.conn.pool.execute_query(
+                "SELECT scheduled_deletion_at FROM type::thing('users', $user_id);",
+                {"user_id": user_id}
+            )
+            
+            if not user_data or not user_data[0]:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="User not found", status=status_code.phrase),
+                    status_code,
+                )
+            
+            # Check if deletion is scheduled
+            if not user_data[0].get("scheduled_deletion_at"):
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="No scheduled deletion to cancel",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            # Cancel the scheduled deletion
+            await self.conn.update_user({
+                "id": user_id,
+                "scheduled_deletion_at": None
+            })
+            
+            logger.info(f"Cancelled scheduled deletion for user {user_id}")
+            
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    message="Account deletion cancelled successfully",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+        
+        except Exception as e:
+            logger.error(f"Cancellation error for user {user_id}: {e}")
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message="An error occurred while cancelling deletion",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+    
     async def verify_otp(
         self,
         email: str,

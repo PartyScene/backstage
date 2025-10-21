@@ -15,6 +15,7 @@ DEFINE FIELD OVERWRITE auth_provider ON TABLE users TYPE string DEFAULT "passwor
 DEFINE FIELD OVERWRITE google_sub ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE scheduled_deletion_at ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE users TYPE datetime VALUE time::now();
 
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};

@@ -256,3 +256,157 @@ class TestAuthentication(TestAuthBase):
         assert response.status_code == HTTPStatus.UNAUTHORIZED
         assert response_json["status"] == HTTPStatus.UNAUTHORIZED.phrase
         assert "Bad username or password" in response_json["message"]
+    
+    async def test_account_deletion_without_auth(self, auth_client):
+        """Test account deletion without authentication token"""
+        response = await auth_client.delete("/auth/account")
+        
+        # Should return unauthorized without JWT token
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+    
+    async def test_account_deletion_with_invalid_token(self, auth_client):
+        """Test account deletion with invalid authentication token"""
+        response = await auth_client.delete(
+            "/auth/account",
+            headers={"Authorization": "Bearer invalid_token_here"}
+        )
+        
+        # Should return unauthorized with invalid token
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    
+    async def test_account_deletion_scheduling(self, auth_client):
+        """Test scheduling account deletion with 30-day grace period"""
+        # Create a temporary user for deletion test
+        temp_user = {
+            "email": "scheduledel@test.com",
+            "password": "ScheduleTest123!",
+            "username": "scheduledel_user",
+            "first_name": "Schedule",
+            "last_name": "Delete",
+        }
+        
+        # Register the user
+        register_response = await self.register_user(auth_client, temp_user)
+        register_json = await register_response.get_json()
+        
+        if register_response.status_code == HTTPStatus.CREATED:
+            # Get OTP if available
+            if "data" in register_json and "otp" in register_json["data"]:
+                otp = register_json["data"]["otp"]
+                
+                # Verify OTP to get access token
+                verify_response = await self.verify_otp(
+                    auth_client, temp_user, otp, "register"
+                )
+                verify_json = await verify_response.get_json()
+                
+                if verify_response.status_code == HTTPStatus.OK:
+                    access_token = verify_json["data"]["access_token"]
+                    
+                    # Schedule account deletion
+                    delete_response = await self.delete_account(auth_client, access_token)
+                    delete_json = await delete_response.get_json()
+                    
+                    # Verify deletion was scheduled
+                    assert delete_response.status_code == HTTPStatus.OK
+                    assert delete_json["status"] == HTTPStatus.OK.phrase
+                    assert "30 days" in delete_json["message"]
+                    assert "data" in delete_json
+                    assert "scheduled_deletion_at" in delete_json["data"]
+                    assert delete_json["data"]["days_remaining"] == 30
+                    
+                    # Verify user can still login during grace period
+                    login_response = await self.login_user(
+                        auth_client,
+                        {"email": temp_user["email"], "password": temp_user["password"]}
+                    )
+                    assert login_response.status_code == HTTPStatus.OK
+                    
+                    # Cancel the scheduled deletion for cleanup
+                    cancel_response = await self.cancel_account_deletion(auth_client, access_token)
+                    cancel_json = await cancel_response.get_json()
+                    assert cancel_response.status_code == HTTPStatus.OK
+                    assert "cancelled" in cancel_json["message"].lower()
+                else:
+                    pytest.skip("Failed to verify OTP for deletion test")
+            else:
+                pytest.skip("OTP not available in dev/test environment")
+        elif register_response.status_code == HTTPStatus.CONFLICT:
+            # User already exists, try to login and schedule deletion
+            login_response = await self.login_user(
+                auth_client,
+                {"email": temp_user["email"], "password": temp_user["password"]}
+            )
+            
+            if login_response.status_code == HTTPStatus.OK:
+                login_json = await login_response.get_json()
+                access_token = login_json["data"]["access_token"]
+                
+                # Schedule account deletion
+                delete_response = await self.delete_account(auth_client, access_token)
+                delete_json = await delete_response.get_json()
+                
+                # Verify deletion was scheduled or already scheduled
+                assert delete_response.status_code in (HTTPStatus.OK, HTTPStatus.CONFLICT)
+                
+                if delete_response.status_code == HTTPStatus.OK:
+                    assert "30 days" in delete_json["message"]
+                    
+                    # Cancel for cleanup
+                    cancel_response = await self.cancel_account_deletion(auth_client, access_token)
+                    assert cancel_response.status_code == HTTPStatus.OK
+            else:
+                pytest.skip("Cannot login to existing user for deletion test")
+        else:
+            pytest.skip("Failed to create user for deletion test")
+    
+    async def test_cancel_account_deletion(self, auth_client):
+        """Test canceling a scheduled account deletion"""
+        # Create a temporary user
+        temp_user = {
+            "email": "canceltest@test.com",
+            "password": "CancelTest123!",
+            "username": "canceltest_user",
+            "first_name": "Cancel",
+            "last_name": "Test",
+        }
+        
+        # Register and verify user
+        register_response = await self.register_user(auth_client, temp_user)
+        
+        if register_response.status_code == HTTPStatus.CREATED:
+            register_json = await register_response.get_json()
+            if "data" in register_json and "otp" in register_json["data"]:
+                otp = register_json["data"]["otp"]
+                verify_response = await self.verify_otp(auth_client, temp_user, otp, "register")
+                
+                if verify_response.status_code == HTTPStatus.OK:
+                    verify_json = await verify_response.get_json()
+                    access_token = verify_json["data"]["access_token"]
+                    
+                    # Try to cancel when nothing is scheduled
+                    cancel_response = await self.cancel_account_deletion(auth_client, access_token)
+                    cancel_json = await cancel_response.get_json()
+                    assert cancel_response.status_code == HTTPStatus.BAD_REQUEST
+                    assert "No scheduled deletion" in cancel_json["message"]
+                    
+                    # Schedule deletion
+                    delete_response = await self.delete_account(auth_client, access_token)
+                    assert delete_response.status_code == HTTPStatus.OK
+                    
+                    # Cancel the deletion
+                    cancel_response = await self.cancel_account_deletion(auth_client, access_token)
+                    cancel_json = await cancel_response.get_json()
+                    assert cancel_response.status_code == HTTPStatus.OK
+                    assert "cancelled" in cancel_json["message"].lower()
+                    
+                    # Try to cancel again - should fail
+                    cancel_response = await self.cancel_account_deletion(auth_client, access_token)
+                    cancel_json = await cancel_response.get_json()
+                    assert cancel_response.status_code == HTTPStatus.BAD_REQUEST
+                else:
+                    pytest.skip("Failed to verify OTP")
+            else:
+                pytest.skip("OTP not available")
+        else:
+            pytest.skip("User registration failed or already exists")

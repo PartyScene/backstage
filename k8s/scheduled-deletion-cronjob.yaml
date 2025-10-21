@@ -1,0 +1,76 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scheduled-deletion-cleanup
+  namespace: partyscene
+  labels:
+    app: auth
+    component: cleanup-job
+spec:
+  # Run daily at 2:00 AM UTC
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid  # Don't allow concurrent runs
+  startingDeadlineSeconds: 300  # 5 minutes grace period
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 1800  # 30 minutes timeout
+      template:
+        metadata:
+          labels:
+            app: auth
+            component: cleanup-job
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: auth-service
+          containers:
+          - name: deletion-cleanup
+            image: gcr.io/PROJECT_ID/auth:latest  # Replace PROJECT_ID
+            command:
+            - python
+            - -m
+            - auth.src.jobs.scheduled_deletion_cleanup
+            env:
+            - name: SURREAL_URI
+              valueFrom:
+                secretKeyRef:
+                  name: surrealdb-credentials
+                  key: uri
+            - name: SURREAL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: surrealdb-credentials
+                  key: username
+            - name: SURREAL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: surrealdb-credentials
+                  key: password
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: redis_host
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: redis_port
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: stripe-credentials
+                  key: secret_key
+            - name: ENVIRONMENT
+              value: "production"
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          imagePullSecrets:
+          - name: gcr-json-key

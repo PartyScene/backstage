@@ -58,3 +58,17 @@ class TestAuthBase:
         params = urllib.parse.urlencode({"type": "email", "param": user_data["email"]})
 
         return await client.get(f"/auth/exists?{params}")
+    
+    async def delete_account(self, client: QuartClient, access_token: str):
+        """Helper method to schedule account deletion"""
+        return await client.delete(
+            "/auth/account",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+    
+    async def cancel_account_deletion(self, client: QuartClient, access_token: str):
+        """Helper method to cancel scheduled account deletion"""
+        return await client.post(
+            "/auth/account/cancel-deletion",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
