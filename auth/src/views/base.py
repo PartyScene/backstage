@@ -23,6 +23,7 @@ from auth.src.connectors import AuthDB
 from shared.classful import route, QuartClassful
 from shared.workers.brevo import Brevo
 from shared.utils import veriff, get_client_ip
+from shared.utils.apple_auth import AppleAuthClient
 from shared.workers.novu import NotificationManager
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
@@ -32,6 +33,7 @@ from stripe import StripeError
 logger = logging.getLogger(__name__)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "288617366843-b4uvkfpaqcavca7tcc9co7die2opu62k.apps.googleusercontent.com")
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID", "")  # Your Apple app bundle ID or service ID
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # Use env vars for security
 
 
@@ -42,6 +44,7 @@ class BaseView(QuartClassful):
         self.__notification_manager = NotificationManager()
         self.__brevo_client = Brevo()
         self.__veriff_client = veriff.VeriffClient()
+        self.__apple_auth_client = AppleAuthClient()
 
     def generate_jwt_secret(self, identity):
         """Generate a JWT secret for the given identity."""
@@ -566,6 +569,147 @@ class BaseView(QuartClassful):
         #         status_code,
         #     )
 
+    @route("/auth/apple", methods=["POST"])
+    async def auth_apple(self):
+        """
+        Authenticate user with Apple Sign In.
+        
+        Expects JSON payload with:
+        - identity_token: JWT identity token from Apple Sign In
+        - user (optional): User info (only provided on first sign in)
+          {
+              "name": {"firstName": "John", "lastName": "Doe"},
+              "email": "user@privaterelay.appleid.com"
+          }
+        
+        Returns:
+            JSON response with access token
+        """
+        data = await request.get_json()
+        identity_token = data.get("identity_token")
+        user_info = data.get("user")  # Only provided on first sign in
+        
+        if not identity_token:
+            status_code = HTTPStatus.BAD_REQUEST
+            return (
+                jsonify(message="Missing identity token", status=status_code.phrase),
+                status_code,
+            )
+        
+        if not APPLE_CLIENT_ID:
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message="Apple Sign In not configured",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+        
+        try:
+            # Verify the identity token with Apple's public keys
+            # For development/testing: set APPLE_DEV_MODE=true to skip verification
+            is_dev_mode = os.getenv("APPLE_DEV_MODE", "false").lower() == "true"
+            
+            if is_dev_mode:
+                logger.warning("Apple Sign In running in DEV MODE - Token verification SKIPPED")
+                decoded_token = await self.__apple_auth_client.verify_identity_token_unverified(
+                    identity_token
+                )
+            else:
+                decoded_token = await self.__apple_auth_client.verify_identity_token(
+                    identity_token,
+                    client_id=APPLE_CLIENT_ID
+                )
+            
+            # Extract user information from token
+            apple_user_id = decoded_token["sub"]  # Apple unique ID
+            email = decoded_token.get("email")
+            email_verified = decoded_token.get("email_verified", "true")  # Apple emails are verified
+            
+            # Check if email verification is required
+            if email_verified != "true":
+                status_code = HTTPStatus.FORBIDDEN
+                return (
+                    jsonify(
+                        message="Email not verified",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            # Extract name from user info if provided (only on first sign in)
+            first_name = None
+            last_name = None
+            if user_info and "name" in user_info:
+                first_name = user_info["name"].get("firstName")
+                last_name = user_info["name"].get("lastName")
+            
+            # Check if user exists by email
+            email_exists = await self.conn._check_exists(email, "email") if email else False
+            
+            if not email_exists:
+                # Create new user
+                user_data = {
+                    "apple_sub": apple_user_id,
+                    "email": email,
+                    "first_name": first_name or "",
+                    "last_name": last_name or "",
+                    "auth_provider": "apple",
+                }
+                
+                user_data = await self.conn.sso_store(user_data)
+                access_token = self.generate_jwt_secret(user_data["id"])
+                
+                # Register user with notification service
+                await self.__n_register_user(
+                    email=email,
+                    user_data=user_data,
+                    user_id=user_data["id"]
+                )
+                
+                status_code = HTTPStatus.CREATED
+                return (
+                    jsonify(
+                        data={"access_token": access_token, "token_type": "bearer"},
+                        message="User registered successfully, proceed to update username.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+            else:
+                # Fetch existing user
+                user_data = await self.conn._fetch_user_by_email(email)
+                if not user_data:
+                    status_code = HTTPStatus.NOT_FOUND
+                    return (
+                        jsonify(message="User not found", status=status_code.phrase),
+                        status_code,
+                    )
+                
+                # Generate JWT token for existing user
+                access_token = self.generate_jwt_secret(user_data["id"])
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(
+                        data={"access_token": access_token, "token_type": "bearer"},
+                        message="Login successful.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+        
+        except Exception as e:
+            logger.error(f"Apple Sign In error: {e}")
+            status_code = HTTPStatus.UNAUTHORIZED
+            return (
+                jsonify(
+                    message=f"Invalid Apple identity token: {str(e)}",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+
     @route("/auth/create-stripe-account", methods=["POST"])
     @jwt_required
     async def create_stripe_account(self):
@@ -783,8 +927,7 @@ class BaseView(QuartClassful):
             
             # Send notification about scheduled deletion
             try:
-                email = await self.conn.decrypt_credentials(user_id)
-                email = email.decode() if isinstance(email, bytes) else email
+                
                 
                 # You can add a notification workflow for deletion scheduling
                 logger.info(f"Scheduled account deletion for {user_id} at {deletion_date}")

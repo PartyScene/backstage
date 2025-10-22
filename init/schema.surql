@@ -13,6 +13,7 @@ DEFINE FIELD OVERWRITE hashed_password ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE hashed_email ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE auth_provider ON TABLE users TYPE string DEFAULT "password";
 DEFINE FIELD OVERWRITE google_sub ON TABLE users TYPE option<string>;
+DEFINE FIELD OVERWRITE apple_sub ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE scheduled_deletion_at ON TABLE users TYPE option<datetime>;

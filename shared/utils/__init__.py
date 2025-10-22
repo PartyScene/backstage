@@ -1,6 +1,7 @@
 from .crypto import AsyncEnvelopeCipherService, EnvelopeCipher
 from .signer import generate_cdn_signed_url
 from .veriff import VeriffClient
+from .apple_auth import AppleAuthClient, verify_apple_token
 
 from surrealdb import RecordID
 from surrealdb.data.types import geometry

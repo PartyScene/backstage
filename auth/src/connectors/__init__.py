@@ -289,6 +289,7 @@ class AuthDB:
             "hashed_email": form.get("email", ""),
             "auth_provider": form.get("auth_provider", "sso"),
             "google_sub": form.get("google_sub", None),
+            "apple_sub": form.get("apple_sub", None),
             # "hashed_password": None,  # SSO users typically don't have a password
         }
         # Generate Crypto credentials
