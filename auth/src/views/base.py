@@ -905,12 +905,12 @@ class BaseView(QuartClassful):
                 )
             
             # Check if deletion is already scheduled
-            if user_data[0].get("scheduled_deletion_at"):
+            if user_data.get("scheduled_deletion_at"):
                 status_code = HTTPStatus.CONFLICT
                 return (
                     jsonify(
                         message="Account deletion already scheduled",
-                        data={"scheduled_deletion_at": user_data[0]["scheduled_deletion_at"]},
+                        data={"scheduled_deletion_at": user_data.get("scheduled_deletion_at")},
                         status=status_code.phrase
                     ),
                     status_code,
@@ -920,11 +920,12 @@ class BaseView(QuartClassful):
             deletion_date = datetime.now() + timedelta(days=30)
             
             # Update user record with scheduled deletion date
-            await self.conn.update_user({
-                "id": user_id,
-                "scheduled_deletion_at": deletion_date.isoformat()
-            })
-            
+            await self.conn.pool.execute_query(
+                "UPDATE type::thing('users', $user_id) SET scheduled_deletion_at = time::now() + 30d;",
+                {"user_id": user_id}
+            )
+
+
             # Send notification about scheduled deletion
             try:
                 
@@ -978,7 +979,7 @@ class BaseView(QuartClassful):
                 {"user_id": user_id}
             )
             
-            if not user_data or not user_data[0]:
+            if not user_data or not user_data:
                 status_code = HTTPStatus.NOT_FOUND
                 return (
                     jsonify(message="User not found", status=status_code.phrase),
@@ -986,7 +987,7 @@ class BaseView(QuartClassful):
                 )
             
             # Check if deletion is scheduled
-            if not user_data[0].get("scheduled_deletion_at"):
+            if not user_data.get("scheduled_deletion_at"):
                 status_code = HTTPStatus.BAD_REQUEST
                 return (
                     jsonify(
@@ -997,10 +998,10 @@ class BaseView(QuartClassful):
                 )
             
             # Cancel the scheduled deletion
-            await self.conn.update_user({
-                "id": user_id,
-                "scheduled_deletion_at": None
-            })
+            await self.conn.pool.execute_query(
+                "UPDATE type::thing('users', $user_id) SET scheduled_deletion_at = NONE;",
+                {"user_id": user_id}
+            )
             
             logger.info(f"Cancelled scheduled deletion for user {user_id}")
             
