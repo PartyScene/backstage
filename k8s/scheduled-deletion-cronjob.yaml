@@ -2,32 +2,32 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: scheduled-deletion-cleanup
-  namespace: partyscene
+  namespace: default
   labels:
-    app: auth
+    app: microserv.auth
     component: cleanup-job
 spec:
-  # Run daily at 2:00 AM UTC
   schedule: "0 2 * * *"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
-  concurrencyPolicy: Forbid  # Don't allow concurrent runs
-  startingDeadlineSeconds: 300  # 5 minutes grace period
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
   jobTemplate:
     spec:
       backoffLimit: 3
-      activeDeadlineSeconds: 1800  # 30 minutes timeout
+      activeDeadlineSeconds: 1800
       template:
         metadata:
           labels:
-            app: auth
+            app: microserv.auth
             component: cleanup-job
         spec:
           restartPolicy: OnFailure
-          serviceAccountName: auth-service
+          serviceAccountName: default
           containers:
           - name: deletion-cleanup
-            image: gcr.io/PROJECT_ID/auth:latest  # Replace PROJECT_ID
+            image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.auth:latest
+            imagePullPolicy: Always
             command:
             - python
             - -m
@@ -35,42 +35,112 @@ spec:
             env:
             - name: SURREAL_URI
               valueFrom:
-                secretKeyRef:
-                  name: surrealdb-credentials
-                  key: uri
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: SURREAL_URI
             - name: SURREAL_USER
               valueFrom:
-                secretKeyRef:
-                  name: surrealdb-credentials
-                  key: username
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: SURREAL_USER
             - name: SURREAL_PASS
               valueFrom:
-                secretKeyRef:
-                  name: surrealdb-credentials
-                  key: password
-            - name: REDIS_HOST
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: SURREAL_PASS
+            - name: REDIS_URI # Switched to URI to match the deployment
               valueFrom:
                 configMapKeyRef:
-                  name: auth-config
-                  key: redis_host
-            - name: REDIS_PORT
-              valueFrom:
-                configMapKeyRef:
-                  name: auth-config
-                  key: redis_port
+                  name: microserv.auth-config-xn0q
+                  key: REDIS_URI
             - name: STRIPE_SECRET_KEY
               valueFrom:
-                secretKeyRef:
-                  name: stripe-credentials
-                  key: secret_key
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: STRIPE_SECRET_KEY
             - name: ENVIRONMENT
               value: "production"
             resources:
               requests:
-                memory: "256Mi"
-                cpu: "100m"
-              limits:
                 memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
                 cpu: "500m"
-          imagePullSecrets:
-          - name: gcr-json-key
+
+# apiVersion: batch/v1
+# kind: CronJob
+# metadata:
+#   name: scheduled-deletion-cleanup
+#   namespace: partyscene
+#   labels:
+#     app: auth
+#     component: cleanup-job
+# spec:
+#   # Run daily at 2:00 AM UTC
+#   schedule: "0 2 * * *"
+#   successfulJobsHistoryLimit: 3
+#   failedJobsHistoryLimit: 3
+#   concurrencyPolicy: Forbid  # Don't allow concurrent runs
+#   startingDeadlineSeconds: 300  # 5 minutes grace period
+#   jobTemplate:
+#     spec:
+#       backoffLimit: 3
+#       activeDeadlineSeconds: 1800  # 30 minutes timeout
+#       template:
+#         metadata:
+#           labels:
+#             app: auth
+#             component: cleanup-job
+#         spec:
+#           restartPolicy: OnFailure
+#           serviceAccountName: auth-service
+#           containers:
+#           - name: deletion-cleanup
+#             image: gcr.io/PROJECT_ID/auth:latest  # Replace PROJECT_ID
+#             command:
+#             - python
+#             - -m
+#             - auth.src.jobs.scheduled_deletion_cleanup
+#             env:
+#             - name: SURREAL_URI
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: surrealdb-credentials
+#                   key: uri
+#             - name: SURREAL_USER
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: surrealdb-credentials
+#                   key: username
+#             - name: SURREAL_PASS
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: surrealdb-credentials
+#                   key: password
+#             - name: REDIS_HOST
+#               valueFrom:
+#                 configMapKeyRef:
+#                   name: auth-config
+#                   key: redis_host
+#             - name: REDIS_PORT
+#               valueFrom:
+#                 configMapKeyRef:
+#                   name: auth-config
+#                   key: redis_port
+#             - name: STRIPE_SECRET_KEY
+#               valueFrom:
+#                 secretKeyRef:
+#                   name: stripe-credentials
+#                   key: secret_key
+#             - name: ENVIRONMENT
+#               value: "production"
+#             resources:
+#               requests:
+#                 memory: "256Mi"
+#                 cpu: "100m"
+#               limits:
+#                 memory: "512Mi"
+#                 cpu: "500m"
+#           imagePullSecrets:
+#           - name: gcr-json-key

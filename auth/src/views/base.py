@@ -33,7 +33,7 @@ from stripe import StripeError
 logger = logging.getLogger(__name__)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "288617366843-b4uvkfpaqcavca7tcc9co7die2opu62k.apps.googleusercontent.com")
-APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID", "")  # Your Apple app bundle ID or service ID
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID", "com.partyscene.app")  # Your Apple app bundle ID or service ID
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # Use env vars for security
 
 
