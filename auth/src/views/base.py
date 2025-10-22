@@ -905,12 +905,12 @@ class BaseView(QuartClassful):
                 )
             
             # Check if deletion is already scheduled
-            if user_data.get("scheduled_deletion_at"):
+            if user_data[0].get("scheduled_deletion_at"):
                 status_code = HTTPStatus.CONFLICT
                 return (
                     jsonify(
                         message="Account deletion already scheduled",
-                        data={"scheduled_deletion_at": user_data.get("scheduled_deletion_at")},
+                        data={"scheduled_deletion_at": user_data[0].get("scheduled_deletion_at")},
                         status=status_code.phrase
                     ),
                     status_code,

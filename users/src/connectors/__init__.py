@@ -169,6 +169,65 @@ class UsersDB:
             result = await conn.query(query)
         return record_id_to_json(result)
 
+    async def block_user(self, blocker_id: str, blocked_id: str):
+        """
+        Create a block relationship between two users (unidirectional).
+        blocker_id blocks blocked_id.
+
+        Args:
+            blocker_id (str): The ID of the user who is blocking
+            blocked_id (str): The ID of the user being blocked
+
+        Returns:
+            dict: The created block relationship
+        """
+        async with self.pool.acquire() as conn:
+            # Check if block relationship already exists
+            existing = await conn.query(
+                """
+                SELECT * FROM blocks WHERE in = type::thing('users', $blocker) 
+                AND out = type::thing('users', $blocked)
+                """,
+                {"blocker": blocker_id, "blocked": blocked_id}
+            )
+            
+            if existing:
+                return record_id_to_json(existing[0])
+            
+            # Create block relationship
+            result = await conn.query(
+                """
+                RELATE ONLY type::thing('users', $blocker) -> blocks -> type::thing('users', $blocked)
+                SET created_at = time::now()
+                """,
+                {"blocker": blocker_id, "blocked": blocked_id}
+            )
+            
+        return record_id_to_json(result)
+
+    async def unblock_user(self, blocker_id: str, blocked_id: str):
+        """
+        Remove a block relationship between two users.
+
+        Args:
+            blocker_id (str): The ID of the user who is unblocking
+            blocked_id (str): The ID of the user being unblocked
+
+        Returns:
+            dict: The deleted block relationship or None if not found
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                DELETE blocks WHERE in = type::thing('users', $blocker) 
+                AND out = type::thing('users', $blocked)
+                RETURN BEFORE
+                """,
+                {"blocker": blocker_id, "blocked": blocked_id}
+            )
+            
+        return record_id_to_json(result) if result else None
+
     async def fetch(self, id: str) -> Optional[dict]:
         """
         Fetch one user by ID

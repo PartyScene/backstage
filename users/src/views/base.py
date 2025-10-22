@@ -349,6 +349,102 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
+    @route("/users/<user_id>/block", methods=["POST"])
+    @jwt_required
+    async def block_user(self, user_id: str):
+        """Block a specific user"""
+        blocker_id = get_jwt_identity()
+        try:
+            # Prevent self-blocking
+            if blocker_id == user_id:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="Cannot block yourself.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+
+            # Check if the user to be blocked exists
+            user_info = await self.conn.fetch(user_id)
+            if not user_info:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="User not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Create the block relationship
+            result = await self.conn.block_user(blocker_id, user_id)
+            
+            status_code = HTTPStatus.CREATED
+            return (
+                jsonify(
+                    data=result,
+                    message="User blocked successfully.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error blocking user {user_id} by {blocker_id}: {str(e)}", 
+                exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to block user: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
+    @route("/users/<user_id>/block", methods=["DELETE"])
+    @jwt_required
+    async def unblock_user(self, user_id: str):
+        """Unblock a specific user"""
+        blocker_id = get_jwt_identity()
+        try:
+            # Remove the block relationship
+            result = await self.conn.unblock_user(blocker_id, user_id)
+            
+            if result:
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(
+                        data=result,
+                        message="User unblocked successfully.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+            else:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(
+                        message="Block relationship not found.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error unblocking user {user_id} by {blocker_id}: {str(e)}", 
+                exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to unblock user: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
     @route("/users/search", methods=["GET"])
     @jwt_required
     async def search_user(self):

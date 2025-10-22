@@ -152,6 +152,13 @@ DEFINE FIELD OVERWRITE created_at ON TABLE friends TYPE datetime DEFAULT time::n
 DEFINE FIELD OVERWRITE status ON TABLE friends TYPE "pending" | "accepted" | "blocked" | "removed" | "rejected" DEFAULT "pending";
 DEFINE INDEX unique_friends ON TABLE friends COLUMNS in, out UNIQUE;
 
+-- A table for blocks (user blocking functionality)
+DEFINE TABLE OVERWRITE blocks TYPE RELATION IN users to users;
+DEFINE FIELD OVERWRITE out ON TABLE blocks TYPE record<users>;
+DEFINE FIELD OVERWRITE in ON TABLE blocks TYPE record<users>;
+DEFINE FIELD OVERWRITE created_at ON TABLE blocks TYPE datetime DEFAULT time::now();
+DEFINE INDEX unique_blocks ON TABLE blocks COLUMNS in, out UNIQUE;
+
 -- & Finally? A table for media
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
