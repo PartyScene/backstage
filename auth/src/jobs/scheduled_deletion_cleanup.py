@@ -156,8 +156,7 @@ async def main():
     SURREAL_URI = os.getenv("SURREAL_URI")
     SURREAL_USER = os.getenv("SURREAL_USER")
     SURREAL_PASS = os.getenv("SURREAL_PASS")
-    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    REDIS_URI = os.getenv("REDIS_URI", "redis://localhost:6379")
     NAMESPACE = "partyscene"
     DATABASE = "partyscene"
     
@@ -169,8 +168,8 @@ async def main():
     pool_manager = SurrealDBPoolManager()
     
     try:
-        # Create Redis connection
-        redis = Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+        # Create Redis connection from URI
+        redis = Redis.from_url(REDIS_URI, decode_responses=True)
         
         # Create connection pool
         pool = await pool_manager.create_pool(

@@ -48,7 +48,7 @@ spec:
                 configMapKeyRef:
                   name: microserv.auth-config-xn0q
                   key: SURREAL_PASS
-            - name: REDIS_URI # Switched to URI to match the deployment
+            - name: REDIS_URI
               valueFrom:
                 configMapKeyRef:
                   name: microserv.auth-config-xn0q
