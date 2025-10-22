@@ -196,7 +196,7 @@ async def main():
         
         # Close connections
         await redis.close()
-        await pool_manager.close_all()
+        await pool_manager.close_all_pools()
         
         # Exit with appropriate code
         if stats["failed_deletions"] > 0:
