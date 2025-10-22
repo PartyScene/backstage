@@ -153,15 +153,27 @@ class MicroService(Quart):
             await self.clean_up()
 
     async def init_redis(self):
-        """Initialize Redis connection"""
+        """Initialize Redis connection with connection pooling"""
         try:
             logger.warning("Initializing Redis connection...")
             self.redis = Redis.from_url(
-                os.environ["REDIS_URI"], decode_responses=True, encoding="utf-8"
+                os.environ["REDIS_URI"], 
+                decode_responses=True, 
+                encoding="utf-8",
+                max_connections=5,  # Max connections per pod (reduced for Redis Cloud limits)
+                socket_keepalive=True,
+                socket_keepalive_options={
+                    1: 1,  # TCP_KEEPIDLE
+                    2: 1,  # TCP_KEEPINTVL  
+                    3: 3   # TCP_KEEPCNT
+                },
+                health_check_interval=30,  # Check connection health every 30s
+                retry_on_timeout=True,
+                socket_connect_timeout=5
             )
             # Test connection
             await self.redis.ping()
-            logger.info("Redis connection established")
+            logger.info("Redis connection pool established")
             return self.redis
         except Exception as e:
             logger.error(f"Failed to initialize Redis: {str(e)}")
@@ -267,12 +279,12 @@ class MicroService(Quart):
                         exc_info=True,
                     )
 
-            # Close Redis connection
+            # Close Redis connection and connection pool
             if hasattr(self, "redis") and self.redis is not None:
                 try:
-                    logger.warning("Closing Redis connection...")
-                    await self.redis.close()
-                    logger.info("Redis connection closed successfully")
+                    logger.warning("Closing Redis connection pool...")
+                    await self.redis.aclose()  # Close connection pool properly
+                    logger.info("Redis connection pool closed successfully")
                 except Exception as redis_close_error:
                     logger.error(
                         f"Error closing Redis connection: {str(redis_close_error)}",
