@@ -185,10 +185,10 @@ class UsersDB:
             # Check if block relationship already exists
             existing = await conn.query(
                 """
-                SELECT * FROM blocks WHERE in = type::thing('users', $blocker) 
-                AND out = type::thing('users', $blocked)
+                SELECT * FROM blocks WHERE in = $blocker 
+                AND out = $blocked
                 """,
-                {"blocker": blocker_id, "blocked": blocked_id}
+                {"blocker": RecordID("users", blocker_id), "blocked": RecordID("users", blocked_id)}
             )
             
             if existing:
@@ -197,10 +197,10 @@ class UsersDB:
             # Create block relationship
             result = await conn.query(
                 """
-                RELATE ONLY type::thing('users', $blocker) -> blocks -> type::thing('users', $blocked)
+                RELATE ONLY $blocker -> blocks -> $blocked
                 SET created_at = time::now()
                 """,
-                {"blocker": blocker_id, "blocked": blocked_id}
+                {"blocker": RecordID("users", blocker_id), "blocked": RecordID("users", blocked_id)}
             )
             
         return record_id_to_json(result)
@@ -219,11 +219,11 @@ class UsersDB:
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 """
-                DELETE blocks WHERE in = type::thing('users', $blocker) 
-                AND out = type::thing('users', $blocked)
+                DELETE blocks WHERE in = $blocker 
+                AND out = $blocked
                 RETURN BEFORE
                 """,
-                {"blocker": blocker_id, "blocked": blocked_id}
+                {"blocker": RecordID("users", blocker_id), "blocked": RecordID("users", blocked_id)}
             )
             
         return record_id_to_json(result) if result else None

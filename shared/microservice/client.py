@@ -162,11 +162,6 @@ class MicroService(Quart):
                 encoding="utf-8",
                 max_connections=5,  # Max connections per pod (reduced for Redis Cloud limits)
                 socket_keepalive=True,
-                socket_keepalive_options={
-                    1: 1,  # TCP_KEEPIDLE
-                    2: 1,  # TCP_KEEPINTVL  
-                    3: 3   # TCP_KEEPCNT
-                },
                 health_check_interval=30,  # Check connection health every 30s
                 retry_on_timeout=True,
                 socket_connect_timeout=5
