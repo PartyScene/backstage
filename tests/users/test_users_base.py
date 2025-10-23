@@ -72,3 +72,24 @@ class TestUsersBase:
             json=report_data,
             headers={"Authorization": f"Bearer {bearer}"},
         )
+
+    async def get_blocked_users(self, client: QuartClient, bearer):
+        """Helper method to get blocked users"""
+        return await client.get(
+            "/users/blocked", 
+            headers={"Authorization": f"Bearer {bearer}"}
+        )
+
+    async def block_user(self, client: QuartClient, user_id, bearer):
+        """Helper method to block a user"""
+        return await client.post(
+            f"/users/{user_id}/block",
+            headers={"Authorization": f"Bearer {bearer}"}
+        )
+
+    async def unblock_user(self, client: QuartClient, user_id, bearer):
+        """Helper method to unblock a user"""
+        return await client.delete(
+            f"/users/{user_id}/block",
+            headers={"Authorization": f"Bearer {bearer}"}
+        )

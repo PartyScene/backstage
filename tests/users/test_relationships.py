@@ -74,13 +74,13 @@ class TestUserRelationships(TestUsersBase):
 
     async def test_block_user(self, users_client, mock_user, other_mock_user, bearer):
         """Test blocking a user."""
-        response = await self.delete_connection(
+        response = await self.block_user(
             users_client,
             other_mock_user["id"],
             bearer
         )
         
-        assert response.status_code == HTTPStatus.OK
+        assert response.status_code == HTTPStatus.CREATED
         response_json = await response.get_json()
         assert "User blocked successfully" in response_json["message"]
         
@@ -93,10 +93,10 @@ class TestUserRelationships(TestUsersBase):
     async def test_unblock_user(self, users_client, mock_user, other_mock_user, bearer):
         """Test unblocking a previously blocked user."""
         # First block the user
-        await self.delete_connection(users_client, other_mock_user["id"], bearer)
+        await self.block_user(users_client, other_mock_user["id"], bearer)
         
         # Now unblock them
-        response = await self.delete_connection(
+        response = await self.unblock_user(
             users_client,
             other_mock_user["id"],
             bearer

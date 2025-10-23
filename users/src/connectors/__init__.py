@@ -228,6 +228,27 @@ class UsersDB:
             
         return record_id_to_json(result) if result else None
 
+    async def get_blocked_users(self, user_id: str):
+        """
+        Fetch all users blocked by a specific user.
+
+        Args:
+            user_id (str): The ID of the user who is blocking.
+
+        Returns:
+            list: A list of blocked user objects.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                SELECT ->blocks->users as blocked FROM type::thing('users', $user_id)
+                """,
+                {"user_id": user_id}
+            )
+            if result and len(result) > 0 and 'blocked' in result[0] and result[0]['blocked']:
+                return record_id_to_json(result[0]['blocked'])
+        return []
+
     async def fetch(self, id: str) -> Optional[dict]:
         """
         Fetch one user by ID

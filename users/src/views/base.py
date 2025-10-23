@@ -445,6 +445,42 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
+    @route("/users/blocked", methods=["GET"])
+    @jwt_required
+    async def get_blocked_users(self):
+        """Fetch all users blocked by the current user"""
+        user_id = get_jwt_identity()
+        try:
+            blocked_users = await self.conn.get_blocked_users(user_id)
+            if not blocked_users:
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(message="No blocked users found", status=status_code.phrase),
+                    status_code,
+                )
+
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    data=blocked_users,
+                    message="Blocked users fetched successfully.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching blocked users for user ({user_id}): {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to fetch blocked users: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
     @route("/users/search", methods=["GET"])
     @jwt_required
     async def search_user(self):
