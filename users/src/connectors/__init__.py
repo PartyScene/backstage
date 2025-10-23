@@ -241,9 +241,9 @@ class UsersDB:
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 """
-                SELECT ->blocks->users as blocked FROM type::thing('users', $user_id)
+                SELECT ->blocks->users as blocked FROM $user
                 """,
-                {"user_id": user_id}
+                {"user": RecordID("users", user_id)}
             )
             if result and len(result) > 0 and 'blocked' in result[0] and result[0]['blocked']:
                 return record_id_to_json(result[0]['blocked'])

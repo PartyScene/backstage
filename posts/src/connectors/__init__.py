@@ -54,11 +54,8 @@ class PostsDB:
                     SELECT fn::fetch_post(id) AS post 
                     FROM posts 
                     WHERE event == $event_id
-                    AND NOT EXISTS (
-                        SELECT * FROM blocks WHERE 
-                        (in == $current_user_id AND out == posts.in) OR
-                        (in == posts.in AND out == $current_user_id)
-                    );
+                    AND (SELECT VALUE <->(blocks WHERE $parent.in IN [in, out])
+                            FROM $current_user_id)[0] == [];
                 """
             params = {"event_id": event_rid, "current_user_id": current_user_rid}
         else:
@@ -92,11 +89,8 @@ class PostsDB:
                     SELECT fn::fetch_post(id) AS post 
                     FROM posts 
                     WHERE in == $user_id
-                    AND NOT EXISTS (
-                        SELECT * FROM blocks WHERE 
-                        (in == $current_user_id AND out == posts.in) OR
-                        (in == posts.in AND out == $current_user_id)
-                    );
+                    AND (SELECT VALUE <->(blocks WHERE $parent.in IN [in, out])
+                            FROM $current_user_id)[0] == [];
                 """
             params = {"user_id": user_rid, "current_user_id": current_user_rid}
         else:
@@ -148,19 +142,9 @@ class PostsDB:
             current_user_rid = RecordID("users", current_user_id)
             query = """
                     SELECT VALUE [
-                        {
-                            id: id,
-                            in: in,
-                            out: out,
-                            content: content,
-                            created_at: created_at
-                        }
-                        FOR $comment IN (<-comments)
-                        WHERE NOT EXISTS (
-                            SELECT * FROM blocks WHERE 
-                            (in == $current_user_id AND out == $comment.in) OR
-                            (in == $comment.in AND out == $current_user_id)
-                        )
+                        FOR $comment IN (<-comments.* AS comments)
+                        WHERE (SELECT VALUE <->(blocks WHERE $parent.in IN [in, out])
+                            FROM $current_user_id)[0] == []
                     ] FROM ONLY $post
                 """
             params = {"post": post, "current_user_id": current_user_rid}

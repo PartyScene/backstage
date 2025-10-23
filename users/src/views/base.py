@@ -29,6 +29,147 @@ class BaseView(QuartClassful):
     async def index(self):
         return await self.healthcheck()
 
+
+    @route("/users/upload", methods=["POST"])
+    @jwt_required
+    async def upload_media(self):
+        """
+        Uploads a file (e.g., avatar) to the Media Microservice via RMQ
+        and triggers an update to the user's profile (e.g., avatar URL).
+        """
+        user_id = get_jwt_identity()  # Get user_id early for logging
+        try:
+            
+            file = next((f for f in (await request.files).values() if f.filename), None)
+
+            if not file or not file.filename:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="No file provided or file has no name.",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+
+            # Prepare data for RMQ message and potential DB update
+            # The actual user update (e.g., setting avatar URL) should happen
+            # AFTER the media service confirms successful upload, possibly via
+            # another RMQ message or direct API call from media service.
+            # This endpoint primarily triggers the upload process.
+
+            rmq_data = {
+                "filename": f"users/{user_id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}",  # Define storage path
+                "type": file.content_type,
+                "creator": user_id,
+                "context": "user_avatar",  # Add context for media service
+                "user_id_to_update": user_id,  # Tell media service which user to notify/update later
+            }
+            app.logger.warning(
+                f"Publishing user media upload task to RMQ: {rmq_data['filename']}"
+            )
+
+            # Publish task to RabbitMQ
+            await app.RMQ._publish_media(rmq_data, file)
+
+            # Don't update user profile here directly. Wait for confirmation.
+            response = await self.conn.update(
+                {
+                    "id": user_id,
+                    "filename": rmq_data["filename"],
+                    "type": rmq_data["type"],
+                }
+            )  # Maybe set a pending status?
+
+            # Return success indicating the upload process has started
+            status_code = HTTPStatus.ACCEPTED  # 202 Accepted is suitable here
+            return (
+                jsonify(
+                    data=response,
+                    message="Media upload process initiated successfully.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )  # 202 Accepted is suitable here
+
+        except Exception as e:
+            app.logger.error(
+                f"Error initiating media upload for user {user_id}: {str(e)}",
+                exc_info=True,
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to initiate media upload: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
+
+    @route("/users/search", methods=["GET"])
+    @jwt_required
+    async def search_user(self):
+        """Search for users by username (implementation pending)"""
+        username = request.args.get("username")
+        if not username:
+            status_code = HTTPStatus.BAD_REQUEST
+            return (
+                jsonify(
+                    message="Username query parameter is required.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+        # Add search logic here using self.conn
+        # result = await self.conn.search_by_username(username)
+        # status_code = HTTPStatus.OK
+        # return jsonify(data=result, message="Search results retrieved.", status=status_code.phrase), status_code
+        status_code = HTTPStatus.NOT_IMPLEMENTED
+        return (
+            jsonify(
+                message="Search endpoint not yet implemented.",
+                status=status_code.phrase,
+            ),
+            status_code,
+        )
+
+    @route("/users/blocked", methods=["GET"])
+    @jwt_required
+    async def get_blocked_users(self):
+        """Fetch all users blocked by the current user"""
+        user_id = get_jwt_identity()
+        try:
+            blocked_users = await self.conn.get_blocked_users(user_id)
+            if not blocked_users:
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(message="No blocked users found", status=status_code.phrase),
+                    status_code,
+                )
+
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    data=blocked_users,
+                    message="Blocked users fetched successfully.",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching blocked users for user ({user_id}): {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to fetch blocked users: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
     @route("/users/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
@@ -445,68 +586,7 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-    @route("/users/blocked", methods=["GET"])
-    @jwt_required
-    async def get_blocked_users(self):
-        """Fetch all users blocked by the current user"""
-        user_id = get_jwt_identity()
-        try:
-            blocked_users = await self.conn.get_blocked_users(user_id)
-            if not blocked_users:
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(message="No blocked users found", status=status_code.phrase),
-                    status_code,
-                )
 
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=blocked_users,
-                    message="Blocked users fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )
-        except Exception as e:
-            app.logger.error(
-                f"Error fetching blocked users for user ({user_id}): {str(e)}", exc_info=True
-            )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch blocked users: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )
-
-    @route("/users/search", methods=["GET"])
-    @jwt_required
-    async def search_user(self):
-        """Search for users by username (implementation pending)"""
-        username = request.args.get("username")
-        if not username:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(
-                    message="Username query parameter is required.",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )
-        # Add search logic here using self.conn
-        # result = await self.conn.search_by_username(username)
-        # status_code = HTTPStatus.OK
-        # return jsonify(data=result, message="Search results retrieved.", status=status_code.phrase), status_code
-        status_code = HTTPStatus.NOT_IMPLEMENTED
-        return (
-            jsonify(
-                message="Search endpoint not yet implemented.",
-                status=status_code.phrase,
-            ),
-            status_code,
-        )
 
     @route("/friends", methods=["GET"])
     @jwt_required
@@ -766,82 +846,6 @@ class BaseView(QuartClassful):
             return (
                 jsonify(
                     message=f"Failed to delete connection: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )
-
-    @route("/users/upload", methods=["POST"])
-    @jwt_required
-    async def upload_media(self):
-        """
-        Uploads a file (e.g., avatar) to the Media Microservice via RMQ
-        and triggers an update to the user's profile (e.g., avatar URL).
-        """
-        user_id = get_jwt_identity()  # Get user_id early for logging
-        try:
-            
-            file = next((f for f in (await request.files).values() if f.filename), None)
-
-            if not file or not file.filename:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="No file provided or file has no name.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
-
-            # Prepare data for RMQ message and potential DB update
-            # The actual user update (e.g., setting avatar URL) should happen
-            # AFTER the media service confirms successful upload, possibly via
-            # another RMQ message or direct API call from media service.
-            # This endpoint primarily triggers the upload process.
-
-            rmq_data = {
-                "filename": f"users/{user_id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}",  # Define storage path
-                "type": file.content_type,
-                "creator": user_id,
-                "context": "user_avatar",  # Add context for media service
-                "user_id_to_update": user_id,  # Tell media service which user to notify/update later
-            }
-            app.logger.warning(
-                f"Publishing user media upload task to RMQ: {rmq_data['filename']}"
-            )
-
-            # Publish task to RabbitMQ
-            await app.RMQ._publish_media(rmq_data, file)
-
-            # Don't update user profile here directly. Wait for confirmation.
-            response = await self.conn.update(
-                {
-                    "id": user_id,
-                    "filename": rmq_data["filename"],
-                    "type": rmq_data["type"],
-                }
-            )  # Maybe set a pending status?
-
-            # Return success indicating the upload process has started
-            status_code = HTTPStatus.ACCEPTED  # 202 Accepted is suitable here
-            return (
-                jsonify(
-                    data=response,
-                    message="Media upload process initiated successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )  # 202 Accepted is suitable here
-
-        except Exception as e:
-            app.logger.error(
-                f"Error initiating media upload for user {user_id}: {str(e)}",
-                exc_info=True,
-            )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to initiate media upload: {str(e)}",
                     status=status_code.phrase,
                 ),
                 status_code,
