@@ -35,35 +35,77 @@ class PostsDB:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
-    async def fetch_event_posts(self, id: str) -> dict:
+    async def fetch_event_posts(self, id: str, current_user_id: str = None) -> dict:
         """
         Asynchronously fetches all posts associated with the given event.
+        Filters out posts from users with blocking relationships.
             Args:
                 id (str): The ID of the event.
+                current_user_id (str): The ID of the current user (for blocking filter).
             Returns:
                 dict: A dictionary containing the result of the post fetch query.
         """
-        query = """
-                SELECT fn::fetch_post(id) AS post FROM posts WHERE event == type::thing('events', $event_id);
-            """
-        params = {"event_id": id}
+        event_rid = RecordID("events", id)
+        
+        if current_user_id:
+            # Filter out posts where blocking relationship exists
+            current_user_rid = RecordID("users", current_user_id)
+            query = """
+                    SELECT fn::fetch_post(id) AS post 
+                    FROM posts 
+                    WHERE event == $event_id
+                    AND NOT EXISTS (
+                        SELECT * FROM blocks WHERE 
+                        (in == $current_user_id AND out == posts.in) OR
+                        (in == posts.in AND out == $current_user_id)
+                    );
+                """
+            params = {"event_id": event_rid, "current_user_id": current_user_rid}
+        else:
+            # No blocking filter if user is not authenticated
+            query = """
+                    SELECT fn::fetch_post(id) AS post FROM posts WHERE event == $event_id;
+                """
+            params = {"event_id": event_rid}
+        
         async with self.pool.acquire() as conn:
             result = await conn.query(query, params)
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
 
-    async def fetch_user_posts(self, id: str) -> dict:
+    async def fetch_user_posts(self, id: str, current_user_id: str = None) -> dict:
         """
         Asynchronously fetches all posts associated with the given user.
+        Filters out posts from users with blocking relationships.
             Args:
-                id (str): The ID of the user.
+                id (str): The ID of the user whose posts to fetch.
+                current_user_id (str): The ID of the current user (for blocking filter).
             Returns:
                 dict: A dictionary containing the result of the post fetch query.
         """
-        query = """
-                SELECT fn::fetch_post(id) AS post FROM posts WHERE in == type::thing('users', $user_id);
-            """
-        params = {"user_id": id}
+        user_rid = RecordID("users", id)
+        
+        if current_user_id:
+            # Filter out posts where blocking relationship exists
+            current_user_rid = RecordID("users", current_user_id)
+            query = """
+                    SELECT fn::fetch_post(id) AS post 
+                    FROM posts 
+                    WHERE in == $user_id
+                    AND NOT EXISTS (
+                        SELECT * FROM blocks WHERE 
+                        (in == $current_user_id AND out == posts.in) OR
+                        (in == posts.in AND out == $current_user_id)
+                    );
+                """
+            params = {"user_id": user_rid, "current_user_id": current_user_rid}
+        else:
+            # No blocking filter if user is not authenticated
+            query = """
+                    SELECT fn::fetch_post(id) AS post FROM posts WHERE in == $user_id;
+                """
+            params = {"user_id": user_rid}
+        
         async with self.pool.acquire() as conn:
             result = await conn.query(query, params)
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
@@ -89,18 +131,44 @@ class PostsDB:
             result = await conn.query(query, params)
         return record_id_to_json(result)
 
-    async def fetch_comments(self, post_id: str) -> dict:
+    async def fetch_comments(self, post_id: str, current_user_id: str = None) -> dict:
         """
         Asynchronously fetches all comments associated with the given post.
+        Filters out comments from users with blocking relationships.
             Args:
                 post_id (str): The ID of the post.
+                current_user_id (str): The ID of the current user (for blocking filter).
             Returns:
                 dict: A dictionary containing the result of the comment fetch query.
         """
         post = RecordID("posts", post_id)
-        query = """SELECT <-comments.* AS comments FROM ONLY $post"""
-        # query = """ SELECT ->comments.* AS comments FROM users WHERE ->comments[WHERE out = $post];"""
-        params = {"post": post}
+        
+        if current_user_id:
+            # Filter out comments where blocking relationship exists
+            current_user_rid = RecordID("users", current_user_id)
+            query = """
+                    SELECT VALUE [
+                        {
+                            id: id,
+                            in: in,
+                            out: out,
+                            content: content,
+                            created_at: created_at
+                        }
+                        FOR $comment IN (<-comments)
+                        WHERE NOT EXISTS (
+                            SELECT * FROM blocks WHERE 
+                            (in == $current_user_id AND out == $comment.in) OR
+                            (in == $comment.in AND out == $current_user_id)
+                        )
+                    ] FROM ONLY $post
+                """
+            params = {"post": post, "current_user_id": current_user_rid}
+        else:
+            # No blocking filter if user is not authenticated
+            query = """SELECT <-comments.* AS comments FROM ONLY $post"""
+            params = {"post": post}
+        
         async with self.pool.acquire() as conn:
             result = await conn.query(query, params)
         return record_id_to_json(result)

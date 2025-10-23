@@ -119,10 +119,11 @@ class BaseView(QuartClassful):
     @jwt_required
     async def get_comments(self, post_id):
         """
-        Asynchronously gets all comments for a given post.
+        Asynchronously gets all comments for a given post, excluding blocked users.
         """
         try:
-            if result := await self.__posts_handler.fetch_comments(post_id):
+            current_user_id = get_jwt_identity()
+            if result := await self.__posts_handler.fetch_comments(post_id, current_user_id):
                 status_code = HTTPStatus.OK
                 return (
                     jsonify(
@@ -313,9 +314,10 @@ class BaseView(QuartClassful):
     @route("/posts/event/<id>", methods=["GET"])
     @jwt_required  # Added JWT requirement assuming it's needed
     async def fetch_event_posts(self, id: str):
-        """Fetch all posts for a given event"""
+        """Fetch all posts for a given event, excluding blocked users"""
         try:
-            result = await self.__posts_handler.fetch_event_posts(id)
+            current_user_id = get_jwt_identity()
+            result = await self.__posts_handler.fetch_event_posts(id, current_user_id)
             reuslt = await recursively_sign_object_media(result)
             status_code = HTTPStatus.OK
             return (
@@ -342,9 +344,10 @@ class BaseView(QuartClassful):
     @route("/posts/user/<id>", methods=["GET"])
     @jwt_required  # Added JWT requirement assuming it's needed
     async def fetch_user_posts(self, id: str):
-        """Fetch all posts for a user"""
+        """Fetch all posts for a user, excluding blocked users"""
         try:
-            result = await self.__posts_handler.fetch_user_posts(id)
+            current_user_id = get_jwt_identity()
+            result = await self.__posts_handler.fetch_user_posts(id, current_user_id)
             reuslt = await recursively_sign_object_media(result)
             status_code = HTTPStatus.OK
             return (
