@@ -70,7 +70,7 @@ For local testing without real Apple tokens:
 ```bash
 # Add to your .env file
 APPLE_DEV_MODE=true
-APPLE_CLIENT_ID=com.partyscene.app
+APPLE_CLIENT_ID=com.scenesllc.partyscene
 ```
 
 **2. Use curl or Postman:**
@@ -402,7 +402,7 @@ kubectl logs -f deployment/auth-service -n partyscene | grep -i apple
 ```bash
 # Verify bundle ID matches
 echo $APPLE_CLIENT_ID
-# Should be: com.partyscene.app (or your bundle ID)
+# Should be: com.scenesllc.partyscene (or your bundle ID)
 ```
 
 #### Issue: "Token verification failed"
@@ -478,7 +478,7 @@ SELECT * FROM users WHERE apple_sub = "001234.test12345.6789";
 
 ```bash
 # Required
-APPLE_CLIENT_ID=com.partyscene.app
+APPLE_CLIENT_ID=com.scenesllc.partyscene
 
 # Optional (development only)
 APPLE_DEV_MODE=false

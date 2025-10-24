@@ -33,7 +33,7 @@ from stripe import StripeError
 logger = logging.getLogger(__name__)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "288617366843-b4uvkfpaqcavca7tcc9co7die2opu62k.apps.googleusercontent.com")
-APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID", "com.partyscene.app")  # Your Apple app bundle ID or service ID
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID", "com.scenesllc.partyscene")  # Your Apple app bundle ID or service ID
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # Use env vars for security
 
 
@@ -649,62 +649,137 @@ class BaseView(QuartClassful):
             email_exists = await self.conn._check_exists(email, "email") if email else False
             
             if not email_exists:
-                # Create new user
+                # Create new user - removed 'email' field as hashed_email is handled by DB event
                 user_data = {
                     "apple_sub": apple_user_id,
-                    "email": email,
+                    "hashed_email": email,  # Will be automatically hashed by DB event listener
                     "first_name": first_name or "",
                     "last_name": last_name or "",
                     "auth_provider": "apple",
                 }
                 
-                user_data = await self.conn.sso_store(user_data)
-                access_token = self.generate_jwt_secret(user_data["id"])
-                
-                # Register user with notification service
-                await self.__n_register_user(
-                    email=email,
-                    user_data=user_data,
-                    user_id=user_data["id"]
-                )
-                
-                status_code = HTTPStatus.CREATED
-                return (
-                    jsonify(
-                        data={"access_token": access_token, "token_type": "bearer"},
-                        message="User registered successfully, proceed to update username.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
-            else:
-                # Fetch existing user
-                user_data = await self.conn._fetch_user_by_email(email)
-                if not user_data:
-                    status_code = HTTPStatus.NOT_FOUND
+                try:
+                    user_data = await self.conn.sso_store(user_data)
+                    access_token = self.generate_jwt_secret(user_data["id"])
+                    
+                    # Register user with notification service
+                    await self.__n_register_user(
+                        email=email,
+                        user_data=user_data,
+                        user_id=user_data["id"]
+                    )
+                    
+                    status_code = HTTPStatus.CREATED
                     return (
-                        jsonify(message="User not found", status=status_code.phrase),
+                        jsonify(
+                            data={"access_token": access_token, "token_type": "bearer"},
+                            message="User registered successfully, proceed to update username.",
+                            status=status_code.phrase,
+                        ),
                         status_code,
                     )
-                
-                # Generate JWT token for existing user
-                access_token = self.generate_jwt_secret(user_data["id"])
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data={"access_token": access_token, "token_type": "bearer"},
-                        message="Login successful.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                    
+                except Exception as db_error:
+                    # Handle unique constraint violation (user already exists)
+                    if "unique" in str(db_error).lower() or "duplicate" in str(db_error).lower():
+                        logger.info(f"User already exists during registration, attempting login: {email}")
+                        # Fallback to login flow
+                        email_exists = True
+                    else:
+                        logger.error(f"Database error during user creation: {db_error}")
+                        status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+                        return (
+                            jsonify(
+                                message="Registration failed, please try again",
+                                status=status_code.phrase
+                            ),
+                            status_code,
+                        )
+            
+            if email_exists:
+                try:
+                    # Fetch existing user
+                    user_data = await self.conn._fetch_user_by_email(email)
+                    if not user_data:
+                        status_code = HTTPStatus.NOT_FOUND
+                        return (
+                            jsonify(message="User not found", status=status_code.phrase),
+                            status_code,
+                        )
+                    
+                    # Generate JWT token for existing user
+                    access_token = self.generate_jwt_secret(user_data["id"])
+                    status_code = HTTPStatus.OK
+                    return (
+                        jsonify(
+                            data={"access_token": access_token, "token_type": "bearer"},
+                            message="Login successful.",
+                            status=status_code.phrase,
+                        ),
+                        status_code,
+                    )
+                    
+                except Exception as login_error:
+                    logger.error(f"Error during user login: {login_error}")
+                    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+                    return (
+                        jsonify(
+                            message="Login failed, please try again",
+                            status=status_code.phrase
+                        ),
+                        status_code,
+                    )
         
-        except Exception as e:
-            logger.error(f"Apple Sign In error: {e}")
+        except jwt.ExpiredSignatureError:
+            logger.warning(f"Expired Apple token attempted from {get_client_ip()}")
             status_code = HTTPStatus.UNAUTHORIZED
             return (
                 jsonify(
-                    message=f"Invalid Apple identity token: {str(e)}",
+                    message="Apple token has expired, please sign in again",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+            
+        except jwt.InvalidAudienceError:
+            logger.error("Invalid audience in Apple token - client ID mismatch")
+            status_code = HTTPStatus.UNAUTHORIZED
+            return (
+                jsonify(
+                    message="Invalid Apple token configuration",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+            
+        except jwt.InvalidIssuerError:
+            logger.error("Invalid issuer in Apple token - not from Apple")
+            status_code = HTTPStatus.UNAUTHORIZED
+            return (
+                jsonify(
+                    message="Invalid Apple token source",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+            
+        except jwt.InvalidTokenError as e:
+            logger.warning(f"Invalid Apple token from {get_client_ip()}: {e}")
+            status_code = HTTPStatus.UNAUTHORIZED
+            return (
+                jsonify(
+                    message="Invalid or malformed Apple token",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+            
+        except Exception as e:
+            logger.error(f"Unexpected error during Apple Sign In: {e}")
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message="Authentication service temporarily unavailable",
                     status=status_code.phrase
                 ),
                 status_code,

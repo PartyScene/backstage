@@ -21,3 +21,4 @@ obstore
 bleach
 email-validator
 python-ffmpeg
+PyJWT[crypto]>=2.10.1

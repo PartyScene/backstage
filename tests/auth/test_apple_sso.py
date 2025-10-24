@@ -3,8 +3,10 @@ from test_base import TestAuthBase
 import logging
 from http import HTTPStatus
 from unittest.mock import patch, MagicMock
-import jwt
 from datetime import datetime, timedelta
+
+# Use PyJWT directly like the shared utilities
+import PyJWT as jwt
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ class TestAppleSSO(TestAuthBase):
         """
         payload = {
             "iss": "https://appleid.apple.com",
-            "aud": "com.example.app",  # Your bundle ID
+            "aud": "com.scenesllc.partyscene",  # Your bundle ID
             "exp": int((datetime.now() + timedelta(hours=1)).timestamp()),
             "iat": int(datetime.now().timestamp()),
             "sub": user_id,  # Apple user ID

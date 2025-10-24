@@ -10,12 +10,14 @@ Usage:
 
 import asyncio
 import httpx
-import jwt
 from datetime import datetime, timedelta
+
+# Use the same PyJWT import pattern as the shared utilities
+import PyJWT as jwt
 
 # Configuration
 API_URL = "http://localhost:8080"  # Change to your local dev server
-APPLE_CLIENT_ID = "com.partyscene.app"  # Your bundle ID
+APPLE_CLIENT_ID = "com.scenesllc.partyscene"  # Your bundle ID
 
 
 def generate_mock_apple_token(user_id: str, email: str, include_name: bool = True) -> dict:

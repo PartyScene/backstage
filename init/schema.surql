@@ -22,6 +22,9 @@ DEFINE FIELD OVERWRITE updated_at ON TABLE users TYPE datetime VALUE time::now()
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
 
+DEFINE INDEX OVERWRITE unique_email ON TABLE users COLUMNS hashed_email UNIQUE;
+
+
 DEFINE TABLE OVERWRITE credentials SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE credentials TYPE record<users>;
 DEFINE FIELD OVERWRITE encrypted_data ON TABLE credentials TYPE bytes;
