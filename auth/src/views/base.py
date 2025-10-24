@@ -348,16 +348,53 @@ class BaseView(QuartClassful):
             )
 
         try:
-            result = await self.conn._check_exists(
-                data["email"], "email"
-            ) or await self.conn._check_exists(data["username"], "username")
-
-            logger.debug("Result for Cuckoo Check %s" % result)
-            if result:
+            # Fast cuckoo filter check first for email existence
+            email_exists = await self.conn._check_exists(data["email"], "email")
+            
+            # Check if username is taken (separate check)
+            username_exists = await self.conn._check_exists(data["username"], "username")
+            
+            if email_exists:
+                # Only fetch full user data if cuckoo filter indicates existence
+                existing_user = await self.conn._fetch_user(data["email"], "email")
+                if not existing_user:
+                    # Cuckoo filter false positive - user doesn't actually exist
+                    logger.warning(f"Cuckoo filter false positive for email: {data['email']}")
+                else:
+                    # User exists - check their auth provider to give specific guidance
+                    auth_provider = existing_user.get("auth_provider", "")
+                    logger.debug(f"User {data['email']} already exists with auth_provider: {auth_provider}")
+                    
+                    if auth_provider == "google":
+                        message = "This email is already registered with Google Sign-In. Please use Google Sign-In to log in."
+                        error_code = "MUST_USE_GOOGLE_SSO"
+                    elif auth_provider == "apple":  
+                        message = "This email is already registered with Apple Sign-In. Please use Apple Sign-In to log in."
+                        error_code = "MUST_USE_APPLE_SSO"
+                    elif auth_provider and auth_provider != "password":
+                        message = f"This email is already registered with {auth_provider.title()} Sign-In. Please use {auth_provider.title()} Sign-In to log in."
+                        error_code = "MUST_USE_SSO"
+                    else:
+                        message = "This email is already registered. Please log in instead."
+                        error_code = "EMAIL_EXISTS"
+                    
+                    status_code = HTTPStatus.CONFLICT
+                    return (
+                        jsonify(
+                            message=message,
+                            error_code=error_code,
+                            status=status_code.phrase
+                        ),
+                        status_code,
+                    )
+            elif username_exists:
+                # Username taken (but email is available)
                 status_code = HTTPStatus.CONFLICT
                 return (
                     jsonify(
-                        message="Credential Already Exists.", status=status_code.phrase
+                        message="Username already taken. Please choose a different username.",
+                        error_code="USERNAME_EXISTS", 
+                        status=status_code.phrase
                     ),
                     status_code,
                 )
