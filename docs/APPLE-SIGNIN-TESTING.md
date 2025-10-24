@@ -449,7 +449,7 @@ decoded = jwt.decode(token, options={"verify_signature": False})
 print(decoded)
 ```
 
-**Check Redis bloom filter:**
+**Check Redis Cuckoo filter:**
 ```bash
 redis-cli
 > BF.EXISTS email test@privaterelay.appleid.com

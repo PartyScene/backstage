@@ -18,11 +18,13 @@ DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE scheduled_deletion_at ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE users TYPE datetime VALUE time::now();
+DEFINE FIELD OVERWRITE created_at ON TABLE users TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE email ON TABLE users TYPE option<string>;
 
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
 
-DEFINE INDEX OVERWRITE unique_email ON TABLE users COLUMNS hashed_email UNIQUE;
+DEFINE INDEX OVERWRITE unique_email ON TABLE users COLUMNS email UNIQUE;
 
 
 DEFINE TABLE OVERWRITE credentials SCHEMAFULL;

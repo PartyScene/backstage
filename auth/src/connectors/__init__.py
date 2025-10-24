@@ -2,6 +2,7 @@ import os
 from typing import Optional, Dict, Any
 import logging
 import typing
+from datetime import datetime, UTC
 from surrealdb import AsyncSurreal, RecordID
 from shared.utils import record_id_to_json, AsyncEnvelopeCipherService
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
@@ -30,7 +31,7 @@ class AuthDB:
         self.db = None  # For compatibility with existing code
         self.envelope_service = AsyncEnvelopeCipherService()
         self.redis = redis
-        self.bloom_filter = self.redis.bf()
+        self.cuckoo_filter = self.redis.cf()
 
     async def _info(self):
         """Get database information."""
@@ -177,15 +178,17 @@ class AuthDB:
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("leads", credentials)
-                logger.debug(result)
-                return record_id_to_json(result)
+                logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+                return record_id_to_json(result) if result else {}
         except Exception as e:
             logger.error(f"Error creating lead: {e}")
             return {}
 
-    async def _check_exists(self, param, type: typing.Literal["email", "username"]):
+    async def _check_exists(self, param, type) -> bool:
         """
-        Check if a user with the given parameter exists in the database.
+        Check if a user with the given email or username exists in the database.
+        Uses cuckoo filter for faster checks, falls back to database for misses.
+        Includes error handling for filter inconsistencies.
 
         Args:
             param: The parameter value to check
@@ -195,19 +198,26 @@ class AuthDB:
             bool: True if the user exists, False otherwise
         """
         try:
-            in_bloom = await self.bloom_filter.exists(type, param)
-
-            if bool(in_bloom):
-                return True
+            # Try cuckoo filter first, but handle Redis errors gracefully
+            try:
+                in_cuckoo = await self.cuckoo_filter.exists(type, param)
+                if bool(in_cuckoo):
+                    return True
+            except Exception as filter_error:
+                logger.warning(f"Cuckoo filter error for {type}:{param} - {filter_error}. Falling back to database.")
+                # Continue to database check if filter fails
 
             if type == "email":
                 result = await self.pool.execute_query(
                     "SELECT * FROM users WHERE crypto::argon2::compare(hashed_email, $email);",
                     {"email": param},
                 )
-                logger.warning("Bloom Miss, Result for email %s" % result)
+                logger.debug("Cuckoo miss, database result for email %s: %s" % (param, bool(result)))
                 if bool(result):
-                    await self.bloom_filter.add("email", param)
+                    try:
+                        await self.cuckoo_filter.add("email", param)
+                    except Exception as filter_error:
+                        logger.warning(f"Failed to add email to cuckoo filter: {filter_error}")
                     return True
 
             elif type == "username":
@@ -215,41 +225,70 @@ class AuthDB:
                     "SELECT * FROM users WHERE username = $username",
                     {"username": param},
                 )
-                logger.warning("Bloom Miss, Result for username %s" % result)
+                logger.debug("Cuckoo miss, database result for username %s: %s" % (param, bool(result)))
                 if bool(result):
-                    await self.bloom_filter.add("username", param)
+                    try:
+                        await self.cuckoo_filter.add("username", param)
+                    except Exception as filter_error:
+                        logger.warning(f"Failed to add username to cuckoo filter: {filter_error}")
                     return True
 
             return False
-
         except Exception as e:
-            logger.error(f"DB Existence Check Failed: {e}")
-            return False
+            logger.error(f"Error checking if user exists: {e}")
+            # On database errors, assume user exists to prevent duplicates
+            return True
 
     async def _login(self, data) -> dict | None:
         """
         Authenticate a user with email and password.
+        Blocks password login if user registered with SSO.
 
         Args:
             data: Dict containing email and password
 
         Returns:
-            dict: User data if authentication succeeds, False otherwise
+            dict: User data if authentication succeeds
+            None: If login fails
+            str: If user must use SSO (returns "use_sso" or "use_google" or "use_apple")
         """
         try:
+            email = data["email"]
+            
+            # First check if user exists with SSO auth provider
+            sso_check = await self.pool.execute_query(
+                "SELECT auth_provider, google_sub, apple_sub FROM users WHERE crypto::argon2::compare(hashed_email, $email);",
+                {"email": email},
+            )
+            
+            if sso_check and sso_check[0]:
+                user = sso_check[0]
+                auth_provider = user.get("auth_provider")
+                
+                # If user registered with SSO, block password login
+                if auth_provider in ["google", "apple", "sso"]:
+                    logger.info(f"User {email} registered with {auth_provider}, blocking password login")
+                    
+                    # Return specific SSO provider for better UX
+                    if user.get("google_sub"):
+                        return "use_google"
+                    elif user.get("apple_sub"):
+                        return "use_apple"
+                    else:
+                        return "use_sso"
+            
+            # Proceed with password authentication for password-registered users
             result = await self.pool.execute_query(
                 "SELECT * FROM users WHERE auth_provider = 'password' AND hashed_password != NONE AND crypto::argon2::compare(hashed_password, $password) AND crypto::argon2::compare(hashed_email, $email);",
-                {"password": data["password"], "email": data["email"]},
+                {"password": data["password"], "email": email},
             )
-            logger.debug(json.dumps(result, default=str, option=json.OPT_INDENT_2))
-
+            
             if not result:
-                logger.warning(
-                    f"Wrong password or non-existent credentials for email {data.get('email')}"
-                )
+                logger.warning(f"Wrong password or non-existent credentials for email {email}")
                 return None
 
             return record_id_to_json(result[0])
+            
         except Exception as e:
             logger.error(f"Login error: {e}")
             return None
@@ -275,49 +314,109 @@ class AuthDB:
 
     async def sso_store(self, form):
         """
-        Store or create a new user in the database after SSO authentication.
+        Store or create a new user in the database for SSO Authentication.
+        Handles race conditions and unique constraint violations robustly.
 
         Args:
             form: User data to create
+
         Returns:
-            dict: Created user data or None if creation failed
+            dict: Created user data or existing user data if already exists
         """
+        email = form.get("email")
+        if not email:
+            logger.error("SSO store called without email")
+            return None
+
         # Let's rewrite the form to fit the schema
         data = {
             "first_name": form.get("first_name", ""),
             "last_name": form.get("last_name", ""),
-            "hashed_email": form.get("email", ""),
-            "auth_provider": form.get("auth_provider", "sso"),
+            "hashed_email": email,
+            "email": email,
+            "created_at": datetime.now(UTC),
+            "auth_provider": form.get("auth_provider", "password" if form.get("password") else "sso"),
             "google_sub": form.get("google_sub", None),
             "apple_sub": form.get("apple_sub", None),
-            # "hashed_password": None,  # SSO users typically don't have a password
         }
+
         # Generate Crypto credentials
-        credentials = await self.envelope_service.encrypt(form.get("email").encode())
+        credentials = await self.envelope_service.encrypt(email.encode())
 
         try:
             async with self.pool.acquire() as conn:
+                # First attempt: Try to create the user
+                try:
+                    result = await conn.create("users", {**form, **data})
+                    if isinstance(result, dict):
+                        # Successfully created - update cuckoo filter
+                        try:
+                            await self.cuckoo_filter.add("email", email)
+                        except Exception as filter_error:
+                            logger.warning(f"Failed to add email to cuckoo filter: {filter_error}")
 
-                result = await conn.create("users", {**form, **data})
-                if isinstance(result, dict):
-                    await self.bloom_filter.add("email", form.get("email"))
-                    # await self.bloom_filter.add("username", form.get("username"))
+                        # Create credentials
+                        await conn.create(
+                            "credentials", {**credentials, "user": result["id"]}
+                        )
 
-                    await conn.create(
-                        "credentials", {**credentials, "user": result["id"]}
-                    )
+                        logger.info(f"Created new SSO user: {email}")
+                        return record_id_to_json(result)
+                    else:
+                        logger.warning(f"User creation returned unexpected result: {result}")
 
-                    logger.debug(
-                        json.dumps(result, option=json.OPT_INDENT_2, default=str)
-                    )
-                    return record_id_to_json(result)
-                else:
-                    logger.warning(
-                        "User creation returned unexpected result: %s", result
-                    )
-                    return None
+                except Exception as create_error:
+                    # Check if this is a unique constraint violation
+                    error_msg = str(create_error).lower()
+                    if any(keyword in error_msg for keyword in ['unique', 'duplicate', 'already exists', 'constraint']):
+                        logger.info(f"User already exists during SSO creation, checking for account linking: {email}")
+
+                        # User already exists - check if we can link accounts
+                        try:
+                            existing_user = await self._fetch_user_by_email(email)
+                            if existing_user:
+                                # If existing user registered with password, link SSO account
+                                if existing_user.get("auth_provider") == "password":
+                                    logger.info(f"Linking SSO account to existing password user: {email}")
+                                    
+                                    # Update existing user with SSO fields
+                                    update_data = {
+                                        "id": existing_user["id"]
+                                    }
+                                    
+                                    # Add SSO provider fields
+                                    if form.get("google_sub"):
+                                        update_data["google_sub"] = form.get("google_sub")
+                                    if form.get("apple_sub"):
+                                        update_data["apple_sub"] = form.get("apple_sub")
+                                    
+                                    # Update avatar if provided and user doesn't have one
+                                    if form.get("avatar") and not existing_user.get("avatar"):
+                                        update_data["avatar"] = form.get("avatar")
+                                    
+                                    # Update the user record with SSO linking
+                                    linked_user = await self.update_user(update_data)
+                                    if linked_user and isinstance(linked_user, dict):
+                                        logger.info(f"Successfully linked SSO account for {email}")
+                                        return linked_user
+                                    else:
+                                        logger.warning(f"Failed to link SSO account for {email}, returning existing user")
+                                        return existing_user
+                                else:
+                                    # User already has SSO account
+                                    logger.info(f"User {email} already has SSO account, returning existing")
+                                    return existing_user
+                            else:
+                                logger.error(f"User should exist but fetch returned None: {email}")
+                        except Exception as fetch_error:
+                            logger.error(f"Error during account linking for {email}: {fetch_error}")
+                    else:
+                        logger.error(f"Unexpected error creating SSO user {email}: {create_error}")
+
+                return None
+
         except Exception as e:
-            logger.error(f"Error creating user: {e}")
+            logger.error(f"Critical error in sso_store for {email}: {e}")
             return None
 
     async def _store_after_verify(self, form):
@@ -330,15 +429,19 @@ class AuthDB:
         Returns:
             dict: Created user data or None if creation failed
         """
+        # Store email and username before popping them
+        email = form.get("email", "")
+        username = form.get("username", "")
+        
         # Let's rewrite the form to fit the schema
         data = {
             "first_name": form.get("first_name", ""),
             "last_name": form.get("last_name", ""),
             "hashed_password": form.get("password", ""),
-            "hashed_email": form.get("email", ""),
+            "hashed_email": email,
         }
         # Generate Crypto credentials
-        credentials = await self.envelope_service.encrypt(form.get("email").encode())
+        credentials = await self.envelope_service.encrypt(email.encode())
 
         try:
             async with self.pool.acquire() as conn:
@@ -347,8 +450,16 @@ class AuthDB:
                 
                 result = await conn.create("users", {**form, **data})
                 if isinstance(result, dict):
-                    await self.bloom_filter.add("email", form.get("email"))
-                    await self.bloom_filter.add("username", form.get("username"))
+                    # Use stored values instead of form.get after popping
+                    try:
+                        await self.cuckoo_filter.add("email", email)
+                    except Exception as filter_error:
+                        logger.warning(f"Failed to add email to cuckoo filter: {filter_error}")
+                    
+                    try:
+                        await self.cuckoo_filter.add("username", username)
+                    except Exception as filter_error:
+                        logger.warning(f"Failed to add username to cuckoo filter: {filter_error}")
 
                     await conn.create(
                         "credentials", {**credentials, "user": result["id"]}
@@ -500,18 +611,18 @@ class AuthDB:
                     {"user_id": user_id}
                 )
                 
-                # Clean up Redis bloom filter
+                # Clean up Redis cuckoo filter
                 if email:
                     try:
-                        await self.bloom_filter.delete("email", email)
+                        await self.cuckoo_filter.delete("email", email)
                     except Exception as e:
-                        logger.warning(f"Failed to remove email from bloom filter: {e}")
+                        logger.warning(f"Failed to remove email from cuckoo filter: {e}")
                 
                 if username:
                     try:
-                        await self.bloom_filter.delete("username", username)
+                        await self.cuckoo_filter.delete("username", username)
                     except Exception as e:
-                        logger.warning(f"Failed to remove username from bloom filter: {e}")
+                        logger.warning(f"Failed to remove username from cuckoo filter: {e}")
                 
                 # Clean up any pending OTP records in Redis
                 if email:

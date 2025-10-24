@@ -352,7 +352,7 @@ class BaseView(QuartClassful):
                 data["email"], "email"
             ) or await self.conn._check_exists(data["username"], "username")
 
-            logger.debug("Result for Bloom Check %s" % result)
+            logger.debug("Result for Cuckoo Check %s" % result)
             if result:
                 status_code = HTTPStatus.CONFLICT
                 return (
@@ -452,7 +452,43 @@ class BaseView(QuartClassful):
     async def login_user(self):
         """Verify user credentials and generate an access token."""
         data = await request.get_json()
-        if result := await self.conn._login(data):
+        result = await self.conn._login(data)
+        
+        # Handle SSO blocking responses
+        if isinstance(result, str):
+            if result == "use_google":
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="This account was created with Google Sign-In. Please use Google Sign-In to log in.",
+                        error_code="MUST_USE_GOOGLE_SSO",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            elif result == "use_apple":
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="This account was created with Apple Sign-In. Please use Apple Sign-In to log in.",
+                        error_code="MUST_USE_APPLE_SSO",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            elif result == "use_sso":
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="This account was created with social sign-in. Please use social sign-in to log in.",
+                        error_code="MUST_USE_SSO",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+        
+        # Handle successful password login
+        if result and isinstance(result, dict):
             access_token = self.generate_jwt_secret(result["id"])
             await self.__notification_manager.recent_login_notification(
                 user_id=result["id"],
@@ -468,6 +504,7 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
+        # Handle failed login (None result)
         status_code = HTTPStatus.UNAUTHORIZED
         return (
             jsonify(message="Bad username or password", status=status_code.phrase),
@@ -516,54 +553,71 @@ class BaseView(QuartClassful):
         last_name = idinfo.get("family_name")
         picture = idinfo.get("picture")
 
-        # TODO: Find or create user in DB here
-        email_exists = await self.conn._check_exists(email, "email")
-        if not email_exists:
-            # Create user in SurrealDB if not exists
-            user_data = {
-                "google_sub": user_id,
-                "email": email,
-                "first_name": first_name,
-                "last_name": last_name,
-                "avatar": picture,
-            }
-            user_data = await self.conn.sso_store(user_data)
-            access_token = self.generate_jwt_secret(user_data["id"])
-            await self.__n_register_user(
-                email=email,
-                user_data=user_data,
-                user_id=user_data["id"]
-            )
-            status_code = HTTPStatus.CREATED
+        # Robust SSO: Try to create user, handle existing gracefully
+        user_data = {
+            "google_sub": user_id,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "avatar": picture,
+            "auth_provider": "google",
+        }
+        
+        # Use robust sso_store - handles duplicates and account linking automatically
+        created_or_existing_user = await self.conn.sso_store(user_data)
+        
+        if not created_or_existing_user:
+            logger.error(f"SSO store failed for Google user: {email}")
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             return (
                 jsonify(
-                    data={"access_token": access_token, "token_type": "bearer"},
-                    message="User registered successfully, proceed to update username.",
-                    status=status_code.phrase,
+                    message="Authentication failed, please try again",
+                    status=status_code.phrase
                 ),
                 status_code,
             )
-        else:
-            # Fetch existing user data
-            user_data = await self.conn._fetch_user_by_email(email)
-            if not user_data:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="User not found", status=status_code.phrase),
-                    status_code,
+        
+        # Check if this was a new user (created) or existing user (fetched)
+        try:
+            # For new users, register with notification service
+            existing_subscriber = await self.__notification_manager.get_subscriber_by_email(email)
+            if not existing_subscriber:
+                await self.__n_register_user(
+                    email=email,
+                    user_data=created_or_existing_user,
+                    user_id=created_or_existing_user["id"]
                 )
-
-            # Generate JWT token for the user
-            access_token = self.generate_jwt_secret(user_data["id"])
+                message = "User registered successfully, proceed to update username."
+                status_code = HTTPStatus.CREATED
+            else:
+                message = "Login successful."
+                status_code = HTTPStatus.OK
+        except Exception as notification_error:
+            logger.warning(f"Notification service error for {email}: {notification_error}")
+            # Don't fail the auth flow for notification issues
+            message = "Login successful."
             status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data={"access_token": access_token, "token_type": "bearer"},
-                    message="OTP verified successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+        
+        # Generate JWT token
+        access_token = self.generate_jwt_secret(created_or_existing_user["id"])
+        
+        # Send recent login notification for all SSO logins (new and existing users)
+        try:
+            await self.__notification_manager.recent_login_notification(
+                user_id=created_or_existing_user["id"],
+                ip_address=get_client_ip(request),
             )
+        except Exception as login_notif_error:
+            logger.warning(f"Recent login notification failed for {email}: {login_notif_error}")
+        
+        return (
+            jsonify(
+                data={"access_token": access_token, "token_type": "bearer"},
+                message=message,
+                status=status_code.phrase,
+            ),
+            status_code,
+        )
 
         # except ValueError:
         #     # Invalid token
@@ -650,91 +704,70 @@ class BaseView(QuartClassful):
                 first_name = user_info["name"].get("firstName")
                 last_name = user_info["name"].get("lastName")
             
-            # Check if user exists by email
-            email_exists = await self.conn._check_exists(email, "email") if email else False
+            # Robust Apple SSO: Always use sso_store for consistent handling
+            user_data = {
+                "apple_sub": apple_user_id,
+                "email": email,
+                "first_name": first_name or "",
+                "last_name": last_name or "",
+                "auth_provider": "apple",
+            }
             
-            if not email_exists:
-                # Create new user - removed 'email' field as hashed_email is handled by DB event
-                user_data = {
-                    "apple_sub": apple_user_id,
-                    "hashed_email": email,  # Will be automatically hashed by DB event listener
-                    "email": email,
-                    "first_name": first_name or "",
-                    "last_name": last_name or "",
-                    "auth_provider": "apple",
-                }
-                
-                try:
-                    user_data = await self.conn.sso_store(user_data)
-                    access_token = self.generate_jwt_secret(user_data["id"])
-                    
-                    # Register user with notification service
+            # Use robust sso_store - handles duplicates and account linking automatically
+            created_or_existing_user = await self.conn.sso_store(user_data)
+            
+            if not created_or_existing_user:
+                logger.error(f"SSO store failed for Apple user: {email}")
+                status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+                return (
+                    jsonify(
+                        message="Authentication failed, please try again",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            # Check if this was a new user or existing user for appropriate messaging
+            try:
+                existing_subscriber = await self.__notification_manager.get_subscriber_by_email(email)
+                if not existing_subscriber:
+                    # New user - register with notification service
                     await self.__n_register_user(
                         email=email,
-                        user_data=user_data,
-                        user_id=user_data["id"]
+                        user_data=created_or_existing_user,
+                        user_id=created_or_existing_user["id"]
                     )
-                    
+                    message = "User registered successfully, proceed to update username."
                     status_code = HTTPStatus.CREATED
-                    return (
-                        jsonify(
-                            data={"access_token": access_token, "token_type": "bearer"},
-                            message="User registered successfully, proceed to update username.",
-                            status=status_code.phrase,
-                        ),
-                        status_code,
-                    )
-                    
-                except Exception as db_error:
-                    # Handle unique constraint violation (user already exists)
-                    if "unique" in str(db_error).lower() or "duplicate" in str(db_error).lower():
-                        logger.info(f"User already exists during registration, attempting login: {email}")
-                        # Fallback to login flow
-                        email_exists = True
-                    else:
-                        logger.error(f"Database error during user creation: {db_error}")
-                        status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-                        return (
-                            jsonify(
-                                message="Registration failed, please try again",
-                                status=status_code.phrase
-                            ),
-                            status_code,
-                        )
-            
-            if email_exists:
-                try:
-                    # Fetch existing user
-                    user_data = await self.conn._fetch_user_by_email(email)
-                    if not user_data:
-                        status_code = HTTPStatus.NOT_FOUND
-                        return (
-                            jsonify(message="User not found", status=status_code.phrase),
-                            status_code,
-                        )
-                    
-                    # Generate JWT token for existing user
-                    access_token = self.generate_jwt_secret(user_data["id"])
+                else:
+                    message = "Login successful."
                     status_code = HTTPStatus.OK
-                    return (
-                        jsonify(
-                            data={"access_token": access_token, "token_type": "bearer"},
-                            message="Login successful.",
-                            status=status_code.phrase,
-                        ),
-                        status_code,
-                    )
-                    
-                except Exception as login_error:
-                    logger.error(f"Error during user login: {login_error}")
-                    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-                    return (
-                        jsonify(
-                            message="Login failed, please try again",
-                            status=status_code.phrase
-                        ),
-                        status_code,
-                    )
+            except Exception as notification_error:
+                logger.warning(f"Notification service error for {email}: {notification_error}")
+                # Don't fail the auth flow for notification issues
+                message = "Login successful."
+                status_code = HTTPStatus.OK
+            
+            # Generate JWT token
+            access_token = self.generate_jwt_secret(created_or_existing_user["id"])
+            
+            # Send recent login notification for all SSO logins (new and existing users)
+            try:
+                await self.__notification_manager.recent_login_notification(
+                    user_id=created_or_existing_user["id"],
+                    ip_address=get_client_ip(request),
+                )
+            except Exception as login_notif_error:
+                logger.warning(f"Recent login notification failed for {email}: {login_notif_error}")
+            
+            return (
+                jsonify(
+                    data={"access_token": access_token, "token_type": "bearer"},
+                    message=message,
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
         
         except jwt.ExpiredSignatureError:
             logger.warning(f"Expired Apple token attempted from {get_client_ip()}")

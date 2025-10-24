@@ -199,7 +199,9 @@ class BaseView(QuartClassful):
 
         if coupon_code:
             COUPON = await stripe.Coupon.retrieve_async(coupon_code)
-            total_amount = total_amount * (COUPON.percent_off / 100)
+            discount_multiplier = 1 - (COUPON.percent_off / 100)
+            total_amount = total_amount * discount_multiplier
+            app.logger.warning(f"Applying coupon {coupon_code} ({COUPON.percent_off}% off) to kyc payment - new amount: {total_amount}")
 
         payment_intent = await self.stripe_client.payment_intents.create_async(
             {
@@ -326,7 +328,7 @@ class BaseView(QuartClassful):
             events_count = await self.conn._get_events_count()
             if events_count and events_count < 110: # Apply coupon for first 110 events
                 coupon_code = "EARLY_ADOPTER"
-                app.logger.warning(f"Applying EARLY_ADOPTER coupon for event {event_id}")
+                app.logger.warning(f"Applying EARLY_ADOPTER coupon for user {user_id}")
 
 
             # Create a stripe payment intent

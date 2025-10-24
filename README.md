@@ -85,7 +85,7 @@ Built on a **cloud-native, containerized microservices architecture** ensuring:
 ```
 
 **8 Microservices**:
-1. **Auth Service**: JWT-based authentication, OAuth 2.0 SSO integration, encrypted credential storage, rate limiting, and user session management with Redis-backed bloom filters for performance
+1. **Auth Service**: JWT-based authentication, OAuth 2.0 SSO integration, encrypted credential storage, rate limiting, and user session management with Redis-backed Cuckoo filters for performance
 2. **Users Service**: User profiles, social relationships, privacy controls, GDPR compliance, and friend/follower networks with real-time updates
 3. **Events Service**: Full event lifecycle management, geospatial search with distance-based filtering, live attendee tracking, and real-time event status synchronization
 4. **Posts Service**: Social feed algorithm, content moderation, engagement metrics, and community interaction features with ML-powered content ranking
@@ -104,7 +104,7 @@ Built on a **cloud-native, containerized microservices architecture** ensuring:
 **Backend**
 - **Framework**: Quart (async Python) - High-performance ASGI server handling 1000+ concurrent connections
 - **Database**: SurrealDB v2.0 - Multi-model graph database with native vector search and geospatial indexing
-- **Cache**: Redis - Session storage, real-time pub/sub, and bloom filters for performance optimization
+- **Cache**: Redis - Session storage, real-time pub/sub, and Cuckoo filters for performance optimization
 - **Message Queue**: RabbitMQ - Asynchronous task processing for media uploads and AI processing
 - **Storage**: Google Cloud Storage - Global CDN distribution with automatic optimization
 
