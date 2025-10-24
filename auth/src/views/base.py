@@ -658,6 +658,7 @@ class BaseView(QuartClassful):
                 user_data = {
                     "apple_sub": apple_user_id,
                     "hashed_email": email,  # Will be automatically hashed by DB event listener
+                    "email": email,
                     "first_name": first_name or "",
                     "last_name": last_name or "",
                     "auth_provider": "apple",
