@@ -1,95 +1,92 @@
 import pytest
-import httpx
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from test_users_base import TestUsersBase
 from http import HTTPStatus
 
-@pytest.mark.asyncio
-async def test_block_user(client: httpx.AsyncClient, auth_headers: dict, test_user: dict):
-    """Test blocking a user"""
-    # Create a second user to block
-    target_user = await create_test_user(client, "target@example.com")
-    
-    # Block the user
-    response = await client.post(
-        f"/users/{target_user['id']}/block",
-        headers=auth_headers
-    )
-    assert response.status_code == HTTPStatus.CREATED
-    data = response.json()
-    assert data["message"] == "User blocked successfully."
-    assert "data" in data
-    
-    # Try to block again - should return the existing block
-    response = await client.post(
-        f"/users/{target_user['id']}/block",
-        headers=auth_headers
-    )
-    assert response.status_code == HTTPStatus.CREATED
-    assert response.json()["message"] == "User blocked successfully."
 
-@pytest.mark.asyncio
-async def test_block_self(client: httpx.AsyncClient, auth_headers: dict, test_user: dict):
-    """Test that users cannot block themselves"""
-    response = await client.post(
-        f"/users/{test_user['id']}/block",
-        headers=auth_headers
-    )
-    assert response.status_code == HTTPStatus.BAD_REQUEST
-    assert response.json()["message"] == "Cannot block yourself."
+@pytest.mark.asyncio(loop_scope="session")
+class TestUserBlocking(TestUsersBase):
+    """Streamlined user blocking tests following TDD best practices."""
 
-@pytest.mark.asyncio
-async def test_block_nonexistent_user(client: httpx.AsyncClient, auth_headers: dict):
-    """Test blocking a user that doesn't exist"""
-    response = await client.post(
-        "/users/nonexistent123/block",
-        headers=auth_headers
-    )
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json()["message"] == "User not found"
+    async def test_user_blocking_succeeds_when_target_user_exists(self, users_client, other_mock_user, bearer):
+        """Should block user successfully when target user exists."""
+        # Arrange
+        target_user_id = other_mock_user["id"]
+        
+        # Act
+        response = await self.block_user(users_client, target_user_id, bearer)
+        response_json = await response.get_json()
+        
+        # Assert
+        assert response.status_code == HTTPStatus.CREATED
+        self.assert_resource_created(response_json)
+        assert "User blocked successfully." in response_json["message"]
 
-@pytest.mark.asyncio
-async def test_unblock_user(client: httpx.AsyncClient, auth_headers: dict, test_user: dict):
-    """Test unblocking a user"""
-    # Create a second user to block/unblock
-    target_user = await create_test_user(client, "target2@example.com")
-    
-    # First block the user
-    response = await client.post(
-        f"/users/{target_user['id']}/block",
-        headers=auth_headers
-    )
-    assert response.status_code == HTTPStatus.CREATED
-    
-    # Now unblock the user
-    response = await client.delete(
-        f"/users/{target_user['id']}/block",
-        headers=auth_headers
-    )
-    assert response.status_code == HTTPStatus.OK
-    data = response.json()
-    assert data["message"] == "User unblocked successfully."
-    assert "data" in data
+    async def test_user_blocking_fails_when_attempting_to_block_self(self, users_client, mock_user, bearer):
+        """Should return error when user attempts to block themselves."""
+        # Arrange
+        own_user_id = mock_user["id"]
+        
+        # Act
+        response = await self.block_user(users_client, own_user_id, bearer)
+        response_json = await response.get_json()
+        
+        # Assert
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        self.assert_error_response(response_json, HTTPStatus.BAD_REQUEST, "Cannot block yourself")
 
-@pytest.mark.asyncio
-async def test_unblock_not_blocked_user(client: httpx.AsyncClient, auth_headers: dict):
-    """Test unblocking a user that wasn't blocked"""
-    # Create a user that we haven't blocked
-    target_user = await create_test_user(client, "target3@example.com")
-    
-    # Try to unblock without blocking first
-    response = await client.delete(
-        f"/users/{target_user['id']}/block",
-        headers=auth_headers
-    )
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json()["message"] == "Block relationship not found."
+    async def test_user_blocking_fails_when_target_user_not_found(self, users_client, bearer):
+        """Should return not found when attempting to block non-existent user."""
+        # Arrange
+        nonexistent_user_id = "nonexistent123"
+        
+        # Act
+        response = await self.block_user(users_client, nonexistent_user_id, bearer)
+        response_json = await response.get_json()
+        
+        # Assert
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        self.assert_error_response(response_json, HTTPStatus.NOT_FOUND, "User not found")
 
-async def create_test_user(client: httpx.AsyncClient, email: str) -> dict:
-    """Helper to create a test user"""
-    # This is a simplified example - adjust based on your auth implementation
-    response = await client.post("/auth/register", json={
-        "email": email,
-        "password": "TestPassword123!",
-        "first_name": "Test",
-        "last_name": "User"
-    })
-    return response.json()["data"]["user"]
+    async def test_user_unblocking_succeeds_when_user_is_blocked(self, users_client, other_mock_user, bearer):
+        """Should unblock user successfully when user is currently blocked."""
+        # Arrange - Block user first
+        target_user_id = other_mock_user["id"]
+        block_response = await self.block_user(users_client, target_user_id, bearer)
+        assert block_response.status_code == HTTPStatus.CREATED
+        
+        # Act
+        response = await self.unblock_user(users_client, target_user_id, bearer)
+        response_json = await response.get_json()
+        
+        # Assert
+        assert response.status_code == HTTPStatus.OK
+        self.assert_successful_response(response_json)
+        assert "User unblocked successfully." in response_json["message"]
+
+    async def test_user_unblocking_fails_when_user_not_blocked(self, users_client, other_mock_user, bearer):
+        """Should return not found when attempting to unblock user that isn't blocked."""
+        # Arrange
+        target_user_id = other_mock_user["id"]
+        
+        # Act
+        response = await self.unblock_user(users_client, target_user_id, bearer)
+        response_json = await response.get_json()
+        
+        # Assert
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        self.assert_error_response(response_json, HTTPStatus.NOT_FOUND, "Block relationship not found")
+
+    async def test_blocked_users_list_retrieval_succeeds_when_authenticated(self, users_client, bearer):
+        """Should retrieve blocked users list successfully when authenticated."""
+        # Act
+        response = await self.get_blocked_users(users_client, bearer)
+        response_json = await response.get_json()
+        
+        # Assert
+        assert response.status_code == HTTPStatus.OK
+        self.assert_successful_response(response_json)
+        assert isinstance(response_json["data"], list)

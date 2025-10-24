@@ -1,11 +1,16 @@
 import urllib
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from shared_base import StreamlinedTestBase
 from quart.testing import QuartClient
 from PIL import Image
 import io
 from typing import IO
 
 
-class TestEventsBase:
+class TestEventsBase(StreamlinedTestBase):
     def generate_random_image(self, color="blue") -> IO[bytes]:
         image = Image.new("RGB", (100, 100), color=color)
         # image.tobytes()

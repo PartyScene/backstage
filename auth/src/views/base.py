@@ -529,6 +529,11 @@ class BaseView(QuartClassful):
             }
             user_data = await self.conn.sso_store(user_data)
             access_token = self.generate_jwt_secret(user_data["id"])
+            await self.__n_register_user(
+                email=email,
+                user_data=user_data,
+                user_id=user_data["id"]
+            )
             status_code = HTTPStatus.CREATED
             return (
                 jsonify(
@@ -625,10 +630,10 @@ class BaseView(QuartClassful):
             # Extract user information from token
             apple_user_id = decoded_token["sub"]  # Apple unique ID
             email = decoded_token.get("email")
-            email_verified = decoded_token.get("email_verified", "true")  # Apple emails are verified
+            email_verified = decoded_token.get("email_verified", False)  # Apple emails are verified
             
             # Check if email verification is required
-            if email_verified != "true":
+            if not email_verified:
                 status_code = HTTPStatus.FORBIDDEN
                 return (
                     jsonify(

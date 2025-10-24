@@ -1,10 +1,15 @@
 import pytest_asyncio
 import pytest
 import urllib
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from shared_base import StreamlinedTestBase
 from quart.testing import QuartClient
 
 
-class TestUsersBase:
+class TestUsersBase(StreamlinedTestBase):
 
     async def get_user(self, client: QuartClient, user_id, bearer):
         """Helper method to get a user"""
