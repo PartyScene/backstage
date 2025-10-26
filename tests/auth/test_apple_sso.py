@@ -180,3 +180,27 @@ class TestAppleSSO(TestAuthBase):
         # Assert
         assert response.status_code == HTTPStatus.CREATED
         self._assert_successful_auth_response(response_json)
+    
+    @patch('shared.utils.apple_auth.AppleAuthClient.verify_identity_token')
+    async def test_apple_sso_user_password_login_returns_proper_error_message(self, mock_verify, auth_client, apple_user_data):
+        """Should return specific Apple SSO error when Apple user tries to log in with password."""
+        # Arrange - First create Apple SSO user
+        self._mock_token_verification(mock_verify, apple_user_data["user_id"], apple_user_data["email"])
+        request_data = self._create_apple_sso_request(apple_user_data["user_id"], apple_user_data["email"])
+        
+        # Create Apple SSO user
+        sso_response = await auth_client.post("/auth/apple", json=request_data)
+        assert sso_response.status_code == HTTPStatus.CREATED
+        
+        # Act - Try to login with password credentials
+        login_data = {
+            "email": apple_user_data["email"],
+            "password": "somepassword123"
+        }
+        response = await auth_client.post("/auth/login", json=login_data)
+        response_json = await response.get_json()
+        
+        # Assert - Should get specific Apple SSO error message
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        assert "This account was created with Apple Sign-In. Please use Apple Sign-In to log in." in response_json["message"]
+        assert response_json["error_code"] == "MUST_USE_APPLE_SSO"

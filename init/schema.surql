@@ -62,6 +62,14 @@ DEFINE TABLE OVERWRITE attends TYPE RELATION IN users TO events;
 DEFINE EVENT OVERWRITE update_attendee_count ON TABLE attends WHEN $event = "CREATE" THEN {UPDATE $after.out SET attendee_count = attendee_count + 1};
 DEFINE INDEX unique_attendance ON TABLE attends COLUMNS in, out UNIQUE;
 
+-- Define guestlist relation table for event invitations
+DEFINE TABLE OVERWRITE guestlists TYPE RELATION IN users TO events;
+DEFINE FIELD OVERWRITE invited_by ON TABLE guestlists TYPE record<users>;
+DEFINE FIELD OVERWRITE invited_at ON TABLE guestlists TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE status ON TABLE guestlists TYPE string DEFAULT "invited";
+DEFINE FIELD OVERWRITE updated_at ON TABLE guestlists TYPE datetime VALUE time::now();
+DEFINE INDEX unique_guestlist ON TABLE guestlists COLUMNS in, out UNIQUE;
+
 -- Now let's define the events table
 DEFINE TABLE OVERWRITE events SCHEMALESS;
 DEFINE FIELD OVERWRITE title ON TABLE events TYPE string;
@@ -302,6 +310,20 @@ DEFINE FUNCTION OVERWRITE fn::fetch_post($post_id: record) {
         *,
         (out.{creator, filename}) AS media
     FROM ONLY $post_id
+    )
+};
+
+DEFINE FUNCTION OVERWRITE fn::fetch_event_guestlist($event_id: record) {
+    RETURN (
+        SELECT 
+            in.{id, first_name, last_name, avatar, username} AS user,
+            invited_by.{id, first_name, last_name} AS invited_by,
+            invited_at,
+            status,
+            updated_at
+        FROM guestlists 
+        WHERE out = $event_id
+        ORDER BY invited_at DESC
     )
 };
 

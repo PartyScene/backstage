@@ -269,10 +269,10 @@ class AuthDB:
                 if auth_provider in ["google", "apple", "sso"]:
                     logger.info(f"User {email} registered with {auth_provider}, blocking password login")
                     
-                    # Return specific SSO provider for better UX
-                    if user.get("google_sub"):
+                    # Return specific SSO provider based on auth_provider field for better UX
+                    if auth_provider == "google":
                         return "use_google"
-                    elif user.get("apple_sub"):
+                    elif auth_provider == "apple":
                         return "use_apple"
                     else:
                         return "use_sso"

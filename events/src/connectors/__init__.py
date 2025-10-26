@@ -454,6 +454,121 @@ class EventsDB:
             self.logger.error(f"Failed to create ticket: {str(e)}")
             raise
 
+    async def fetch_event_guestlist(self, event_id: str) -> List[Dict[str, Any]]:
+        """
+        Fetch the guestlist for an event.
+
+        Args:
+            event_id (str): The event ID to fetch guestlist for
+
+        Returns:
+            List[Dict[str, Any]]: List of guestlist entries with user details and invitation info
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    RETURN fn::fetch_event_guestlist(type::thing('events', $event_id));
+                    """,
+                    {"event_id": event_id},
+                )
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to fetch event guestlist: {str(e)}")
+            raise
+
+    async def add_to_guestlist(self, event_id: str, user_id: str, invited_by: str, status: str = "invited") -> Dict[str, Any]:
+        """
+        Add a user to an event's guestlist.
+
+        Args:
+            event_id (str): The event ID
+            user_id (str): The user ID to add to guestlist
+            invited_by (str): The ID of the user doing the inviting
+            status (str): The invitation status (default: "invited")
+
+        Returns:
+            Dict[str, Any]: The created guestlist entry
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    RELATE type::thing('users', $user_id) -> guestlists -> type::thing('events', $event_id) 
+                    SET 
+                        invited_by = type::thing('users', $invited_by),
+                        status = $status;
+                    """,
+                    {
+                        "user_id": user_id,
+                        "event_id": event_id,
+                        "invited_by": invited_by,
+                        "status": status,
+                    },
+                )
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to add user to guestlist: {str(e)}")
+            raise
+
+    async def remove_from_guestlist(self, event_id: str, user_id: str) -> bool:
+        """
+        Remove a user from an event's guestlist.
+
+        Args:
+            event_id (str): The event ID
+            user_id (str): The user ID to remove from guestlist
+
+        Returns:
+            bool: True if removal was successful
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    DELETE guestlists WHERE 
+                        in = type::thing('users', $user_id) AND 
+                        out = type::thing('events', $event_id);
+                    """,
+                    {"user_id": user_id, "event_id": event_id},
+                )
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to remove user from guestlist: {str(e)}")
+            return False
+
+    async def update_guestlist_status(self, event_id: str, user_id: str, status: str) -> Dict[str, Any]:
+        """
+        Update the status of a guestlist entry.
+
+        Args:
+            event_id (str): The event ID
+            user_id (str): The user ID
+            status (str): The new status ("invited", "accepted", "declined")
+
+        Returns:
+            Dict[str, Any]: The updated guestlist entry
+        """
+        try:
+            valid_statuses = ["invited", "accepted", "declined"]
+            if status not in valid_statuses:
+                raise ValueError(f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+                
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    UPDATE guestlists 
+                    SET status = $status 
+                    WHERE in = type::thing('users', $user_id) AND out = type::thing('events', $event_id)
+                    RETURN AFTER;
+                    """,
+                    {"user_id": user_id, "event_id": event_id, "status": status},
+                )
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to update guestlist status: {str(e)}")
+            raise
+
 async def init_db(app) -> tuple[EventsDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an EventsDB instance.

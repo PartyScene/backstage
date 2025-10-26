@@ -826,3 +826,247 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
+
+    @route("/events/<event_id>/guestlist", methods=["GET"])
+    @jwt_required
+    async def get_event_guestlist(self, event_id: str):
+        """
+        Get the guestlist for an event.
+        Returns list of invited users with their invitation details.
+        """
+        try:
+            user_id = get_jwt_identity()
+            
+            # Check if user has permission to view guestlist
+            event = await self.conn.fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Only allow event host to view guestlist (you can modify this logic)
+            if event.get("host", {}).get("id") != user_id:
+                status_code = HTTPStatus.FORBIDDEN
+                return (
+                    jsonify(message="Only event hosts can view guestlist", status=status_code.phrase),
+                    status_code,
+                )
+
+            guestlist = await self.conn.fetch_event_guestlist(event_id)
+            
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    data=guestlist,
+                    message="Guestlist retrieved successfully",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error retrieving guestlist for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to retrieve guestlist: {str(e)}", 
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+
+    @route("/events/<event_id>/guestlist", methods=["POST"])
+    @jwt_required
+    async def add_to_guestlist(self, event_id: str):
+        """
+        Add a user to the event guestlist.
+        Body: {"user_id": "user123", "status": "invited"}
+        """
+        try:
+            current_user_id = get_jwt_identity()
+            data = await request.get_json()
+            
+            if not data or not data.get("user_id"):
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(message="user_id is required", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Check if user has permission to manage guestlist
+            event = await self.conn.fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Only allow event host to manage guestlist (you can modify this logic)
+            if event.get("host", {}).get("id") != current_user_id:
+                status_code = HTTPStatus.FORBIDDEN
+                return (
+                    jsonify(message="Only event hosts can manage guestlist", status=status_code.phrase),
+                    status_code,
+                )
+
+            target_user_id = data["user_id"]
+            invitation_status = data.get("status", "invited")
+            
+            result = await self.conn.add_to_guestlist(
+                event_id=event_id,
+                user_id=target_user_id,
+                invited_by=current_user_id,
+                status=invitation_status
+            )
+            
+            status_code = HTTPStatus.CREATED
+            return (
+                jsonify(
+                    data=result,
+                    message="User added to guestlist successfully",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error adding user to guestlist for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to add user to guestlist: {str(e)}", 
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+
+    @route("/events/<event_id>/guestlist/<user_id>", methods=["DELETE"])
+    @jwt_required
+    async def remove_from_guestlist(self, event_id: str, user_id: str):
+        """
+        Remove a user from the event guestlist.
+        """
+        try:
+            current_user_id = get_jwt_identity()
+            
+            # Check if user has permission to manage guestlist
+            event = await self.conn.fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Only allow event host to manage guestlist (you can modify this logic)
+            if event.get("host", {}).get("id") != current_user_id:
+                status_code = HTTPStatus.FORBIDDEN
+                return (
+                    jsonify(message="Only event hosts can manage guestlist", status=status_code.phrase),
+                    status_code,
+                )
+
+            success = await self.conn.remove_from_guestlist(event_id, user_id)
+            
+            if success:
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(
+                        message="User removed from guestlist successfully",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+            else:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(
+                        message="User not found in guestlist",
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error removing user from guestlist for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to remove user from guestlist: {str(e)}", 
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
+
+    @route("/events/<event_id>/guestlist/<user_id>/status", methods=["PATCH"])
+    @jwt_required
+    async def update_guestlist_status(self, event_id: str, user_id: str):
+        """
+        Update guestlist invitation status.
+        Body: {"status": "accepted|declined|invited"}
+        """
+        try:
+            current_user_id = get_jwt_identity()
+            data = await request.get_json()
+            
+            if not data or not data.get("status"):
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(message="status is required", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Allow both event host and invited user to update status
+            event = await self.conn.fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Check permission: either event host or the invited user themselves
+            is_host = event.get("host", {}).get("id") == current_user_id
+            is_invited_user = user_id == current_user_id
+            
+            if not (is_host or is_invited_user):
+                status_code = HTTPStatus.FORBIDDEN
+                return (
+                    jsonify(message="Permission denied", status=status_code.phrase),
+                    status_code,
+                )
+
+            new_status = data["status"]
+            result = await self.conn.update_guestlist_status(event_id, user_id, new_status)
+            
+            status_code = HTTPStatus.OK
+            return (
+                jsonify(
+                    data=result,
+                    message="Guestlist status updated successfully",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error updating guestlist status for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to update guestlist status: {str(e)}", 
+                    status=status_code.phrase
+                ),
+                status_code,
+            )
