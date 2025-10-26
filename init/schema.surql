@@ -254,7 +254,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_public_events($page: number, $limit: number)
     RETURN (
 
         SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false AND time > time::now()
-     ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
+     ORDER BY created_at ASC LIMIT $limit START ($page - 1) * $limit
     )
 };
 
