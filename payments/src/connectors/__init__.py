@@ -143,6 +143,52 @@ class PaymentsDB:
             self.logger.error(f"Failed to fetch event: {str(e)}")
             raise
 
+    async def update_paystack_subaccount(self, user_id: str, subaccount_code: str) -> Dict[str, Any]:
+        """
+        Update user's Paystack subaccount ID.
+
+        Args:
+            user_id (str): The user ID
+            subaccount_code (str): Paystack subaccount code
+
+        Returns:
+            Dict[str, Any]: Updated user data
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    "UPDATE ONLY type::thing('users', $user_id) SET paystack_subaccount_id = $subaccount_code RETURN AFTER;",
+                    {"user_id": user_id, "subaccount_code": subaccount_code},
+                )
+            self.logger.info(f"Updated Paystack subaccount for user {user_id}: {subaccount_code}")
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to update Paystack subaccount: {str(e)}")
+            raise
+
+    async def get_user_paystack_subaccount(self, user_id: str) -> Optional[str]:
+        """
+        Get user's Paystack subaccount ID.
+
+        Args:
+            user_id (str): The user ID
+
+        Returns:
+            Optional[str]: Paystack subaccount code or None
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    "SELECT VALUE paystack_subaccount_id FROM type::thing('users', $user_id);",
+                    {"user_id": user_id},
+                )
+            if result and result[0]:
+                return result[0]
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to get Paystack subaccount: {str(e)}")
+            raise
+
 
 async def init_db(app) -> tuple[PaymentsDB, SurrealDBPoolManager]:
     """

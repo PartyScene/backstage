@@ -16,6 +16,8 @@ DEFINE FIELD OVERWRITE google_sub ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE apple_sub ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE paystack_subaccount_id ON TABLE users TYPE string DEFAULT "";
+
 DEFINE FIELD OVERWRITE scheduled_deletion_at ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE users TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE users TYPE datetime DEFAULT time::now();

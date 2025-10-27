@@ -2,6 +2,8 @@ from datetime import datetime
 import os
 import stripe
 import orjson as json
+import hmac
+import hashlib
 
 from typing import Dict, Any, Optional
 from http import HTTPStatus
@@ -14,6 +16,7 @@ from quart import (
 from payments.src.connectors import PaymentsDB
 from shared.classful import route, QuartClassful
 from shared.utils import get_client_ip
+from shared.utils.paystack_client import PaystackClient
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
@@ -26,11 +29,20 @@ STRIPE_PRIV_KEY = os.environ.get("STRIPE_PRIV_KEY", "")
 PAYMENT_WEBHOOK_URL = os.environ.get("PAYMENT_WEBHOOK_URL", "")
 HOST_KYC_PRICE = os.environ.get("HOST_KYC_PRICE", 10.00)
 
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+PAYSTACK_PUBLIC_KEY = os.environ.get("PAYSTACK_PUBLIC_KEY", "")
+PAYSTACK_PLATFORM_FEE = float(os.environ.get("PAYSTACK_PLATFORM_FEE", "3.0"))
+
 stripe.api_key = STRIPE_PRIV_KEY
 
 if not STRIPE_WEBHOOK_SECRET or not STRIPE_PUB_KEY or not STRIPE_PRIV_KEY:
     raise ValueError(
         "Stripe webhook secret and API keys must be set in environment variables."
+    )
+
+if not PAYSTACK_SECRET_KEY or not PAYSTACK_PUBLIC_KEY:
+    raise ValueError(
+        "Paystack secret and public keys must be set in environment variables."
     )
 
 
@@ -39,7 +51,8 @@ class BaseView(QuartClassful):
     def __init__(self):
         self.conn: PaymentsDB = app.conn
         self.redis = app.redis
-        self.stripe_client: Optional[StripeClient] = stripe.StripeClient(STRIPE_PRIV_KEY)
+        self.stripe_client: Optional[stripe.StripeClient] = stripe.StripeClient(STRIPE_PRIV_KEY)
+        self.paystack_client: Optional[PaystackClient] = PaystackClient(PAYSTACK_SECRET_KEY)
         self.check_and_assign_webhook()
 
     def check_and_assign_webhook(self):
@@ -189,6 +202,65 @@ class BaseView(QuartClassful):
         stripe_fixed = 0.30
         total_amount = (base_amount + stripe_fixed) / (1 - stripe_percentage)
         return total_amount
+
+    async def create_payment_paystack_transaction(
+        self,
+        amount: float,
+        user_id: str,
+        event_id: str,
+        user_email: str,
+        ticket_count: int = 1,
+        host_paystack_subaccount: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a Paystack transaction for ticket purchase.
+        Similar to Stripe payment intent but using Paystack's transaction API.
+
+        Args:
+            amount: Amount in the base currency (e.g., 100 for ₦100)
+            user_id: User ID making the purchase
+            event_id: Event ID for the purchase
+            user_email: User's email address
+            ticket_count: Number of tickets
+            host_paystack_subaccount: Host's Paystack subaccount code for split payments
+
+        Returns:
+            Dict with authorization_url, access_code, reference, etc.
+        """
+        if not self.paystack_client:
+            raise ValueError("Paystack client is not initialized.")
+
+        # Convert to kobo (smallest unit)
+        amount_in_kobo = int(amount * 100)
+
+        app.logger.debug(
+            f"Creating Paystack transaction for user {user_id} with amount {amount_in_kobo} kobo for event {event_id}"
+        )
+
+        metadata = {
+            "user_id": user_id,
+            "event_id": event_id,
+            "ticket_count": ticket_count,
+        }
+
+        # Initialize transaction with Paystack
+        transaction = await self.paystack_client.initialize_transaction(
+            amount=amount_in_kobo,
+            email=user_email,
+            metadata=metadata,
+            subaccount=host_paystack_subaccount,
+            bearer="account" if host_paystack_subaccount else "account",
+        )
+
+        if not transaction.get("status"):
+            raise ValueError(f"Failed to initialize Paystack transaction: {transaction}")
+
+        app.logger.info(
+            f"Paystack transaction created: {transaction['data']['reference']} "
+            f"for user {user_id} on event {event_id}"
+        )
+
+        return transaction["data"]
 
     async def create_kyc_stripe_intent(self, user_id, coupon_code = None) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
@@ -365,6 +437,108 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
+    @route("/payments/<event_id>/create-paystack-intent", methods=["POST"])
+    @jwt_required
+    async def create_paystack_intent(self, event_id: str):
+        """Create Paystack transaction for a user & event"""
+        try:
+            user_id = get_jwt_identity()
+            data: dict = await request.get_json()
+            ticket_count = data.get("ticket_count", 1)
+
+            # Validate ticket count
+            if not isinstance(ticket_count, int) or ticket_count < 1:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="Ticket count must be a positive integer",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+
+            # Apply business limit (max 100 tickets per transaction)
+            if ticket_count > 100:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="Maximum 100 tickets per transaction",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+
+            # Verify the event exists
+            event = await self.conn._fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Get user email from JWT or request
+            user_email = data.get("email")
+            if not user_email:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="User email is required",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+
+            # Get host's Paystack subaccount if available
+            host_data = event.get("host", {})
+            host_paystack_subaccount = host_data.get("paystack_subaccount_id", "")
+
+            if event.get("price", 0) > 0 and not host_paystack_subaccount:
+                app.logger.warning(
+                    f"Event {event_id} is paid but host {host_data.get('id')} has no Paystack subaccount"
+                )
+
+            # Create Paystack transaction
+            transaction = await self.create_payment_paystack_transaction(
+                amount=event.get("price", 0),
+                user_id=user_id,
+                event_id=event_id,
+                user_email=user_email,
+                ticket_count=ticket_count,
+                host_paystack_subaccount=host_paystack_subaccount if host_paystack_subaccount else None,
+            )
+
+            # Return transaction data to frontend
+            return (
+                jsonify(
+                    data={
+                        "authorization_url": transaction.get("authorization_url"),
+                        "access_code": transaction.get("access_code"),
+                        "reference": transaction.get("reference"),
+                        "pub_key": PAYSTACK_PUBLIC_KEY,
+                        "amount": transaction.get("amount"),
+                        "currency": transaction.get("currency", "NGN"),
+                        "event_id": event_id,
+                    },
+                    message="Paystack transaction initialized successfully.",
+                    status=HTTPStatus.OK.phrase,
+                ),
+                HTTPStatus.OK,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error creating Paystack transaction for event {event_id}: {str(e)}",
+                exc_info=True,
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to create Paystack transaction: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
+            )
+
     @route("/payments/webhook", methods=["POST"])
     async def payments_webhook(self):
         """
@@ -474,4 +648,139 @@ class BaseView(QuartClassful):
             app.logger.info(f"Unhandled event type: {event['type']}")
 
         # Return a 200 OK response to Stripe to acknowledge receipt of the event
+        return jsonify({"status": "success"}), 200
+
+    def _verify_paystack_signature(self, payload: bytes, signature: str) -> bool:
+        """
+        Verify Paystack webhook signature using HMAC SHA512.
+
+        Args:
+            payload: Raw request body bytes
+            signature: x-paystack-signature header value
+
+        Returns:
+            bool: True if signature is valid, False otherwise
+        """
+        expected_signature = hmac.new(
+            PAYSTACK_SECRET_KEY.encode(),
+            payload,
+            hashlib.sha512
+        ).hexdigest()
+
+        return hmac.compare_digest(signature, expected_signature)
+
+    @route("/payments/paystack-webhook", methods=["POST"])
+    async def paystack_webhook(self):
+        """
+        Processes incoming Paystack webhook events.
+
+        Paystack sends webhooks for successful transactions with:
+        1. x-paystack-signature header (HMAC SHA512 of payload)
+        2. charge.success event type
+        3. Transaction reference and metadata in payload
+
+        Flow:
+        1. Verify webhook signature
+        2. Extract transaction data
+        3. Verify transaction status via API
+        4. Create tickets and attendance records
+        5. Return 200 OK to acknowledge receipt
+        """
+        app.logger.info("Received Paystack webhook request.")
+
+        # Get raw payload and signature
+        payload = await request.get_data()
+        signature = request.headers.get("x-paystack-signature", "")
+
+        if not signature:
+            app.logger.error("Missing x-paystack-signature header")
+            return jsonify({"error": "Missing signature"}), 400
+
+        # Verify signature
+        if not self._verify_paystack_signature(payload, signature):
+            app.logger.error("Invalid Paystack webhook signature")
+            return jsonify({"error": "Invalid signature"}), 403
+
+        try:
+            event_data = json.loads(payload)
+        except json.JSONDecodeError as e:
+            app.logger.error(f"Invalid JSON payload: {e}")
+            return jsonify({"error": "Invalid payload"}), 400
+
+        app.logger.info(f"Paystack event type: {event_data.get('event')}")
+
+        # Handle charge.success event
+        if event_data.get("event") == "charge.success":
+            try:
+                data = event_data.get("data", {})
+                reference = data.get("reference")
+                metadata = data.get("metadata", {})
+
+                if not reference:
+                    app.logger.error("Missing transaction reference in webhook")
+                    return jsonify({"error": "Missing reference"}), 400
+
+                app.logger.info(f"Processing successful charge: {reference}")
+
+                # Verify transaction via API to confirm status
+                verification = await self.paystack_client.verify_transaction(reference)
+
+                if not verification.get("status"):
+                    app.logger.error(f"Transaction verification failed: {verification}")
+                    return jsonify({"error": "Verification failed"}), 400
+
+                verified_data = verification.get("data", {})
+                if verified_data.get("status") != "success":
+                    app.logger.warning(f"Transaction {reference} status is not success: {verified_data.get('status')}")
+                    return jsonify({"status": "success"}), 200
+
+                # Extract metadata
+                user_id = metadata.get("user_id")
+                event_id = metadata.get("event_id")
+                ticket_count = int(metadata.get("ticket_count", 1))
+
+                if not user_id or not event_id:
+                    app.logger.error(f"Missing user_id or event_id in metadata: {metadata}")
+                    return jsonify({"error": "Missing metadata"}), 400
+
+                app.logger.info(
+                    f"Creating {ticket_count} tickets for user {user_id} on event {event_id}"
+                )
+
+                # Create tickets
+                for i in range(ticket_count):
+                    app.logger.info(
+                        f"Processing ticket {i + 1}/{ticket_count} for transaction {reference}"
+                    )
+                    await self.conn._create_ticket({
+                        "user": user_id,
+                        "event": event_id
+                    })
+                    app.logger.info(
+                        f"Ticket {i + 1} created for user {user_id} on event {event_id}"
+                    )
+
+                # Register user attendance
+                await self.conn.create_attendance({
+                    "user": user_id,
+                    "event": event_id,
+                    "status": "paid"
+                })
+                app.logger.info(
+                    f"User {user_id} registered as attending event {event_id}"
+                )
+
+            except Exception as e:
+                app.logger.error(
+                    f"Error processing Paystack webhook: {str(e)}",
+                    exc_info=True
+                )
+                # Return 200 to prevent Paystack from retrying
+                # Log error for manual investigation
+                return jsonify({"status": "success"}), 200
+
+        else:
+            app.logger.info(f"Unhandled Paystack event: {event_data.get('event')}")
+
+        # Return 200 OK to acknowledge receipt
         return jsonify({"status": "success"}), 200
