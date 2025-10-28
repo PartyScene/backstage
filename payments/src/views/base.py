@@ -249,7 +249,7 @@ class BaseView(QuartClassful):
             email=user_email,
             metadata=metadata,
             subaccount=host_paystack_subaccount,
-            bearer="account" if host_paystack_subaccount else "account",
+            bearer="subaccount" if host_paystack_subaccount else "account",
         )
 
         if not transaction.get("status"):

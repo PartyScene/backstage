@@ -569,6 +569,69 @@ class EventsDB:
             self.logger.error(f"Failed to update guestlist status: {str(e)}")
             raise
 
+    async def verify_ticket(self, event_id: str, ticket_number: str) -> Dict[str, Any]:
+        """
+        Verify and check-in a ticket by its ticket number.
+
+        Args:
+            event_id (str): The event ID
+            ticket_number (str): The ticket number from QR code
+
+        Returns:
+            Dict[str, Any]: Verification result with ticket details and status
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    LET $ticket = (
+                        SELECT 
+                            id,
+                            ticket_number,
+                            checked_in_at,
+                            user.{id, first_name, last_name, avatar} AS user,
+                            event.{id, title} AS event
+                        FROM tickets 
+                        WHERE 
+                            ticket_number = $ticket_number AND 
+                            event = type::thing('events', $event_id)
+                        LIMIT 1
+                    )[0];
+                    
+                    IF $ticket THEN {
+                        IF $ticket.checked_in_at THEN {
+                            RETURN {
+                                valid: true,
+                                already_checked_in: true,
+                                checked_in_at: $ticket.checked_in_at,
+                                ticket: $ticket
+                            };
+                        } ELSE {
+                            UPDATE tickets 
+                            SET checked_in_at = time::now() 
+                            WHERE id = $ticket.id;
+                            
+                            RETURN {
+                                valid: true,
+                                already_checked_in: false,
+                                checked_in_at: time::now(),
+                                ticket: $ticket
+                            };
+                        };
+                    } ELSE {
+                        RETURN {
+                            valid: false,
+                            message: "Ticket not found or does not belong to this event"
+                        };
+                    };
+                    """,
+                    {"event_id": event_id, "ticket_number": ticket_number},
+                )
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to verify ticket: {str(e)}")
+            raise
+
 async def init_db(app) -> tuple[EventsDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an EventsDB instance.

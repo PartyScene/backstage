@@ -1070,3 +1070,97 @@ class BaseView(QuartClassful):
                 ),
                 status_code,
             )
+
+    @route("/events/<event_id>/tickets/verify", methods=["POST"])
+    @jwt_required
+    async def verify_ticket(self, event_id: str):
+        """
+        Verify a ticket by scanning its QR code.
+        Body: {"ticket_number": "TKT-XXXX-YYYY"}
+        
+        Response scenarios:
+        - Valid ticket, first scan: Returns ticket details with checked_in_at timestamp
+        - Valid ticket, already scanned: Returns ticket details with original checked_in_at
+        - Invalid ticket: Returns error message
+        """
+        try:
+            user_id = get_jwt_identity()
+            data = await request.get_json()
+            
+            if not data or "ticket_number" not in data:
+                status_code = HTTPStatus.BAD_REQUEST
+                return (
+                    jsonify(
+                        message="ticket_number is required in request body",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            # Verify user has permission (event host or authorized staff)
+            event = await self.conn.fetch(event_id)
+            if not event:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Event not found", status=status_code.phrase),
+                    status_code,
+                )
+            
+            # Only allow event host to verify tickets
+            if event.get("host", {}).get("id") != user_id:
+                status_code = HTTPStatus.FORBIDDEN
+                return (
+                    jsonify(
+                        message="Only event hosts can verify tickets",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            ticket_number = data["ticket_number"]
+            result = await self.conn.verify_ticket(event_id, ticket_number)
+            
+            if not result.get("valid"):
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(
+                        message=result.get("message", "Invalid ticket"),
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            
+            # Ticket is valid
+            if result.get("already_checked_in"):
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(
+                        data=result,
+                        message="Ticket already checked in",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+            else:
+                status_code = HTTPStatus.OK
+                return (
+                    jsonify(
+                        data=result,
+                        message="Ticket verified and checked in successfully",
+                        status=status_code.phrase
+                    ),
+                    status_code,
+                )
+        
+        except Exception as e:
+            app.logger.error(
+                f"Error verifying ticket for event {event_id}: {str(e)}", exc_info=True
+            )
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to verify ticket: {str(e)}",
+                    status=status_code.phrase
+                ),
+                status_code,
+            )

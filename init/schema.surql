@@ -100,6 +100,7 @@ DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE record<users>;
 DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
 DEFINE FIELD OVERWRITE ticket_number ON TABLE tickets TYPE option<string>;
+DEFINE FIELD OVERWRITE checked_in_at ON TABLE tickets TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE tickets TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE tickets TYPE datetime DEFAULT time::now();
 
