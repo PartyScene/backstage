@@ -138,77 +138,16 @@ class RMQBroker(RabbitBroker):
         cq_value = os.getenv("VIDEO_CQ_VALUE", "27")          # Higher CRF = faster (still good on mobile)
         audio_bitrate = os.getenv("AUDIO_BITRATE", "64k")     # Reduce audio bitrate
         
-        # Create input temp file with unique name to prevent race conditions
+        # Create temp files with unique names to prevent race conditions
         temp_input_fd, temp_input_path = tempfile.mkstemp(suffix=os.path.splitext(filename)[1])
-        # Generate unique output path but don't create file - let FFmpeg create it to avoid permission issues
-        temp_output_path = tempfile.mktemp(suffix='.mp4')
+        temp_output_fd, temp_output_path = tempfile.mkstemp(suffix='.mp4')
         
         try:
-            # Write input to temp file and close descriptor
+            # Write input to temp file and close descriptors
             os.write(temp_input_fd, input_bytes)
             os.close(temp_input_fd)
-            # Try hardware acceleration first (NVIDIA)
-            # try:
-            #     ffmpeg_hw = (
-            #         FFmpeg()
-            #         .option("y")  # Overwrite output file
-            #         .option("hwaccel", "cuda")  # Hardware acceleration
-            #         .input(temp_input_path)
-            #         .output(
-            #             temp_output_path,
-            #             {
-            #                 "codec:v": "h264_nvenc",     # NVIDIA hardware encoder
-            #                 "preset": "slow",            # Better compression than "fast"
-            #                 "crf": "28",                 # More aggressive compression (was 23)
-            #                 "maxrate": "5M",             # 5Mbps max bitrate
-            #                 "bufsize": "10M",            # Buffer size
-            #                 "profile:v": "high",         # Better quality than baseline
-            #                 "level": "4.0",              # Support higher resolutions
-            #                 "codec:a": "aac",            # AAC audio
-            #                 "ar": "44100",               # Standard audio sample rate
-            #                 "b:a": "128k",               # Audio bitrate 128k
-            #                 "movflags": "+faststart",    # Enable progressive download
-            #                 "pix_fmt": "yuv420p",        # Compatible pixel format
-            #                 "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
-            #             }
-            #         )
-            #     )
-                
-            #     await ffmpeg_hw.execute()
-            #     self.logger.info("Successfully compressed video using hardware acceleration")
-                
-            # except FFmpegError as e:
-            #     self.logger.info(f"Hardware acceleration unavailable, using software: {e}")
-                
-            #     # Fall back to software encoding
-            #     ffmpeg_sw = (
-            #         FFmpeg()
-            #         .option("y")  # Overwrite output file
-            #         .input(temp_input_path)
-            #         .output(
-            #             temp_output_path,
-            #             {
-            #                 "codec:v": "libx264",        # H.264 codec for compatibility
-            #                 "preset": "slow",            # Better compression than "fast"
-            #                 "crf": "28",                 # More aggressive compression (was 23)
-            #                 "maxrate": "5M",             # 5Mbps max bitrate
-            #                 "bufsize": "10M",            # Buffer size
-            #                 "profile:v": "high",         # Better quality than baseline
-            #                 "level": "4.0",              # Support higher resolutions
-            #                 "codec:a": "aac",            # AAC audio
-            #                 "ar": "44100",               # Standard audio sample rate
-            #                 "b:a": "128k",               # Audio bitrate 128k
-            #                 "movflags": "+faststart",    # Enable progressive download
-            #                 "pix_fmt": "yuv420p",        # Compatible pixel format
-            #                 "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"  # Scale down to 1080p max
-            #             }
-            #         )
-            #     )
-                
-            #     await ffmpeg_sw.execute()
-            #     self.logger.info("Successfully compressed video using software encoding")
+            os.close(temp_output_fd)  # Close output fd so FFmpeg can write to it
             
-
             try:
                 ffmpeg_hw = (
                     FFmpeg()
@@ -346,7 +285,7 @@ class RMQBroker(RabbitBroker):
             # Force garbage collection after video processing
             collected = gc.collect()
             if collected > 0:
-                self.logger.debug(f"GC collected {collected} objects")
+                self.logger.warning(f"GC collected {collected} objects")
 
     async def compress_image(self, image_bytes: bytes) -> bytes:
         """Compress image while preserving quality"""

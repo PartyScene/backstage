@@ -425,26 +425,27 @@ class BaseView(QuartClassful):
             data["filenames"] = processed_filenames
             data["types"] = processed_types
 
-            # Publish media upload tasks to RMQ
-            media_publish_tasks = []
-            for i, file in enumerate(files.values()):
-                if file.filename:  # Process only if file has a name
-                    # Create isolated data dict for each file to prevent race conditions
-                    file_data = {
-                        "filename": data["filenames"][i],
-                        "type": data["types"][i],
-                        "creator": user_id,
-                        "post_id": data["post_id"],
-                    }
-                    media_publish_tasks.append(app.RMQ._publish_media(file_data, file))
-
-            # Create post in the database
+            # CRITICAL: Validate post creation FIRST (before expensive media processing)
             result = await self.__posts_handler.create_post(data=data, author=user_id)
 
-            if media_publish_tasks:
-                await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
+            if result:  # Post created successfully - now process media
+                # Publish media upload tasks to RMQ (only after validation passes)
+                media_publish_tasks = []
+                for i, file in enumerate(files.values()):
+                    if file.filename:  # Process only if file has a name
+                        # Create isolated data dict for each file to prevent race conditions
+                        file_data = {
+                            "filename": data["filenames"][i],
+                            "type": data["types"][i],
+                            "creator": user_id,
+                            "post_id": data["post_id"],
+                        }
+                        media_publish_tasks.append(app.RMQ._publish_media(file_data, file))
 
-            if result:  # Assuming create_post returns the created post object
+                if media_publish_tasks:
+                    await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
+                
+                # Return success response
                 status_code = HTTPStatus.CREATED
                 return (
                     jsonify(
