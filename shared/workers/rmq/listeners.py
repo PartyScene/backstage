@@ -123,15 +123,20 @@ class RMQBroker(RabbitBroker):
                 raise ValueError(f"Unable to decode message: {e}") from e
 
     async def compress_video(self, input_bytes: bytes, filename: str) -> bytes:
-        """Compress video with optimized settings for size reduction while preserving quality"""
+        """Ultra-fast mobile-optimized video compression (target: 10-15s)"""
         import tempfile
+        import time
         from ffmpeg.asyncio import FFmpeg
         from ffmpeg.errors import FFmpegError
         
-        # Load configurable settings
-        max_bitrate = os.getenv("VIDEO_MAX_BITRATE", "5M")
-        cq_value = os.getenv("VIDEO_CQ_VALUE", "23")  # Instagram-level quality (lower = better)
-        audio_bitrate = os.getenv("AUDIO_BITRATE", "96k")
+        start_time = time.time()
+        input_size_mb = len(input_bytes) / 1_000_000
+        
+        # AGGRESSIVE SETTINGS FOR SPEED (mobile-optimized)
+        target_resolution = "1280:720"        # 720p for mobile (44% fewer pixels than 1080p)
+        max_bitrate = os.getenv("VIDEO_MAX_BITRATE", "1.5M")  # Lower for 720p
+        cq_value = os.getenv("VIDEO_CQ_VALUE", "27")          # Higher CRF = faster (still good on mobile)
+        audio_bitrate = os.getenv("AUDIO_BITRATE", "64k")     # Reduce audio bitrate
         
         # Create input temp file with unique name to prevent race conditions
         temp_input_fd, temp_input_path = tempfile.mkstemp(suffix=os.path.splitext(filename)[1])
@@ -209,56 +214,56 @@ class RMQBroker(RabbitBroker):
                     FFmpeg()
                     .option("y")
                     .option("hwaccel", "cuda")
-                    .option("hwaccel_output_format", "cuda")  # Keep frames on GPU
+                    .option("hwaccel_output_format", "cuda")
                     .input(temp_input_path)
                     .output(
                         temp_output_path,
                         {
                             "codec:v": "h264_nvenc",
                             
-                            # NVENC-specific settings (different from libx264!)
-                            "preset": "p5",              # p1-p7, p5=medium quality/speed
-                            "tune": "hq",                # High quality mode
-                            "rc": "vbr",                 # Variable bitrate (better than CQ for NVENC)
-                            "cq": cq_value,              # Configurable quality level
-                            "b:v": "0",                  # Let cq control quality
-                            "maxrate": max_bitrate,      # Configurable max bitrate
-                            "bufsize": "10M",            # 2x maxrate recommended
+                            # FASTEST NVENC SETTINGS
+                            "preset": "p1",              # p1 = FASTEST (was p5)
+                            "tune": "ll",                # Low latency (was hq)
+                            "rc": "vbr",
+                            "cq": cq_value,
+                            "b:v": "0",
+                            "maxrate": max_bitrate,
+                            "bufsize": "3M",             # Smaller buffer
                             
-                            # GOP settings for better seeking/scrubbing
-                            "g": "48",                   # 2-second GOP at 24fps (Instagram standard)
-                            "keyint_min": "48",          # Enforce consistent keyframe interval
+                            # SIMPLIFIED GOP (faster)
+                            "g": "60",                   # 2.5s GOP (less strict)
+                            "keyint_min": "30",          # More flexibility
                             
-                            "profile:v": "main",         # 'main' better than 'high' for mobile
-                            "level": "4.1",              # 4.1 for 1080p60 support
-                            "spatial-aq": "1",           # Spatial adaptive quantization
-                            "temporal-aq": "1",          # Temporal adaptive quantization
-                            "rc-lookahead": "32",        # Lookahead frames for better decisions
+                            "profile:v": "main",
+                            "level": "4.0",              # 4.0 sufficient for 720p
                             
-                            # Audio settings
+                            # REMOVED: spatial-aq, temporal-aq, rc-lookahead (expensive)
+                            
+                            # Audio
                             "codec:a": "aac",
                             "ar": "44100",
-                            "b:a": audio_bitrate,        # Configurable audio bitrate
+                            "b:a": audio_bitrate,
                             
-                            # Format settings
+                            # Format
                             "movflags": "+faststart",
                             "pix_fmt": "yuv420p",
                             
-                            # Scaling (fixed - removed forced padding)
-                            "vf": "scale_cuda='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease"
+                            # 720p SCALING
+                            "vf": f"scale_cuda='min({target_resolution.split(':')[0]},iw)':'min({target_resolution.split(':')[1]},ih)':force_original_aspect_ratio=decrease"
                         }
                     )
                 )
                 
+                hw_start = time.time()
                 await ffmpeg_hw.execute()
-                self.logger.info("✅ Hardware acceleration: Video compressed successfully")
+                hw_elapsed = time.time() - hw_start
+                self.logger.info(f"✅ Hardware: {hw_elapsed:.1f}s")
             
             except FFmpegError as e:
-                self.logger.warning(f"⚠️ Hardware acceleration failed: {e}")
-                self.logger.info("Falling back to software encoding...")
+                self.logger.warning(f"⚠️ Hardware failed: {str(e)[:50]}")
                 
                 # ============================================
-                # SOFTWARE FALLBACK (libx264)
+                # SOFTWARE FALLBACK - ULTRAFAST
                 # ============================================
                 try:
                     ffmpeg_sw = (
@@ -270,50 +275,62 @@ class RMQBroker(RabbitBroker):
                             {
                                 "codec:v": "libx264",
                                 
-                                # libx264-specific settings
-                                "preset": "medium",          # Faster than 'slow', minimal quality loss
-                                "crf": cq_value,             # Configurable quality-based encoding
-                                # Note: removed maxrate/bufsize - let CRF work alone
+                                # FASTEST x264 PRESET
+                                "preset": "ultrafast",       # FASTEST preset (was medium)
+                                "crf": cq_value,             # Higher CRF for speed
+                                "threads": "0",              # Auto-detect all cores
                                 
-                                # GOP settings for better seeking/scrubbing
-                                "g": "48",                   # 2-second GOP at 24fps (Instagram standard)
-                                "keyint_min": "48",          # Enforce consistent keyframe interval
-                                "sc_threshold": "0",         # Disable scene detection for consistency
+                                # SIMPLIFIED GOP
+                                "g": "60",                   # 2.5s GOP
+                                "keyint_min": "30",          # Flexible
+                                "sc_threshold": "0",         # No scene detection
                                 
-                                "profile:v": "main",         # Better mobile support
-                                "level": "4.1",              # 1080p60 support
-                                "tune": "film",              # Better for real-world content
+                                "profile:v": "main",
+                                "level": "4.0",              # 720p
                                 
-                                # x264 optimization flags
-                                "x264-params": "ref=4:bframes=3:b-adapt=2:direct=auto:me=umh:subme=7:trellis=1:rc-lookahead=50",
+                                # MINIMAL x264 params (remove expensive features)
+                                "x264-params": "ref=1:bframes=0:me=dia:subme=0:no-cabac:no-deblock",
                                 
-                                # Audio settings
+                                # Audio
                                 "codec:a": "aac",
                                 "ar": "44100",
-                                "b:a": audio_bitrate,        # Configurable audio bitrate
+                                "b:a": audio_bitrate,
                                 
-                                # Format settings
+                                # Format
                                 "movflags": "+faststart",
                                 "pix_fmt": "yuv420p",
                                 
-                                # Scaling (fixed - removed forced padding)
-                                "vf": "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease"
+                                # 720p SCALING
+                                "vf": f"scale='min({target_resolution.split(':')[0]},iw)':'min({target_resolution.split(':')[1]},ih)':force_original_aspect_ratio=decrease"
                             }
                         )
                     )
                     
+                    sw_start = time.time()
                     await ffmpeg_sw.execute()
-                    self.logger.info("✅ Software encoding: Video compressed successfully")
+                    sw_elapsed = time.time() - sw_start
+                    self.logger.info(f"✅ Software: {sw_elapsed:.1f}s")
                     
                 except FFmpegError as e:
-                    self.logger.error(f"❌ Software encoding failed: {e}")
+                    self.logger.error(f"❌ Software failed: {e}")
                     raise
 
             # Read compressed file
+            read_start = time.time()
             with open(temp_output_path, 'rb') as f:
                 compressed_bytes = f.read()
-                
-            self.logger.info(f"Video compressed: {len(input_bytes)} -> {len(compressed_bytes)} bytes ({filename})")
+            read_time = time.time() - read_start
+            
+            # Calculate metrics
+            total_elapsed = time.time() - start_time
+            output_size_mb = len(compressed_bytes) / 1_000_000
+            compression_ratio = (1 - output_size_mb / input_size_mb) * 100
+            
+            self.logger.info(
+                f"⏱️ TOTAL: {total_elapsed:.1f}s | "
+                f"{input_size_mb:.1f}MB → {output_size_mb:.1f}MB ({compression_ratio:.0f}% reduction) | "
+                f"Read: {read_time:.2f}s | {filename}"
+            )
             
             # Free input memory before returning
             del input_bytes # noqa: F841 free memory
