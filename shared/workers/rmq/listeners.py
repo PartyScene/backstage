@@ -83,14 +83,17 @@ class RMQBroker(RabbitBroker):
                 await message.ack()
 
     async def decode_message(self, msg: RabbitMessage, original_decoder):
+        """Decode message with fallback handling and proper error logging."""
         try:
             msg.body = ormsgpack.unpackb(msg.body)
             return msg
-        except:
+        except (ormsgpack.MsgpackDecodeError, ValueError, TypeError) as e:
+            self.logger.warning(f"ormsgpack decode failed: {e}, trying original decoder")
             try:
                 return await original_decoder(msg)
-            except:
-                return None
+            except Exception as e:
+                self.logger.error(f"All decoders failed for message: {e}")
+                raise ValueError(f"Unable to decode message: {e}") from e
 
     async def compress_video(self, input_bytes: bytes, filename: str) -> bytes:
         """Compress video with optimized settings for size reduction while preserving quality"""
@@ -98,14 +101,20 @@ class RMQBroker(RabbitBroker):
         from ffmpeg.asyncio import FFmpeg
         from ffmpeg.errors import FFmpegError
         
-        # Create temporary files
-        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1], delete=False) as temp_input:
-            temp_input.write(input_bytes)
-            temp_input_path = temp_input.name
+        # Load configurable settings
+        max_bitrate = os.getenv("VIDEO_MAX_BITRATE", "5M")
+        cq_value = os.getenv("VIDEO_CQ_VALUE", "23")  # Instagram-level quality (lower = better)
+        audio_bitrate = os.getenv("AUDIO_BITRATE", "96k")
         
-        temp_output_path = temp_input_path.replace(os.path.splitext(filename)[1], '.mp4')
+        # Create input temp file with unique name to prevent race conditions
+        temp_input_fd, temp_input_path = tempfile.mkstemp(suffix=os.path.splitext(filename)[1])
+        # Generate unique output path but don't create file - let FFmpeg create it to avoid permission issues
+        temp_output_path = tempfile.mktemp(suffix='.mp4')
         
         try:
+            # Write input to temp file and close descriptor
+            os.write(temp_input_fd, input_bytes)
+            os.close(temp_input_fd)
             # Try hardware acceleration first (NVIDIA)
             # try:
             #     ffmpeg_hw = (
@@ -184,9 +193,9 @@ class RMQBroker(RabbitBroker):
                             "preset": "p5",              # p1-p7, p5=medium quality/speed
                             "tune": "hq",                # High quality mode
                             "rc": "vbr",                 # Variable bitrate (better than CQ for NVENC)
-                            "cq": "28",                  # Quality level (NOT crf!)
+                            "cq": cq_value,              # Configurable quality level
                             "b:v": "0",                  # Let cq control quality
-                            "maxrate": "5M",             # Cap at 5Mbps
+                            "maxrate": max_bitrate,      # Configurable max bitrate
                             "bufsize": "10M",            # 2x maxrate recommended
                             
                             "profile:v": "main",         # 'main' better than 'high' for mobile
@@ -198,7 +207,7 @@ class RMQBroker(RabbitBroker):
                             # Audio settings
                             "codec:a": "aac",
                             "ar": "44100",
-                            "b:a": "96k",                # Instagram-standard audio
+                            "b:a": audio_bitrate,        # Configurable audio bitrate
                             
                             # Format settings
                             "movflags": "+faststart",
@@ -232,7 +241,7 @@ class RMQBroker(RabbitBroker):
                                 
                                 # libx264-specific settings
                                 "preset": "medium",          # Faster than 'slow', minimal quality loss
-                                "crf": "28",                 # Quality-based encoding
+                                "crf": cq_value,             # Configurable quality-based encoding
                                 # Note: removed maxrate/bufsize - let CRF work alone
                                 
                                 "profile:v": "main",         # Better mobile support
@@ -245,7 +254,7 @@ class RMQBroker(RabbitBroker):
                                 # Audio settings
                                 "codec:a": "aac",
                                 "ar": "44100",
-                                "b:a": "96k",
+                                "b:a": audio_bitrate,        # Configurable audio bitrate
                                 
                                 # Format settings
                                 "movflags": "+faststart",
@@ -279,6 +288,10 @@ class RMQBroker(RabbitBroker):
 
     async def compress_image(self, image_bytes: bytes) -> bytes:
         """Compress image while preserving quality"""
+        # Load configurable settings
+        max_dimension = int(os.getenv("IMAGE_MAX_DIMENSION", "2048"))
+        jpeg_quality = int(os.getenv("IMAGE_JPEG_QUALITY", "90"))
+        
         img = Image.open(io.BytesIO(image_bytes))
         
         # Convert to RGB if necessary (for JPEG compatibility)
@@ -291,16 +304,15 @@ class RMQBroker(RabbitBroker):
                 background.paste(img)
             img = background
         
-        # Resize if too large (max 2048px on longest side)
-        max_dimension = 2048
+        # Resize if too large
         if max(img.size) > max_dimension:
             ratio = max_dimension / max(img.size)
             new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
         
-        # Compress with high quality
+        # Compress with configurable quality
         output = io.BytesIO()
-        img.save(output, 'JPEG', quality=90, optimize=True, progressive=True)
+        img.save(output, 'JPEG', quality=jpeg_quality, optimize=True, progressive=True)
         compressed_bytes = output.getvalue()
         
         self.logger.info(f"Image compressed: {len(image_bytes)} -> {len(compressed_bytes)} bytes")

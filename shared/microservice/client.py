@@ -286,6 +286,18 @@ class MicroService(Quart):
                         exc_info=True,
                     )
 
+            # Close RabbitMQ broker connection
+            if hasattr(self, "RMQ") and self.RMQ is not None:
+                try:
+                    logger.warning("Closing RabbitMQ broker connection...")
+                    await self.RMQ.close()
+                    logger.info("RabbitMQ broker closed successfully")
+                except Exception as rmq_close_error:
+                    logger.error(
+                        f"Error closing RabbitMQ connection: {str(rmq_close_error)}",
+                        exc_info=True,
+                    )
+
             logger.info("Service cleanup completed successfully")
         except Exception as general_error:
             logger.error(
