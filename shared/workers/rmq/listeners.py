@@ -15,6 +15,8 @@ import os
 from datetime import datetime, timedelta
 from aiocache import cached
 from typing import Literal, Sequence
+import asyncio
+import gc
 
 import io
 from importlib import util
@@ -69,18 +71,43 @@ class RMQBroker(RabbitBroker):
             #     filenames = await self._create_put_urls_from_rmq(message.body)
 
             @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
-            async def handle_media_upload(message):
-                await self.upload_to_bucket(message.headers, message.body)
-                # name = message.headers.get("filename", "")
-
-                # if "event" in name:
-                #     await self._publish_r18e(name, message.body, "MEDIA")
-                # elif "post" in name:
-                #     await self._publish_r18e(name, message.body, "POST")
-                # else:
-                #     app.logger.warning("Unknown filename: %s", name)
-
-                await message.ack()
+            async def handle_media_upload(message: RabbitMessage):
+                """Process media upload: compress, then upload in background"""
+                filename = message.headers.get("filename")
+                content_type = message.headers.get("content-type")
+                
+                try:
+                    # Compress image or video (GPU/CPU bound - blocking)
+                    file_bytes = message.body
+                    
+                    if content_type.startswith('image/'):
+                        file_bytes = await self.compress_image(file_bytes)
+                        self.logger.info(f"✅ Compressed image: {filename}")
+                    
+                    elif content_type.startswith('video/'):
+                        file_bytes = await self.compress_video(file_bytes, filename)
+                        # Update filename and content type to MP4
+                        if not filename.lower().endswith('.mp4'):
+                            filename = os.path.splitext(filename)[0] + '.mp4'
+                            content_type = 'video/mp4'
+                        self.logger.info(f"✅ Compressed video: {filename}")
+                    
+                    # Upload in background (network bound - non-blocking)
+                    asyncio.create_task(
+                        self._background_upload(filename, content_type, file_bytes)
+                    )
+                    
+                    # Ack immediately after compression (don't wait for upload)
+                    await message.ack()
+                    self.logger.info(f"📤 Queued upload: {filename}")
+                    
+                    # Free memory
+                    del message.body
+                    gc.collect()
+                    
+                except Exception as e:
+                    self.logger.error(f"❌ Processing failed: {filename}: {e}")
+                    await message.nack(requeue=False)  # Don't retry encoding failures
 
     async def decode_message(self, msg: RabbitMessage, original_decoder):
         """Decode message with fallback handling and proper error logging."""
@@ -198,6 +225,10 @@ class RMQBroker(RabbitBroker):
                             "maxrate": max_bitrate,      # Configurable max bitrate
                             "bufsize": "10M",            # 2x maxrate recommended
                             
+                            # GOP settings for better seeking/scrubbing
+                            "g": "48",                   # 2-second GOP at 24fps (Instagram standard)
+                            "keyint_min": "48",          # Enforce consistent keyframe interval
+                            
                             "profile:v": "main",         # 'main' better than 'high' for mobile
                             "level": "4.1",              # 4.1 for 1080p60 support
                             "spatial-aq": "1",           # Spatial adaptive quantization
@@ -244,6 +275,11 @@ class RMQBroker(RabbitBroker):
                                 "crf": cq_value,             # Configurable quality-based encoding
                                 # Note: removed maxrate/bufsize - let CRF work alone
                                 
+                                # GOP settings for better seeking/scrubbing
+                                "g": "48",                   # 2-second GOP at 24fps (Instagram standard)
+                                "keyint_min": "48",          # Enforce consistent keyframe interval
+                                "sc_threshold": "0",         # Disable scene detection for consistency
+                                
                                 "profile:v": "main",         # Better mobile support
                                 "level": "4.1",              # 1080p60 support
                                 "tune": "film",              # Better for real-world content
@@ -278,6 +314,10 @@ class RMQBroker(RabbitBroker):
                 compressed_bytes = f.read()
                 
             self.logger.info(f"Video compressed: {len(input_bytes)} -> {len(compressed_bytes)} bytes ({filename})")
+            
+            # Free input memory before returning
+            del input_bytes # noqa: F841 free memory
+            
             return compressed_bytes
             
         finally:
@@ -285,6 +325,11 @@ class RMQBroker(RabbitBroker):
             for path in [temp_input_path, temp_output_path]:
                 if os.path.exists(path):
                     os.unlink(path)
+            
+            # Force garbage collection after video processing
+            collected = gc.collect()
+            if collected > 0:
+                self.logger.debug(f"GC collected {collected} objects")
 
     async def compress_image(self, image_bytes: bytes) -> bytes:
         """Compress image while preserving quality"""
@@ -316,12 +361,39 @@ class RMQBroker(RabbitBroker):
         compressed_bytes = output.getvalue()
         
         self.logger.info(f"Image compressed: {len(image_bytes)} -> {len(compressed_bytes)} bytes")
+        
+        # Free input memory
+        del image_bytes
+        gc.collect()
+        
         return compressed_bytes
 
-    async def upload_to_bucket(self, data, file_bytes: bytes):
+    async def _background_upload(self, filename: str, content_type: str, file_bytes: bytes):
+        """Upload file to GCS in the background without blocking the queue"""
         import obstore as obs
         
-        # Check if this is a MOV file that needs conversion
+        try:
+            await obs.put_async(
+                self.OBS_STORE,
+                filename,
+                file_bytes,
+                attributes={"Content-Type": content_type},
+            )
+            self.logger.info(f"✅ Upload complete: {filename} ({len(file_bytes)} bytes)")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Upload failed: {filename}: {e}")
+            # TODO: Implement retry logic or dead letter queue
+            
+        finally:
+            # Free memory after upload
+            del file_bytes
+            gc.collect()
+    
+    async def upload_to_bucket(self, data, file_bytes: bytes):
+        """Legacy method - kept for compatibility. New code uses _background_upload."""
+        import obstore as obs
+        
         filename = data["filename"]
         content_type = data["content-type"]
         
@@ -332,13 +404,11 @@ class RMQBroker(RabbitBroker):
                 self.logger.info(f"Compressed image: {filename}")
             except Exception as e:
                 self.logger.error(f"Failed to compress image {filename}: {e}")
-                # Continue with original file if compression fails
         
         # Compress videos (convert MOV to MP4 and optimize all videos)
         if content_type.startswith('video/'):
             try:
                 file_bytes = await self.compress_video(file_bytes, filename)
-                # Update filename and content type to MP4
                 if not filename.lower().endswith('.mp4'):
                     data["filename"] = os.path.splitext(filename)[0] + '.mp4'
                     data["content-type"] = 'video/mp4'
@@ -347,7 +417,6 @@ class RMQBroker(RabbitBroker):
                     self.logger.info(f"Compressed video: {filename}")
             except Exception as e:
                 self.logger.error(f"Failed to process video {filename}: {e}")
-                # Continue with original file if processing fails
         
         await obs.put_async(
             self.OBS_STORE,
@@ -355,6 +424,10 @@ class RMQBroker(RabbitBroker):
             file_bytes,
             attributes={"Content-Type": data["content-type"]},
         )
+        
+        # Free memory
+        del file_bytes
+        gc.collect()
 
     async def sign_put_urls(self, filenames: Sequence[str]):
         signed_urls = await obs.sign_async(
