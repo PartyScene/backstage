@@ -28,6 +28,10 @@ DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
 
 DEFINE INDEX OVERWRITE unique_email ON TABLE users COLUMNS email UNIQUE;
+DEFINE INDEX OVERWRITE idx_google_sub ON TABLE users COLUMNS google_sub;
+DEFINE INDEX OVERWRITE idx_apple_sub ON TABLE users COLUMNS apple_sub;
+DEFINE INDEX OVERWRITE idx_username ON TABLE users COLUMNS username;
+DEFINE INDEX OVERWRITE idx_stripe_account ON TABLE users COLUMNS stripe_account_id;
 
 
 DEFINE TABLE OVERWRITE credentials SCHEMAFULL;
@@ -38,6 +42,7 @@ DEFINE FIELD OVERWRITE encrypted_decryption_key ON TABLE credentials TYPE bytes;
 DEFINE FIELD OVERWRITE decryption_key_initialization_vector ON TABLE credentials TYPE bytes;
 DEFINE FIELD OVERWRITE updated_at ON TABLE credentials TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE credentials TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE idx_credentials_user ON TABLE credentials COLUMNS user;
 
 
 
@@ -59,6 +64,8 @@ DEFINE FIELD OVERWRITE created_at ON TABLE reports TYPE datetime DEFAULT time::n
 DEFINE FIELD OVERWRITE status ON TABLE reports TYPE string DEFAULT "pending";
 DEFINE FIELD OVERWRITE metadata ON TABLE reports FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE resource ON TABLE reports TYPE option<record>;
+DEFINE INDEX OVERWRITE idx_report_reporter ON TABLE reports COLUMNS reporter;
+DEFINE INDEX OVERWRITE idx_report_status ON TABLE reports COLUMNS status;
 
 -- Let's define a relation table for users and events to record attendance
 DEFINE TABLE OVERWRITE attends TYPE RELATION IN users TO events;
@@ -95,6 +102,11 @@ DEFINE FIELD OVERWRITE attendee_count ON TABLE events TYPE int DEFAULT 0;
 DEFINE FIELD OVERWRITE visible ON TABLE posts TYPE bool DEFAULT true;
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
+DEFINE INDEX OVERWRITE idx_event_host ON TABLE events COLUMNS host;
+DEFINE INDEX OVERWRITE idx_event_status ON TABLE events COLUMNS status;
+DEFINE INDEX OVERWRITE idx_event_time ON TABLE events COLUMNS time;
+DEFINE INDEX OVERWRITE idx_event_privacy ON TABLE events COLUMNS is_private;
+DEFINE INDEX OVERWRITE idx_event_private_time ON TABLE events COLUMNS is_private, time;
 
 
 DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
@@ -111,6 +123,10 @@ DEFINE EVENT OVERWRITE update_ticket_number ON TABLE tickets WHEN $event = "CREA
     + "-" 
     + rand::string(4)
     };
+DEFINE INDEX OVERWRITE idx_ticket_user ON TABLE tickets COLUMNS user;
+DEFINE INDEX OVERWRITE idx_ticket_event ON TABLE tickets COLUMNS event;
+DEFINE INDEX OVERWRITE idx_ticket_number ON TABLE tickets COLUMNS ticket_number UNIQUE;
+DEFINE INDEX OVERWRITE idx_ticket_user_event ON TABLE tickets COLUMNS user, event;
 
 
 
@@ -125,6 +141,7 @@ DEFINE FIELD OVERWRITE ingest_url ON TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE playback_url ON TABLE livestreams type STRING;
 DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;
 DEFINE FIELD OVERWRITE event ON TABLE livestreams TYPE record<events>;
+DEFINE INDEX OVERWRITE idx_livestream_event ON TABLE livestreams COLUMNS event;
 
 -- Let's define a table for scenes???
 DEFINE TABLE OVERWRITE scenes schemafull;
@@ -134,6 +151,7 @@ DEFINE FIELD OVERWRITE event ON TABLE scenes TYPE record<events>;
 DEFINE FIELD OVERWRITE srtPlayback ON TABLE scenes TYPE OBJECT;
 DEFINE FIELD OVERWRITE updated_at ON TABLE scenes TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE scenes TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE idx_scene_event ON TABLE scenes COLUMNS event;
 
 -- A table for posts
 DEFINE TABLE OVERWRITE posts SCHEMALESS TYPE RELATION IN users TO media;
@@ -148,6 +166,8 @@ DEFINE FIELD OVERWRITE visible ON TABLE posts TYPE bool DEFAULT true;
 DEFINE INDEX hnsw_post_content_embeddings ON TABLE posts FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
 
 DEFINE INDEX unique_posts ON TABLE posts COLUMNS in, out UNIQUE;
+DEFINE INDEX OVERWRITE idx_post_event ON TABLE posts COLUMNS event;
+DEFINE INDEX OVERWRITE idx_post_visible ON TABLE posts COLUMNS visible;
 -- Define a vector index on the posts table for embedding field
 
 -- A table for comments
@@ -197,6 +217,10 @@ DEFINE FIELD OVERWRITE event ON media TYPE option<record<events>>;
 -- DEFINE FIELD OVERWRITE embeddings ON TABLE media FLEXIBLE TYPE object DEFAULT {};
 -- DEFINE FIELD OVERWRITE embeddings.media ON TABLE media TYPE array DEFAULT array::range(1, 512);
 DEFINE INDEX hnsw_media_embeddings ON TABLE media FIELDS embeddings HNSW DIMENSION 768 M 16 EFC 200;
+DEFINE INDEX OVERWRITE idx_media_creator ON TABLE media COLUMNS creator;
+DEFINE INDEX OVERWRITE idx_media_event ON TABLE media COLUMNS event;
+DEFINE INDEX OVERWRITE idx_media_status ON TABLE media COLUMNS status;
+DEFINE INDEX OVERWRITE idx_media_type ON TABLE media COLUMNS type;
 
 
 
