@@ -553,7 +553,7 @@ class BaseView(QuartClassful):
         try:
             return await self.__notification_manager.create_subscriber(
                 email=email,
-                first_name=user_data.get("organization_name") or user_data.get("first_name"),
+                first_name=user_data.get("organization_name") or user_data.get("username") or user_data.get("first_name"),
                 last_name=user_data.get("last_name"),
                 user_id=user_id,
             )
