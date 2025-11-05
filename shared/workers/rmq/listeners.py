@@ -1,33 +1,36 @@
-from quart import (
-    make_response,
-    render_template,
-    current_app as app,
-    request,
-    jsonify,
-    Quart,
-)
-from quart.datastructures import FileStorage
-from quart_jwt_extended import get_jwt_identity, jwt_required
+from quart import Quart
 
-from shared.classful import route, QuartClassful
-from http import HTTPStatus
 import os
-from datetime import datetime, timedelta
-from aiocache import cached
-from typing import Literal, Sequence
+from datetime import timedelta
+from typing import Literal, Sequence, Optional, Dict, Any
 import asyncio
 import gc
-
+import tempfile
 import io
-from importlib import util
-from PIL import Image
-import requests
-from contextlib import asynccontextmanager
+
+from PIL import Image, ImageOps
 
 from obstore import store
 import obstore as obs
 from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
 import ormsgpack
+from ffmpeg.asyncio import FFmpeg
+from ffmpeg.errors import FFmpegError
+
+# Compression constants
+IMAGE_MAX_DIMENSION = 2048
+IMAGE_JPEG_QUALITY = 90
+IMAGE_BACKGROUND_COLOR = (255, 255, 255)
+
+VIDEO_MAX_HEIGHT = 720
+VIDEO_MAX_WIDTH = 1280
+VIDEO_CRF_QUALITY = 23
+VIDEO_MAX_BITRATE = "1.5M"  # Lower for mobile, faster encoding
+VIDEO_BUFFER_SIZE = "3M"  # Proportional to bitrate
+VIDEO_AUDIO_BITRATE = "64k"  # Sufficient for mobile, faster
+VIDEO_SAMPLE_RATE = "44100"  # Keep this
+
+URL_EXPIRY_HOURS = 6
 
 
 class RMQBroker(RabbitBroker):
@@ -48,33 +51,20 @@ class RMQBroker(RabbitBroker):
             )
 
         if app.microservice_instance == "MEDIA":
-            from obstore.auth.google import GoogleCredentialProvider
-
-            # self.OBS_STORE = GCSStore(os.environ["GCS_BUCKET_NAME"])
-            credential_provider = GoogleCredentialProvider()
             self.logger.warning(
-                "USING OBS WITH GCS_BUCKET_URI: %s ", os.environ["GCS_BUCKET_URI"]
+                "USING OBS WITH GCS_BUCKET_URI: %s", os.environ["GCS_BUCKET_URI"]
             )
-            # self.OBS_STORE = store.from_url(
-            #     os.environ["GCS_BUCKET_URI"], credential_provider=credential_provider
-            # )
-
-            # @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
-            # async def handle_url_signing(message: RabbitMessage):
-            #     """
-            #     This listener will generate PUT signed URLs for media uploads
-            #     to be sent back to the client.
-
-            #     Args:
-            #         message (RabbitMessage): The message received from the queue
-            #     """
-            #     filenames = await self._create_put_urls_from_rmq(message.body)
 
             @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
             async def handle_media_upload(message: RabbitMessage):
-                """Process media upload: compress, then upload in background"""
+                """Process media upload: compress, then upload in background."""
                 filename = message.headers.get("filename")
                 content_type = message.headers.get("content-type")
+                
+                if not filename or not content_type:
+                    self.logger.error(f"❌ Missing required headers: filename={filename}, content_type={content_type}")
+                    await message.nack(requeue=False)
+                    return
                 
                 try:
                     # Compress image or video (GPU/CPU bound - blocking)
@@ -109,170 +99,109 @@ class RMQBroker(RabbitBroker):
                     self.logger.error(f"❌ Processing failed: {filename}: {e}")
                     await message.nack(requeue=False)  # Don't retry encoding failures
 
-    async def decode_message(self, msg: RabbitMessage, original_decoder):
-        """Decode message with fallback handling and proper error logging."""
+    async def decode_message(self, msg: RabbitMessage, original_decoder) -> Optional[RabbitMessage]:
+        """Decode RabbitMQ message, trying ormsgpack first, then original decoder."""
         try:
             msg.body = ormsgpack.unpackb(msg.body)
             return msg
-        except (ormsgpack.MsgpackDecodeError, ValueError, TypeError) as e:
-            self.logger.warning(f"ormsgpack decode failed: {e}, trying original decoder")
+        except (ormsgpack.MsgpackDecodeError, TypeError, ValueError) as e:
+            self.logger.debug(f"ormsgpack decode failed: {e}, trying original decoder")
             try:
                 return await original_decoder(msg)
             except Exception as e:
                 self.logger.error(f"All decoders failed for message: {e}")
-                raise ValueError(f"Unable to decode message: {e}") from e
+                return None
 
     async def compress_video(self, input_bytes: bytes, filename: str) -> bytes:
-        """Ultra-fast mobile-optimized video compression (target: 10-15s)"""
-        import tempfile
-        import time
-        from ffmpeg.asyncio import FFmpeg
-        from ffmpeg.errors import FFmpegError
+        """Compress video to 720p MP4 with H.264 codec."""
+        # Create temp input file
+        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1], delete=False) as temp_input:
+            temp_input.write(input_bytes)
+            temp_input_path = temp_input.name
         
-        start_time = time.time()
-        input_size_mb = len(input_bytes) / 1_000_000
-        
-        # AGGRESSIVE SETTINGS FOR SPEED (mobile-optimized)
-        target_resolution = "1280:720"        # 720p for mobile (44% fewer pixels than 1080p)
-        max_bitrate = os.getenv("VIDEO_MAX_BITRATE", "1.5M")  # Lower for 720p
-        cq_value = os.getenv("VIDEO_CQ_VALUE", "27")          # Higher CRF = faster (still good on mobile)
-        audio_bitrate = os.getenv("AUDIO_BITRATE", "64k")     # Reduce audio bitrate
-        
-        # Create temp files with unique names to prevent race conditions
-        temp_input_fd, temp_input_path = tempfile.mkstemp(suffix=os.path.splitext(filename)[1])
-        temp_output_fd, temp_output_path = tempfile.mkstemp(suffix='.mp4')
+        # Create temp output file (separate file to avoid collision)
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_output:
+            temp_output_path = temp_output.name
+            # File is auto-closed when exiting context, FFmpeg will write to it
         
         try:
-            # Write input to temp file and close descriptors
-            os.write(temp_input_fd, input_bytes)
-            os.close(temp_input_fd)
-            os.close(temp_output_fd)  # Close output fd so FFmpeg can write to it
-            
             try:
                 ffmpeg_hw = (
                     FFmpeg()
                     .option("y")
                     .option("hwaccel", "cuda")
-                    .option("hwaccel_output_format", "cuda")
+                    .option("hwaccel_output_format", "cuda")  # Keep frames on GPU
                     .input(temp_input_path)
                     .output(
                         temp_output_path,
                         {
                             "codec:v": "h264_nvenc",
                             
-                            # FASTEST NVENC SETTINGS
-                            "preset": "p1",              # p1 = FASTEST (was p5)
-                            "tune": "ll",                # Low latency (was hq)
-                            "rc": "vbr",
-                            "cq": cq_value,
-                            "b:v": "0",
-                            "maxrate": max_bitrate,
-                            "bufsize": "3M",             # Smaller buffer
+                            # NVENC-specific settings - 720p optimized
+                            "preset": "p5",              # p5=medium quality/speed
+                            "cq": str(VIDEO_CRF_QUALITY),
+                            "maxrate": VIDEO_MAX_BITRATE,
+                            "bufsize": VIDEO_BUFFER_SIZE,
                             
-                            # SIMPLIFIED GOP (faster)
-                            "g": "60",                   # 2.5s GOP (less strict)
-                            "keyint_min": "30",          # More flexibility
+                            "profile:v": "main",         # Main profile for compatibility
+                            "level": "3.1",              # 3.1 for 720p (was 4.1 for 1080p)
                             
-                            "profile:v": "main",
-                            "level": "4.0",              # 4.0 sufficient for 720p
-                            
-                            # REMOVED: spatial-aq, temporal-aq, rc-lookahead (expensive)
-                            
-                            # Audio
+                            # Audio settings
                             "codec:a": "aac",
-                            "ar": "44100",
-                            "b:a": audio_bitrate,
+                            "ar": VIDEO_SAMPLE_RATE,
+                            "b:a": VIDEO_AUDIO_BITRATE,
                             
-                            # Format
+                            # Format settings
                             "movflags": "+faststart",
                             "pix_fmt": "yuv420p",
                             
-                            # 720p SCALING
-                            "vf": f"scale_cuda='min({target_resolution.split(':')[0]},iw)':'min({target_resolution.split(':')[1]},ih)':force_original_aspect_ratio=decrease"
+                            # 720p scaling
+                            "vf": f"scale_cuda='min({VIDEO_MAX_WIDTH},iw)':'min({VIDEO_MAX_HEIGHT},ih)':force_original_aspect_ratio=decrease"
                         }
                     )
                 )
                 
-                hw_start = time.time()
                 await ffmpeg_hw.execute()
-                hw_elapsed = time.time() - hw_start
-                self.logger.info(f"✅ Hardware: {hw_elapsed:.1f}s")
+                self.logger.info("✅ Hardware encoding complete")
             
             except FFmpegError as e:
-                self.logger.warning(f"⚠️ Hardware failed: {str(e)[:50]}")
+                self.logger.warning(f"⚠️ Hardware failed: {e}, using software")
                 
-                # ============================================
-                # SOFTWARE FALLBACK - ULTRAFAST
-                # ============================================
-                try:
-                    ffmpeg_sw = (
-                        FFmpeg()
-                        .option("y")
-                        .input(temp_input_path)
-                        .output(
-                            temp_output_path,
-                            {
-                                "codec:v": "libx264",
-                                
-                                # FASTEST x264 PRESET
-                                "preset": "ultrafast",       # FASTEST preset (was medium)
-                                "crf": cq_value,             # Higher CRF for speed
-                                "threads": "0",              # Auto-detect all cores
-                                
-                                # SIMPLIFIED GOP
-                                "g": "60",                   # 2.5s GOP
-                                "keyint_min": "30",          # Flexible
-                                "sc_threshold": "0",         # No scene detection
-                                
-                                "profile:v": "main",
-                                "level": "4.0",              # 720p
-                                
-                                # MINIMAL x264 params (remove expensive features)
-                                "x264-params": "ref=1:bframes=0:me=dia:subme=0:no-cabac:no-deblock",
-                                
-                                # Audio
-                                "codec:a": "aac",
-                                "ar": "44100",
-                                "b:a": audio_bitrate,
-                                
-                                # Format
-                                "movflags": "+faststart",
-                                "pix_fmt": "yuv420p",
-                                
-                                # 720p SCALING
-                                "vf": f"scale='min({target_resolution.split(':')[0]},iw)':'min({target_resolution.split(':')[1]},ih)':force_original_aspect_ratio=decrease"
-                            }
-                        )
+                # Software fallback
+                ffmpeg_sw = (
+                    FFmpeg()
+                    .option("y")
+                    .input(temp_input_path)
+                    .output(
+                        temp_output_path,
+                        vcodec="libx264",
+                        acodec="aac",
+                        preset="veryfast",
+                        tune="fastdecode",
+                        crf=str(VIDEO_CRF_QUALITY),
+                        maxrate=VIDEO_MAX_BITRATE,
+                        bufsize=VIDEO_BUFFER_SIZE,
+                        level="3.1",
+                        ar=VIDEO_SAMPLE_RATE,
+                        movflags="+faststart",
+                        pix_fmt="yuv420p",
+                        vf=f"scale=-2:{VIDEO_MAX_HEIGHT}",
+                        threads="0" # Use all available threads
                     )
-                    
-                    sw_start = time.time()
-                    await ffmpeg_sw.execute()
-                    sw_elapsed = time.time() - sw_start
-                    self.logger.info(f"✅ Software: {sw_elapsed:.1f}s")
-                    
-                except FFmpegError as e:
-                    self.logger.error(f"❌ Software failed: {e}")
-                    raise
-
+                )
+                await ffmpeg_sw.execute()
+                self.logger.info("✅ Software encoding complete")
+            
             # Read compressed file
-            read_start = time.time()
             with open(temp_output_path, 'rb') as f:
                 compressed_bytes = f.read()
-            read_time = time.time() - read_start
             
-            # Calculate metrics
-            total_elapsed = time.time() - start_time
-            output_size_mb = len(compressed_bytes) / 1_000_000
-            compression_ratio = (1 - output_size_mb / input_size_mb) * 100
-            
-            self.logger.info(
-                f"⏱️ TOTAL: {total_elapsed:.1f}s | "
-                f"{input_size_mb:.1f}MB → {output_size_mb:.1f}MB ({compression_ratio:.0f}% reduction) | "
-                f"Read: {read_time:.2f}s | {filename}"
-            )
-            
-            # Free input memory before returning
-            del input_bytes # noqa: F841 free memory
+            # Log compression ratio, avoiding division by zero
+            if len(compressed_bytes) > 0:
+                ratio = len(input_bytes) / len(compressed_bytes)
+                self.logger.info(f"Video: {len(input_bytes)} -> {len(compressed_bytes)} bytes ({ratio:.1f}x reduction)")
+            else:
+                self.logger.warning(f"Video compression resulted in 0 bytes (input: {len(input_bytes)} bytes)")
             
             return compressed_bytes
             
@@ -281,53 +210,40 @@ class RMQBroker(RabbitBroker):
             for path in [temp_input_path, temp_output_path]:
                 if os.path.exists(path):
                     os.unlink(path)
-            
-            # Force garbage collection after video processing
-            collected = gc.collect()
-            if collected > 0:
-                self.logger.warning(f"GC collected {collected} objects")
 
     async def compress_image(self, image_bytes: bytes) -> bytes:
-        """Compress image while preserving quality"""
-        # Load configurable settings
-        max_dimension = int(os.getenv("IMAGE_MAX_DIMENSION", "2048"))
-        jpeg_quality = int(os.getenv("IMAGE_JPEG_QUALITY", "90"))
-        
+        """Compress image while preserving quality."""
         img = Image.open(io.BytesIO(image_bytes))
+        
+        # Apply EXIF orientation to prevent rotation issues from phone cameras
+        img = ImageOps.exif_transpose(img)
         
         # Convert to RGB if necessary (for JPEG compatibility)
         if img.mode in ('RGBA', 'LA', 'P'):
             # Create white background for transparent images
-            background = Image.new('RGB', img.size, (255, 255, 255))
+            background = Image.new('RGB', img.size, IMAGE_BACKGROUND_COLOR)
             if img.mode == 'RGBA':
                 background.paste(img, mask=img.split()[-1])  # Use alpha as mask
             else:
                 background.paste(img)
             img = background
         
-        # Resize if too large
-        if max(img.size) > max_dimension:
-            ratio = max_dimension / max(img.size)
+        # Resize if too large (max dimension on longest side)
+        if max(img.size) > IMAGE_MAX_DIMENSION:
+            ratio = IMAGE_MAX_DIMENSION / max(img.size)
             new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
         
-        # Compress with configurable quality
+        # Compress with high quality
         output = io.BytesIO()
-        img.save(output, 'JPEG', quality=jpeg_quality, optimize=True, progressive=True)
+        img.save(output, 'JPEG', quality=IMAGE_JPEG_QUALITY, optimize=True, progressive=True)
         compressed_bytes = output.getvalue()
         
         self.logger.info(f"Image compressed: {len(image_bytes)} -> {len(compressed_bytes)} bytes")
-        
-        # Free input memory
-        del image_bytes
-        gc.collect()
-        
         return compressed_bytes
 
-    async def _background_upload(self, filename: str, content_type: str, file_bytes: bytes):
-        """Upload file to GCS in the background without blocking the queue"""
-        import obstore as obs
-        
+    async def _background_upload(self, filename: str, content_type: str, file_bytes: bytes) -> None:
+        """Upload file to GCS in the background without blocking the queue."""
         try:
             await obs.put_async(
                 self.OBS_STORE,
@@ -338,41 +254,45 @@ class RMQBroker(RabbitBroker):
             self.logger.info(f"✅ Upload complete: {filename} ({len(file_bytes)} bytes)")
             
         except Exception as e:
-            self.logger.error(f"❌ Upload failed: {filename}: {e}")
+            self.logger.error(f"❌ Upload failed for {filename} (type: {content_type}, size: {len(file_bytes)} bytes): {e}")
             # TODO: Implement retry logic or dead letter queue
             
         finally:
             # Free memory after upload
             del file_bytes
             gc.collect()
-    
-    async def upload_to_bucket(self, data, file_bytes: bytes):
-        """Legacy method - kept for compatibility. New code uses _background_upload."""
-        import obstore as obs
-        
+
+    async def upload_to_bucket(self, data: Dict[str, str], file_bytes: bytes) -> None:
+        """Upload and compress media to GCS bucket."""
+        # Check if this is a MOV file that needs conversion
         filename = data["filename"]
         content_type = data["content-type"]
         
         # Compress images
         if content_type.startswith('image/'):
             try:
+                original_size = len(file_bytes)
                 file_bytes = await self.compress_image(file_bytes)
-                self.logger.info(f"Compressed image: {filename}")
+                self.logger.info(f"Compressed image {filename}: {original_size} -> {len(file_bytes)} bytes")
             except Exception as e:
-                self.logger.error(f"Failed to compress image {filename}: {e}")
+                self.logger.error(f"Failed to compress image {filename} ({len(file_bytes)} bytes): {e}")
+                # Continue with original file if compression fails
         
         # Compress videos (convert MOV to MP4 and optimize all videos)
         if content_type.startswith('video/'):
             try:
+                original_size = len(file_bytes)
                 file_bytes = await self.compress_video(file_bytes, filename)
+                # Update filename and content type to MP4
                 if not filename.lower().endswith('.mp4'):
                     data["filename"] = os.path.splitext(filename)[0] + '.mp4'
                     data["content-type"] = 'video/mp4'
-                    self.logger.info(f"Converted video to MP4: {filename} -> {data['filename']}")
+                    self.logger.info(f"Converted video to MP4: {filename} -> {data['filename']} ({original_size} -> {len(file_bytes)} bytes)")
                 else:
-                    self.logger.info(f"Compressed video: {filename}")
+                    self.logger.info(f"Compressed video {filename}: {original_size} -> {len(file_bytes)} bytes")
             except Exception as e:
-                self.logger.error(f"Failed to process video {filename}: {e}")
+                self.logger.error(f"Failed to process video {filename} ({len(file_bytes)} bytes): {e}")
+                # Continue with original file if processing fails
         
         await obs.put_async(
             self.OBS_STORE,
@@ -380,50 +300,49 @@ class RMQBroker(RabbitBroker):
             file_bytes,
             attributes={"Content-Type": data["content-type"]},
         )
-        
-        # Free memory
-        del file_bytes
-        gc.collect()
 
-    async def sign_put_urls(self, filenames: Sequence[str]):
+    async def sign_put_urls(self, filenames: Sequence[str]) -> list:
         signed_urls = await obs.sign_async(
             self.OBS_STORE,
             "PUT",
             filenames,
-            timedelta(seconds=60 * 60 * 6),
+            timedelta(hours=URL_EXPIRY_HOURS),
         )
         return signed_urls
 
     async def _publish_r18e(
-        self, filename, file, type: Literal["MEDIA", "POST", "EVENT"]
-    ):
-
-        file = (
+        self, filename: str, file: Any, content_type: Literal["MEDIA", "POST", "EVENT"]
+    ) -> None:
+        """Publish file to R18E (content moderation) queue."""
+        file_bytes = (
             ormsgpack.packb(file.read())
             if not isinstance(file, bytes)
             else ormsgpack.packb(file)
         )
         await self.publisher(self.RABBITMQ_R18E_QUEUE).publish(
-            file,
-            headers={"type": type, "filename": filename},
+            file_bytes,
+            headers={"type": content_type, "filename": filename},
         )
 
-    async def _publish_media(self, data: dict, file: io.BytesIO):
+    async def _publish_media(self, data: Dict[str, str], file: io.BytesIO) -> None:
         """
-        This method publishes a message to the media queue.
-        Make sure to pass the following data in the dictionary:
-            - filename
-            - event
-            - creator
-            - type
-
+        Publish a message to the media queue for processing.
+        
         Args:
-            data (dict): Dictionary containing the data to be published
-            file (bytes): File to be published
+            data: Dictionary containing:
+                - filename: Name of the file
+                - event: Event identifier
+                - creator: Creator identifier
+                - type: Content type (MIME type)
+            file: File bytes to be published
         """
         # Snapshot values immediately to prevent race conditions
         filename = data.get("filename")
         content_type = data.get("type")
+        
+        if not filename or not content_type:
+            self.logger.error(f"Missing required data: filename={filename}, type={content_type}")
+            return
         
         file_bytes: bytes = ormsgpack.packb(file.read())
         await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(

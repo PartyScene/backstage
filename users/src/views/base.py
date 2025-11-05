@@ -686,7 +686,7 @@ class BaseView(QuartClassful):
                     try:
                         sender = await self.conn.fetch(result["in"])
                         await self.__notification_manager.send_friend_request_notification(
-                            recipient_id=result["out"], sender_name=sender["first_name"]
+                            recipient_id=result["out"], sender_name=sender["organization_name"] or sender["first_name"]
                         )
                         notification_sent = True
                     except Exception as notify_err:

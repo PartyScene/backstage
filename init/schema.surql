@@ -3,6 +3,7 @@ DEFINE DATABASE OVERWRITE partyscene;
 DEFINE TABLE OVERWRITE users SCHEMALESS;
 DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
+DEFINE FIELD OVERWRITE organization_name ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE username ON TABLE users TYPE option<string> DEFAULT "";
 DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE string | record<media> DEFAULT "";
@@ -301,7 +302,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         *,
         (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
-        host.{id, first_name, last_name, avatar, filename, stripe_account_id}
+        host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id}
     OMIT embeddings
     FROM ONLY $event_id
     )
@@ -319,8 +320,8 @@ DEFINE FUNCTION OVERWRITE fn::fetch_post($post_id: record) {
 DEFINE FUNCTION OVERWRITE fn::fetch_event_guestlist($event_id: record) {
     RETURN (
         SELECT 
-            in.{id, first_name, last_name, avatar, username} AS user,
-            invited_by.{id, first_name, last_name} AS invited_by,
+            in.{id, organization_name, first_name, last_name, avatar, username} AS user,
+            invited_by.{id, organization_name,first_name, last_name} AS invited_by,
             invited_at,
             status,
             updated_at

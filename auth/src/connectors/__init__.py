@@ -332,6 +332,7 @@ class AuthDB:
         data = {
             "first_name": form.get("first_name", ""),
             "last_name": form.get("last_name", ""),
+            "organization_name": form.get("organization_name", ""),
             "hashed_email": email,
             "email": email,
             "created_at": datetime.now(UTC),
@@ -437,6 +438,7 @@ class AuthDB:
         data = {
             "first_name": form.get("first_name", ""),
             "last_name": form.get("last_name", ""),
+            "organization_name": form.get("organization_name", ""),
             "hashed_password": form.get("password", ""),
             "hashed_email": email,
         }

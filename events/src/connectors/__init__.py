@@ -589,7 +589,7 @@ class EventsDB:
                             id,
                             ticket_number,
                             checked_in_at,
-                            user.{id, first_name, last_name, avatar} AS user,
+                            user.{id, organization_name, first_name, last_name, avatar} AS user,
                             event.{id, title} AS event
                         FROM tickets 
                         WHERE 

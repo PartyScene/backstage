@@ -398,7 +398,8 @@ class BaseView(QuartClassful):
 
             # Apply early adopter coupon
             events_count = await self.conn._get_events_count()
-            if events_count and events_count < 110: # Apply coupon for first 110 events
+            app.logger.warning(f"Events count: {events_count}")
+            if events_count < 110: # Apply coupon for first 110 events
                 coupon_code = "EARLY_ADOPTER"
                 app.logger.warning(f"Applying EARLY_ADOPTER coupon for user {user_id}")
 

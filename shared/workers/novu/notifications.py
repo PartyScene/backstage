@@ -79,7 +79,7 @@ class NotificationManager:
         Args:
             user_id (str): Unique identifier for the subscriber
             email (str): Email address of the subscriber
-            first_name (Optional[str]): First name of the subscriber
+            first_name (Optional[str]): First name of the subscriber (can also be org name)
             last_name (Optional[str]): Last name of the subscriber
 
         Returns:

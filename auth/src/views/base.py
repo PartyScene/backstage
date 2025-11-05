@@ -104,7 +104,7 @@ class BaseView(QuartClassful):
     @route("/leads", methods=["POST"])
     async def create_lead(self):
         """Create a new lead in the database."""
-        data = await request.get_json()
+        data : dict = await request.get_json()
 
         brevo_resp = await self.__brevo_client.create_contact(
             email=data.get("email"),
@@ -553,7 +553,7 @@ class BaseView(QuartClassful):
         try:
             return await self.__notification_manager.create_subscriber(
                 email=email,
-                first_name=user_data.get("first_name"),
+                first_name=user_data.get("organization_name") or user_data.get("first_name"),
                 last_name=user_data.get("last_name"),
                 user_id=user_id,
             )
