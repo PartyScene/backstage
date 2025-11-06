@@ -99,7 +99,7 @@ DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE point;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
 DEFINE FIELD OVERWRITE attendee_count ON TABLE events TYPE int DEFAULT 0;
-DEFINE FIELD OVERWRITE visible ON TABLE posts TYPE bool DEFAULT true;
+
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
 DEFINE INDEX OVERWRITE idx_event_host ON TABLE events COLUMNS host;

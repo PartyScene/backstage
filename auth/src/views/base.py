@@ -590,6 +590,13 @@ class BaseView(QuartClassful):
         last_name = idinfo.get("family_name")
         picture = idinfo.get("picture")
 
+        # Check if there's an existing Novu subscriber for this email
+        existing_subscriber = await self.__notification_manager.get_subscriber_by_email(email)
+        novu_user_id = None
+        if existing_subscriber:
+            logger.info(f"Existing Novu subscriber found for {email}, reusing subscriber_id {existing_subscriber.subscriber_id}")
+            novu_user_id = existing_subscriber.subscriber_id
+
         # Robust SSO: Try to create user, handle existing gracefully
         user_data = {
             "google_sub": user_id,
@@ -599,6 +606,10 @@ class BaseView(QuartClassful):
             "avatar": picture,
             "auth_provider": "google",
         }
+        
+        # If we have an existing Novu subscriber, use that ID for the user
+        if novu_user_id:
+            user_data["id"] = novu_user_id
         
         # Use robust sso_store - handles duplicates and account linking automatically
         created_or_existing_user = await self.conn.sso_store(user_data)
@@ -617,7 +628,6 @@ class BaseView(QuartClassful):
         # Check if this was a new user (created) or existing user (fetched)
         try:
             # For new users, register with notification service
-            existing_subscriber = await self.__notification_manager.get_subscriber_by_email(email)
             if not existing_subscriber:
                 await self.__n_register_user(
                     email=email,
@@ -741,6 +751,13 @@ class BaseView(QuartClassful):
                 first_name = user_info["name"].get("firstName")
                 last_name = user_info["name"].get("lastName")
             
+            # Check if there's an existing Novu subscriber for this email
+            existing_subscriber = await self.__notification_manager.get_subscriber_by_email(email)
+            novu_user_id = None
+            if existing_subscriber:
+                logger.info(f"Existing Novu subscriber found for {email}, reusing subscriber_id {existing_subscriber.subscriber_id}")
+                novu_user_id = existing_subscriber.subscriber_id
+            
             # Robust Apple SSO: Always use sso_store for consistent handling
             user_data = {
                 "apple_sub": apple_user_id,
@@ -749,6 +766,10 @@ class BaseView(QuartClassful):
                 "last_name": last_name or "",
                 "auth_provider": "apple",
             }
+            
+            # If we have an existing Novu subscriber, use that ID for the user
+            if novu_user_id:
+                user_data["id"] = novu_user_id
             
             # Use robust sso_store - handles duplicates and account linking automatically
             created_or_existing_user = await self.conn.sso_store(user_data)
@@ -766,7 +787,6 @@ class BaseView(QuartClassful):
             
             # Check if this was a new user or existing user for appropriate messaging
             try:
-                existing_subscriber = await self.__notification_manager.get_subscriber_by_email(email)
                 if not existing_subscriber:
                     # New user - register with notification service
                     await self.__n_register_user(
