@@ -64,14 +64,16 @@ RUN useradd -m myuser
 USER myuser
 
 # Expose port
-EXPOSE 5510
+EXPOSE 5550
 
-# Run with Hypercorn
-CMD ["hypercorn", "run:app", \
-     "--bind", "0.0.0.0:5510", \
+# Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
+CMD ["python3", "-m", "granian", \
+     "--loop", "uvloop", \
+     "--host", "0.0.0.0", \
+     "--port", "5550", \
      "--workers", "1", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-", \
-     "--worker-class", "uvloop", \
-     "--log-level", "warning", \
-     "--keep-alive", "120"]
+     "--no-log", \
+     "--task-impl", "rust", \
+     "--interface", "asgi", \
+     "--runtime-mode", "mt", \
+     "run:app"]
