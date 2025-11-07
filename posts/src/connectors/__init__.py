@@ -237,22 +237,34 @@ class PostsDB:
                         "Coordinates are required for both event and post."
                     )
 
-                # For example, you could calculate the distance between the two coordinates
-                distance = await conn.query(
+                distance_result = await conn.query(
                     "RETURN geo::distance($post_location, $event_location);",
                     {
                         "post_location": post_coordinates,
                         "event_location": event_coordinates,
                     },
                 )
-                # if int(distance) > 500:  # Example threshold in meters
-                #     raise ValueError("Post is too far from the event location.")
+                distance_meters = float(distance_result) if distance_result else float('inf')
+                
+                # Allow posts within 1km of event (adjust for large venues/festivals)
+                MAX_DISTANCE_METERS = 1000
+                if distance_meters > MAX_DISTANCE_METERS:
+                    raise ValueError(
+                        f"Post location is {distance_meters:.0f}m from event location (maximum: {MAX_DISTANCE_METERS}m)."
+                    )
 
-            # Check if event starts in 1 hour
-            # if "time" in event_info:
-            #     event_time = event_info["time"]
-            #     if event_time > datetime.datetime.now() + datetime.timedelta(hours=1):
-            #         raise ValueError("Event needs to start in at least 1 hour.")
+            # Check event timing: only allow posts if event starts within 1 hour
+            if "time" in event_info:
+                event_time = event_info["time"]
+                now = datetime.datetime.now(datetime.timezone.utc)
+                one_hour_from_now = now + datetime.timedelta(hours=1)
+                
+                # Reject if event starts more than 1 hour in the future
+                if event_time > one_hour_from_now:
+                    hours_until_event = (event_time - now).total_seconds() / 3600
+                    raise ValueError(
+                        f"Cannot post yet. Event starts in {hours_until_event:.1f} hours (posts allowed 1 hour before event)."
+                    )
                 
 
             if "filenames" in data and "types" in data:

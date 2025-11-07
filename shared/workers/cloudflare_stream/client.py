@@ -30,12 +30,7 @@ class CloudflareLSClient:
         self.conn: LiveStreamDB = app.conn
         self.logger = app.logger
         self.client = AsyncCloudflare(
-            api_email=os.environ.get(
-                "CLOUDFLARE_ACCOUNT_EMAIL"
-            ),  # This is the default and can be omitted
-            api_key=os.environ.get(
-                "CLOUDFLARE_API_KEY"
-            ),  # This is the default and can be omitted
+            api_token=os.environ.get("CLOUDFLARE_API_TOKEN"),
         )
         self.ACCOUNT_ID = ""
         self._initialized = False

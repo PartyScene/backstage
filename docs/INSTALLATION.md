@@ -124,6 +124,11 @@ GCP_BUCKET_NAME=partyscene-scenes
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/credentials.json
 GCLOUD_AUTH_DIR=C:/Users/YourUsername/.config/gcloud
 
+# Cloudflare Stream API (for livestream service)
+# Create at: https://dash.cloudflare.com/profile/api-tokens
+# Required permissions: Account > Stream > Edit
+CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+
 # JWT and Security
 JWT_SECRET_KEY=your_very_secure_random_key
 ```
