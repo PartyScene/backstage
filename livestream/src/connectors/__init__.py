@@ -86,6 +86,25 @@ class LiveStreamDB:
             )
         return record_id_to_json(result)
 
+    async def delete_cloudflare_scene(self, event_id: str):
+        """
+        Delete the Cloudflare scene data for an event
+
+        Args:
+            event_id (str): Unique identifier for the event
+
+        Returns:
+            bool: True if deletion was successful, False if scene not found
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                DELETE scenes WHERE event = type::thing("events", $event_id)
+                """,
+                {"event_id": event_id},
+            )
+        return bool(result and result[0])
+
     # async def delete(self, email) :
     #     """This db function deletes a user.
 
