@@ -15,9 +15,11 @@ from http import HTTPStatus
 from shared.classful import route, QuartClassful
 from shared.workers import cloudflare_stream
 from datetime import datetime, timedelta
+import shared.utils
 from aiocache import cached
 from livestream.src.connectors import LiveStreamDB
 from cloudflare._exceptions import APIError, APIConnectionError, APITimeoutError
+from surrealdb import RecordID
 
 import httpx
 import redis.exceptions
@@ -304,6 +306,53 @@ class BaseView(QuartClassful):
                 jsonify({"error": "Streaming service unavailable"}),
                 HTTPStatus.SERVICE_UNAVAILABLE,
             )
+
+        # Validate distance: host must be within 1km of event location
+        try:
+            data = await request.get_json()
+            if data and "coordinates" in data:
+                async with self.conn.pool.acquire() as conn:
+                    # Fetch event information
+                    event_info = await conn.select(RecordID("events", event_id))
+                    
+                    if event_info and "location" in event_info:
+                        event_coordinates = event_info["location"].get("coordinates")
+                        host_coordinates = data["coordinates"]
+                        host_coordinates = shared.utils.coordinates_to_geometry_point(host_coordinates)
+                        
+                        if not event_coordinates or not host_coordinates:
+                            return (
+                                jsonify({"error": "Coordinates are required for both event and livestream"}),
+                                HTTPStatus.BAD_REQUEST,
+                            )
+                        
+                        # Calculate distance
+                        distance_result = await conn.query(
+                            "RETURN geo::distance($host_location, $event_location);",
+                            {
+                                "host_location": host_coordinates,
+                                "event_location": event_coordinates,
+                            },
+                        )
+                        distance_meters = float(distance_result) if distance_result else float('inf')
+                        
+                        # Enforce 1km radius
+                        MAX_DISTANCE_METERS = 1000
+                        if distance_meters > MAX_DISTANCE_METERS:
+                            return (
+                                jsonify({
+                                    "error": f"Host location is {distance_meters:.0f}m from event location (maximum: {MAX_DISTANCE_METERS}m). You must be at the event to go live."
+                                }),
+                                HTTPStatus.FORBIDDEN,
+                            )
+                        
+                        app.logger.info(f"Distance check passed: {distance_meters:.0f}m from event")
+                    else:
+                        app.logger.warning(f"Event {event_id} has no location data, skipping distance check")
+        except Exception as e:
+            app.logger.error(f"Distance validation error for event {event_id}: {e}")
+            # Don't block stream creation if distance check fails - log and continue
+            # In production, you might want to fail here depending on requirements
 
         try:
             # Check if stream already exists (idempotency)
