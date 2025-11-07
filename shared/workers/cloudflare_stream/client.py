@@ -301,6 +301,10 @@ class CloudflareLSClient:
             video_data = await self._retrieve_video(event_id)
             if video_data:
                 self.logger.info(f"Found VOD for event {event_id}")
+                # Update database with playback URLs
+                if isinstance(video_data, dict) and "playback" in video_data:
+                    await self.conn.update_cloudflare_scene_playback(event_id, video_data["playback"])
+                    self.logger.info(f"Updated playback data for event {event_id}")
             else:
                 self.logger.info(f"No VOD available yet for event {event_id}")
             return video_data
@@ -328,6 +332,10 @@ class CloudflareLSClient:
             video_data = await self._retrieve_video(event_id, live=True)
             if video_data:
                 self.logger.info(f"Found live stream for event {event_id}")
+                # Update database with playback URLs
+                if isinstance(video_data, dict) and "playback" in video_data:
+                    await self.conn.update_cloudflare_scene_playback(event_id, video_data["playback"])
+                    self.logger.info(f"Updated playback data for event {event_id}")
             else:
                 self.logger.info(
                     f"Live stream not ready yet for event {event_id} (may still be processing)"

@@ -391,31 +391,3 @@ class BaseView(QuartClassful):
             status=HTTPStatus.OK.phrase,
         )
 
-    # -------------------------------------------------------------------------
-    # GCP Live Streaming Implementation (Deprecated)
-    # -------------------------------------------------------------------------
-
-    # async def create_livestream_gcp(self, event_id):
-    #     """
-    #     Create a livestream using GCP Live Streaming API.
-    #     
-    #     This method follows the GCP livestream creation workflow:
-    #     1. Create a Stream: Initializes a new livestream for the specified event
-    #     2. Create Input: Sets up the input configuration for the livestream
-    #     3. Record Input: Prepares the livestream to start recording
-    #     4. Store Output: Saves the livestream configuration and metadata
-    #     5. Connect to Output: Establishes the output streaming destination
-    #     
-    #     NOTE: This implementation is deprecated in favor of Cloudflare Stream.
-    #     """
-    #     try:
-    #         stream_create_resp = await self.livestream.start_stream(event_id)
-    #         if stream_create_resp:
-    #             stream_info = await self.livestream.get_stream(event_id)
-    #             return jsonify(stream_info), HTTPStatus.CREATED
-    #     except Exception as e:
-    #         app.logger.error(f"GCP livestream creation failed: {e}")
-    #         return (
-    #             jsonify({"error": "Failed to create livestream"}),
-    #             HTTPStatus.INTERNAL_SERVER_ERROR,
-    #         )

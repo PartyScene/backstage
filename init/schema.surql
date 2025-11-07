@@ -133,25 +133,22 @@ DEFINE INDEX OVERWRITE idx_ticket_user_event ON TABLE tickets COLUMNS user, even
 -- Relate Events to Media
 DEFINE TABLE OVERWRITE has_media TYPE RELATION IN events TO media;
 
--- Let's define a table for livestreams
-DEFINE TABLE OVERWRITE livestreams schemafull;
-DEFINE FIELD OVERWRITE channel_name ON TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE input_name ON TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE ingest_url ON TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE playback_url ON TABLE livestreams type STRING;
-DEFINE FIELD OVERWRITE manifests ON TABLE livestreams TYPE array<string>;
-DEFINE FIELD OVERWRITE event ON TABLE livestreams TYPE record<events>;
-DEFINE INDEX OVERWRITE idx_livestream_event ON TABLE livestreams COLUMNS event;
-
--- Let's define a table for scenes???
+-- Let's define a table for scenes (Cloudflare Live)
 DEFINE TABLE OVERWRITE scenes schemafull;
 DEFINE FIELD OVERWRITE input_uid ON TABLE scenes TYPE STRING;
 DEFINE FIELD OVERWRITE srt ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE srtPlayback ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE rtmps ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE rtmpsPlayback ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE webRTC ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE webRTCPlayback ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE playback ON TABLE scenes FLEXIBLE TYPE OBJECT;
+DEFINE FIELD OVERWRITE metadata ON TABLE scenes FLEXIBLE TYPE OBJECT DEFAULT {};
 DEFINE FIELD OVERWRITE event ON TABLE scenes TYPE record<events>;
-DEFINE FIELD OVERWRITE srtPlayback ON TABLE scenes TYPE OBJECT;
 DEFINE FIELD OVERWRITE updated_at ON TABLE scenes TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE scenes TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE idx_scene_event ON TABLE scenes COLUMNS event;
+DEFINE INDEX OVERWRITE unique_scene_event ON TABLE scenes COLUMNS event UNIQUE;
 
 -- A table for posts
 DEFINE TABLE OVERWRITE posts SCHEMALESS TYPE RELATION IN users TO media;

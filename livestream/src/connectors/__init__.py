@@ -1,3 +1,4 @@
+from cloudflare.types.stream.live_input import LiveInput
 from quart import Quart
 from surrealdb import AsyncSurreal
 import os
@@ -14,60 +15,41 @@ class LiveStreamDB:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
-    async def fetch_livestream(self, event_id: str):
-        """
-        Get the current livestream data attached to an event
-        """
-        async with self.pool.acquire() as conn:
-            result = await conn.query(
-                """
-                SELECT * FROM ONLY livestreams WHERE event = type::thing("events", $event_id)
-                """,
-                {"event_id": event_id},
-            )
-        return record_id_to_json(result)
-
-    async def store_livestream(self, channel_response, input_response, event_id: str):
-        """
-        Store the ingest url / playback url / from GCP and attach it to the event.
-
-        Returns:
-            bool: Indicates if this operation was a success
-        """
-        async with self.pool.acquire() as conn:
-            result = await conn.query(
-                """
-                INSERT INTO livestreams 
-                    (channel_name, input_name, ingest_url, playback_url, manifests, event) VALUES ($channel_name, $input_name, $ingest_url, $playback_url, $manifests, type::thing("events", $event_id))
-                """,
-                {
-                    "channel_name": channel_response.name,
-                    "input_name": input_response.name,
-                    "ingest_url": input_response.uri,
-                    "playback_url": channel_response.output.uri,
-                    "manifests": [x.file_name for x in channel_response.manifests],
-                    "event_id": event_id,
-                },
-            )
-        return record_id_to_json(result[0])
-
-    async def store_cloudflare_scene(self, input_response, event_id: str):
+    async def store_cloudflare_scene(self, input_response: LiveInput, event_id: str):
         """
         Store the ingest url / playback url / from Cloudflare and attach it to the event.
+        Supports SRT, RTMPS, WebRTC ingest and HLS/DASH playback.
+
+        Args:
+            input_response: Cloudflare LiveInput object with stream configuration
+            event_id: Unique identifier for the event
 
         Returns:
-            bool: Indicates if this operation was a success
+            dict: Created scene record with all stream data
         """
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 """
                 INSERT INTO scenes 
-                    (input_uid, srt, srtPlayback, event) VALUES ($input_uid, $srt, $srtPlayback, type::thing("events", $event_id))
+                    (input_uid, srt, srtPlayback, rtmps, rtmpsPlayback, webRTC, webRTCPlayback, playback, metadata, event) 
+                VALUES ($input_uid, $srt, $srtPlayback, $rtmps, $rtmpsPlayback, $webRTC, $webRTCPlayback, $playback, $metadata, type::thing("events", $event_id))
                 """,
                 {
-                    "input_uid": input_response.uid,
-                    "srt": input_response.srt,
-                    "srtPlayback": input_response.srtPlayback,
+                    "input_uid": input_response.uid or "",
+                    "srt": input_response.srt.model_dump() if input_response.srt else {},
+                    "srtPlayback": input_response.srt_playback.model_dump() if input_response.srt_playback else {},
+                    "rtmps": input_response.rtmps.model_dump() if input_response.rtmps else {},
+                    "rtmpsPlayback": input_response.rtmps_playback.model_dump() if input_response.rtmps_playback else {},
+                    "webRTC": input_response.web_rtc.model_dump() if input_response.web_rtc else {},
+                    "webRTCPlayback": input_response.web_rtc_playback.model_dump() if input_response.web_rtc_playback else {},
+                    "playback": {},  # HLS/DASH URLs populated from video API after stream starts
+                    "metadata": {
+                        "created": str(input_response.created) if input_response.created else None,
+                        "modified": str(input_response.modified) if input_response.modified else None,
+                        "status": input_response.status if input_response.status else None,
+                        "deleteRecordingAfterDays": input_response.delete_recording_after_days if input_response.delete_recording_after_days else None,
+                        "meta": input_response.meta if input_response.meta else {},
+                    },
                     "event_id": event_id,
                 },
             )
@@ -85,6 +67,31 @@ class LiveStreamDB:
                 {"event_id": event_id},
             )
         return record_id_to_json(result)
+
+    async def update_cloudflare_scene_playback(self, event_id: str, playback_data: dict):
+        """
+        Update the playback data (HLS/DASH URLs) for a scene.
+        Called when video becomes available after stream starts.
+
+        Args:
+            event_id (str): Unique identifier for the event
+            playback_data (dict): Playback URLs from Cloudflare Video API
+
+        Returns:
+            bool: True if update was successful
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                UPDATE scenes SET playback = $playback 
+                WHERE event = type::thing("events", $event_id)
+                """,
+                {
+                    "event_id": event_id,
+                    "playback": playback_data or {},
+                },
+            )
+        return bool(result and result[0])
 
     async def delete_cloudflare_scene(self, event_id: str):
         """
