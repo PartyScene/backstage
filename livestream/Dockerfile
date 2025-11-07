@@ -45,17 +45,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Set PYTHONPATH for shared libraries
-# ENV PYTHONPATH="/shared:${PYTHONPATH}"
-
 # Copy application code
-COPY --from=test /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY livestream/ ./
 COPY shared/ /shared/
-
-# install deps
-RUN pip install --no-cache-dir -r /shared/requirements.txt \
-    && pip install --no-cache-dir -r ./requirements.txt
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -63,7 +55,11 @@ ENV QUART_APP=run:app
 ENV QUART_ENV=production
 ENV PYTHONPATH="/"
 
-# Run as non-root user
+# Install dependencies (do this BEFORE switching user so executables go to /usr/local/bin)
+RUN pip install --no-cache-dir -r /shared/requirements.txt \
+    && pip install --no-cache-dir -r ./requirements.txt
+
+# Run as non-root user (after all installations)
 RUN useradd -m myuser
 USER myuser
 
