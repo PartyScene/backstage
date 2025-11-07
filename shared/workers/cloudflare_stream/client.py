@@ -32,22 +32,21 @@ class CloudflareLSClient:
         self.client = AsyncCloudflare(
             api_token=os.environ.get("CLOUDFLARE_API_TOKEN"),
         )
-        self.ACCOUNT_ID = ""
+        self.ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
         self._initialized = False
 
     async def initialize(self):
         """
         Initialize async resources. Must be called after __init__.
-        Fetches and validates Cloudflare account ID.
+        Validates Cloudflare account ID is configured.
         """
         if self._initialized:
             return
 
         try:
-            await self.retrieve_account()
             if not self.ACCOUNT_ID:
                 raise RuntimeError(
-                    "Failed to retrieve Cloudflare account ID. Check API credentials."
+                    "CLOUDFLARE_ACCOUNT_ID environment variable not set. Get it from Cloudflare dashboard."
                 )
             self.logger.info(
                 f"CloudflareLSClient initialized with account ID: {self.ACCOUNT_ID}"
@@ -55,30 +54,6 @@ class CloudflareLSClient:
             self._initialized = True
         except Exception as e:
             self.logger.error(f"Failed to initialize CloudflareLSClient: {e}")
-            raise
-
-    async def retrieve_account(self):
-        """
-        Retrieve the Cloudflare account ID.
-
-        Sets the `ACCOUNT_ID` attribute with the found account's identifier.
-
-        Raises:
-            RuntimeError: If no accounts are found or API call fails
-        """
-        try:
-            accounts = await self.client.accounts.list()
-            if not accounts.result:
-                self.logger.error("No Cloudflare accounts found")
-                raise RuntimeError("No Cloudflare accounts available")
-
-            self.ACCOUNT_ID = accounts.result[0].id
-            self.logger.info(f"Retrieved Cloudflare account ID: {self.ACCOUNT_ID}")
-        except APIError as e:
-            self.logger.error(f"Cloudflare API error retrieving account: {e}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error retrieving account: {e}")
             raise
 
     async def _retrieve_video(

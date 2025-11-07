@@ -125,9 +125,11 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/credentials.json
 GCLOUD_AUTH_DIR=C:/Users/YourUsername/.config/gcloud
 
 # Cloudflare Stream API (for livestream service)
-# Create at: https://dash.cloudflare.com/profile/api-tokens
+# Create token at: https://dash.cloudflare.com/profile/api-tokens
 # Required permissions: Account > Stream > Edit
 CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+# Get account ID from: https://dash.cloudflare.com/ (in URL after login)
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
 
 # JWT and Security
 JWT_SECRET_KEY=your_very_secure_random_key
