@@ -1,22 +1,3 @@
-from .crypto import AsyncEnvelopeCipherService, EnvelopeCipher
-from .signer import generate_cdn_signed_url
-from .veriff import VeriffClient
-from .apple_auth import AppleAuthClient, verify_apple_token
-
-__all__ = [
-    "AsyncEnvelopeCipherService",
-    "EnvelopeCipher",
-    "generate_cdn_signed_url",
-    "VeriffClient",
-    "AppleAuthClient",
-    "verify_apple_token",
-    "parse_rusty_req_response",
-    "get_client_ip",
-    "record_id_to_json",
-    "generate_signed_url",
-    "recursively_sign_object_media",
-]
-
 from surrealdb import RecordID
 from surrealdb.data.types import geometry
 import orjson as json
@@ -232,3 +213,24 @@ async def sign_media_object(obj: Any) -> Any:
         return obj
 
     return flattened_obj
+
+
+# Import submodules after all functions are defined to avoid circular imports
+from .crypto import AsyncEnvelopeCipherService, EnvelopeCipher
+from .signer import generate_cdn_signed_url
+from .veriff import VeriffClient
+from .apple_auth import AppleAuthClient, verify_apple_token
+
+__all__ = [
+    "AsyncEnvelopeCipherService",
+    "EnvelopeCipher",
+    "generate_cdn_signed_url",
+    "VeriffClient",
+    "AppleAuthClient",
+    "verify_apple_token",
+    "parse_rusty_req_response",
+    "get_client_ip",
+    "record_id_to_json",
+    "generate_signed_url",
+    "recursively_sign_object_media",
+]
