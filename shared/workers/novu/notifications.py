@@ -1,7 +1,6 @@
 import os
 import novu_py
 import logging
-import httpx
 
 from datetime import datetime
 from novu_py import Novu, SubscriberResponseDto, TriggerEventRequestDto, To

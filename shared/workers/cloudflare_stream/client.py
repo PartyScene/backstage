@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import orjson as json
 
 from cloudflare import AsyncCloudflare
 from cloudflare.types import stream
@@ -14,6 +15,8 @@ from tenacity import (
     retry_if_exception_type,
     before_sleep_log,
 )
+import rusty_req
+from shared.utils import parse_rusty_req_response
 
 
 class CloudflareLSClient:
@@ -33,6 +36,7 @@ class CloudflareLSClient:
             api_token=os.environ.get("CLOUDFLARE_API_TOKEN"),
         )
         self.ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+        self.API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
         self._initialized = False
 
     async def initialize(self):
@@ -56,32 +60,97 @@ class CloudflareLSClient:
             self.logger.error(f"Failed to initialize CloudflareLSClient: {e}")
             raise
 
-    async def _retrieve_video(
-        self, event_id, live: bool = False, retrieve_all: bool = False
-    ):
+    async def _call_cloudflare_api(self, url: str, method: str = "GET", params: dict = None) -> dict:
         """
-        Retrieve video(s) associated with a specific event.
+        Helper method to call Cloudflare API using rusty_req.
+        
+        Args:
+            url (str): Full API URL
+            method (str): HTTP method (GET, POST, etc.)
+            params (dict): Request body for POST/PUT requests
+            
+        Returns:
+            dict: Parsed response result from Cloudflare API
+            
+        Raises:
+            APIError: If API call fails
+        """
+        headers = {
+            "Authorization": f"Bearer {self.API_TOKEN}",
+            "Content-Type": "application/json",
+        }
+        
+        response = await rusty_req.fetch_single(
+            url=url,
+            method=method,
+            headers=headers,
+            params=params,
+            timeout=10.0,
+            tag=f"cloudflare-{method.lower()}",
+        )
+        
+        try:
+            # Use shared helper for parsing rusty_req response
+            result = parse_rusty_req_response(response, expected_status=(200, 201))
+            
+            # Cloudflare API wraps response in success/result structure
+            if not result.get("success"):
+                raise APIError(
+                    f"Cloudflare API call unsuccessful: {result}",
+                    response=None,
+                    body=result,
+                )
+            
+            return result.get("result")
+        except RuntimeError as e:
+            # Convert RuntimeError from helper to APIError for consistency
+            raise APIError(str(e), response=None, body=None)
+
+    async def _retrieve_video(self, input_uid: str, live_only: bool = False):
+        """
+        Retrieve video playback info from a live input.
+        
+        Per Cloudflare docs: https://developers.cloudflare.com/stream/stream-live/watch-live-stream/
+        - First video in list has status "live-inprogress" if actively broadcasting
+        - Other videos have status "ready" (recordings)
+        - Returns playback.hls and playback.dash URLs
 
         Args:
-            event_id (str): Unique identifier for the event
-            live (bool, optional): Whether to retrieve live streams. Defaults to False.
-            retrieve_all (bool, optional): If True, returns all matching videos. Defaults to False.
+            input_uid (str): Cloudflare live input UID
+            live_only (bool): If True, only return live-inprogress videos. Default False.
 
         Returns:
-            Union[stream.Video, List[stream.Video], None]: Retrieved video(s) or None
+            dict or None: Video with playback info (HLS/DASH URLs)
         """
-        videos = await self.client.stream.list(
-            account_id=self.ACCOUNT_ID,
-            search=event_id,
-            asc=False,
-            status="ready",
-            type="live" if live else "vod",
-        )
-        return (
-            videos.result
-            if retrieve_all
-            else (videos.result[0].to_json() if videos.result else None)
-        )
+        # Get list of videos using direct API call (not in Python SDK)
+        # https://api.cloudflare.com/client/v4/accounts/{account_id}/stream/live_inputs/{input_uid}/videos
+        url = f"https://api.cloudflare.com/client/v4/accounts/{self.ACCOUNT_ID}/stream/live_inputs/{input_uid}/videos"
+        
+        try:
+            videos = await self._call_cloudflare_api(url)
+        except APIError as e:
+            self.logger.error(f"Failed to get videos for input {input_uid}: {e}")
+            return None
+        
+        if not videos:
+            return None
+        
+        # First video is live-inprogress if actively broadcasting, otherwise most recent recording
+        # Per Cloudflare docs, the video already includes playback.hls and playback.dash URLs
+        first_video = videos[0]
+        
+        # If live_only flag is set, only return live-inprogress videos
+        if live_only:
+            video_status = first_video.get("status", {})
+            if isinstance(video_status, dict) and video_status.get("state") == "live-inprogress":
+                return first_video
+            return None
+        
+        # Otherwise return any video with playback available
+        if first_video.get("playback"):
+            return first_video
+        
+        return None
 
     @retry(
         retry=retry_if_exception_type((APIConnectionError, APITimeoutError)),
@@ -89,15 +158,16 @@ class CloudflareLSClient:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         before_sleep=before_sleep_log(logging.getLogger(__name__), logging.WARNING),
     )
-    async def _create_input(self, event_id: str) -> LiveInput:
+    async def _create_input(self, event_id: str) -> dict:
         """
         Create a new Cloudflare live input for streaming with retry logic.
+        Uses direct API calls to avoid SDK body encoding issues.
 
         Args:
             event_id (str): Unique identifier for the event
 
         Returns:
-            stream.LiveInput: Created live input configuration
+            dict: Created live input configuration from Cloudflare API
 
         Raises:
             RuntimeError: If client not initialized
@@ -110,28 +180,26 @@ class CloudflareLSClient:
 
         try:
             self.logger.info(f"Creating Cloudflare live input for event {event_id}")
-            input = await self.client.stream.live_inputs.create(
-                account_id=self.ACCOUNT_ID,
-                delete_recording_after_days=90.0,
-                meta={"name": event_id},
-                recording={
-                    "mode": "automatic",
-                    "require_signed_urls": False,
-                    "allowed_origins": ["*"],
-                },
-            )
+            
+            url = f"https://api.cloudflare.com/client/v4/accounts/{self.ACCOUNT_ID}/stream/live_inputs"
+            params = {
+                "deleteRecordingAfterDays": 90,
+                "meta": {"name": event_id},
+                "recording": {"mode": "automatic"},
+            }
+            
+            live_input = await self._call_cloudflare_api(url, method="POST", params=params)
             self.logger.info(
-                f"Successfully created live input {input.uid} for event {event_id}"
+                f"Successfully created live input {live_input.get('uid')} for event {event_id}"
             )
-            return input
-        except APIError as e:
-            self.logger.error(
-                f"Cloudflare API error creating input for event {event_id}: {e.message if hasattr(e, 'message') else str(e)}"
-            )
+            return live_input
+            
+        except APIError:
             raise
         except Exception as e:
             self.logger.error(
-                f"Unexpected error creating input for event {event_id}: {e}"
+                f"Unexpected error creating input for event {event_id}: {e}",
+                exc_info=True,
             )
             raise
 
@@ -268,7 +336,12 @@ class CloudflareLSClient:
                 self.logger.info(f"No scene info found for event {event_id}")
                 return None
 
-            video_data = await self._retrieve_video(event_id)
+            input_uid = scene_info.get("input_uid")
+            if not input_uid:
+                self.logger.error(f"No input_uid found in scene_info for event {event_id}")
+                return None
+
+            video_data = await self._retrieve_video(input_uid)
             if video_data:
                 self.logger.info(f"Found VOD for event {event_id}")
                 # Update database with playback URLs
@@ -299,7 +372,12 @@ class CloudflareLSClient:
                 self.logger.info(f"No scene info found for event {event_id}")
                 return None
 
-            video_data = await self._retrieve_video(event_id, live=True)
+            input_uid = scene_info.get("input_uid")
+            if not input_uid:
+                self.logger.error(f"No input_uid found in scene_info for event {event_id}")
+                return None
+
+            video_data = await self._retrieve_video(input_uid, live_only=True)
             if video_data:
                 self.logger.info(f"Found live stream for event {event_id}")
                 # Update database with playback URLs

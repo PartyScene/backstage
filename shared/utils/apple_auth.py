@@ -5,7 +5,6 @@ This module provides functionality to verify Apple Sign In identity tokens
 by fetching Apple's public keys and validating JWT signatures.
 """
 
-import httpx
 import jwt
 from jwt import PyJWKClient
 from typing import Dict, Optional

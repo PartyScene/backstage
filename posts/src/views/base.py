@@ -1,4 +1,3 @@
-import httpx
 import orjson as json
 import asyncio
 import os

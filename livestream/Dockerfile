@@ -1,8 +1,5 @@
-# RUN mkdir -p /root/.config/gcloud
-# ENV GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
-
 # Test stage
-FROM python:3.13-slim AS test
+FROM python:3.13-slim AS base
 
 WORKDIR /livestream
 
@@ -14,8 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements files
-COPY shared/ /shared/
+COPY shared /shared/
 COPY tests/requirements-test.txt /tests/requirements-test.txt
 
 # Install dependencies
@@ -23,31 +19,31 @@ RUN pip install --no-cache-dir -r /shared/requirements.txt \
     && pip install --no-cache-dir -r /tests/requirements-test.txt
 
 # Copy requirements files
-COPY livestream ./
-COPY auth/ /auth/
+COPY livestream .
+COPY auth /auth/
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
-
 COPY tests/livestream/ /tests/livestream/
 COPY tests/pytest.ini /tests/pytest.ini
 
+FROM base AS test
+
 # Run tests
-CMD ["pytest", "--disable-warnings", "/tests", "-v"]
+CMD ["pytest", "--disable-warnings", "/tests", "-vs"]
 
 # Main stage
-FROM python:3.13-slim AS prod
+FROM base AS prod
 
 WORKDIR /livestream
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Set PYTHONPATH for shared libraries
+# ENV PYTHONPATH="/shared:${PYTHONPATH}"
 
-# Copy application code
-COPY livestream/ ./
-COPY shared/ /shared/
+# Copy application code and installed packages from base
+COPY --from=base /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=base /shared/ /shared/
+COPY livestream/ .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -55,22 +51,19 @@ ENV QUART_APP=run:app
 ENV QUART_ENV=production
 ENV PYTHONPATH="/"
 
-# Install dependencies (do this BEFORE switching user so executables go to /usr/local/bin)
-RUN pip install --no-cache-dir -r /shared/requirements.txt \
-    && pip install --no-cache-dir -r ./requirements.txt
-
-# Run as non-root user (after all installations)
+# Run as non-root user
 RUN useradd -m myuser
 USER myuser
 
 # Expose port
-EXPOSE 5550
+EXPOSE 5510
+
 
 # Run with Granian which is a Rust based ASGI server with benchmarks exceeding Hypercorn
 CMD ["python3", "-m", "granian", \
      "--loop", "uvloop", \
      "--host", "0.0.0.0", \
-     "--port", "5550", \
+     "--port", "5510", \
      "--workers", "1", \
      "--no-log", \
      "--task-impl", "rust", \

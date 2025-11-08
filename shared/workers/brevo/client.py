@@ -30,9 +30,11 @@ Classes
     :special-members: __init__
 """
 
-import httpx
+import rusty_req
+import orjson as json
 import os
 import logging
+from shared.utils import parse_rusty_req_response
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +47,11 @@ class Brevo:
 
         The API key is expected to be in the environment variable ``BREVO_API_KEY``.
         """
-        self.client = httpx.AsyncClient(
-            headers={
-                "accept": "application/json",
-                "content-type": "application/json",
-                "api-key": os.environ["BREVO_API_KEY"],
-            }
-        )
+        self.headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": os.environ["BREVO_API_KEY"],
+        }
         self.base_url = "https://api.brevo.com/v3"
 
     async def create_contact(self, email: str, first_name: str, last_name: str) -> dict:
@@ -83,10 +83,16 @@ class Brevo:
                 "email": email,
                 "attributes": {"FNAME": first_name, "LNAME": last_name},
             }
-            response = await self.client.post(f"{self.base_url}/contacts", json=payload)
-            if response.status_code in (400, 201):
-                return response.json()
-            response.raise_for_status()
+            response = await rusty_req.fetch_single(
+                url=f"{self.base_url}/contacts",
+                method="POST",
+                headers=self.headers,
+                params=payload,
+                timeout=10.0,
+            )
+            
+            # Brevo returns 400 for duplicate contacts, 201 for created, 200 for success
+            return parse_rusty_req_response(response, expected_status=(200, 201, 400))
         except Exception as e:
             logger.error(f"Failed to create contact: {e}")
             return None

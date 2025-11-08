@@ -21,7 +21,6 @@ from livestream.src.connectors import LiveStreamDB
 from cloudflare._exceptions import APIError, APIConnectionError, APITimeoutError
 from surrealdb import RecordID
 
-import httpx
 import redis.exceptions
 import re
 
@@ -39,14 +38,6 @@ class BaseView(QuartClassful):
         self.conn: LiveStreamDB = app.conn
         self.scenes_client = cloudflare_stream.create_livestream_client(app, app.logger)
         self._scenes_client_initialized = False
-
-        self.client = httpx.AsyncClient(
-            headers={
-                "accept": "application/json",
-                "content-type": "application/json",
-            }
-        )
-        self.videosdk_base_url = "https://api.videosdk.live/v2"
 
     async def _ensure_scenes_client_initialized(self):
         """Lazy initialization of scenes client"""
@@ -70,13 +61,28 @@ class BaseView(QuartClassful):
     async def _check_event_permission(self, event_id: str, user_id: str) -> bool:
         """
         Check if user has permission to manage livestream for this event.
-        For now, we'll stub this - should check if user is event creator.
+        Only the event creator can create/delete streams.
         """
-        # TODO: Implement actual permission check against events service
-        # For now, return True to not break existing functionality
-        # In production, you'd query the events service to verify ownership
-        app.logger.warning(f"Permission check for user {user_id} on event {event_id} - not yet implemented")
-        return True
+        try:
+            async with self.conn.pool.acquire() as conn:
+                event = await conn.select(RecordID("events", event_id))
+                
+                if not event:
+                    app.logger.warning(f"Event {event_id} not found during permission check")
+                    return False
+                
+                creator_id = event.get("creator")
+                if creator_id == RecordID("users", user_id):
+                    return True
+                
+                app.logger.warning(
+                    f"Permission denied: user {user_id} is not creator of event {event_id} (creator: {creator_id})"
+                )
+                return False
+                
+        except Exception as e:
+            app.logger.error(f"Permission check failed for user {user_id} on event {event_id}: {e}")
+            return False
 
     @route("/", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
@@ -91,7 +97,7 @@ class BaseView(QuartClassful):
         Returns 200 OK if everything is healthy, 503 Service Unavailable otherwise.
         """
         health_status = {
-            "service": "microservices.livestream",
+            "service": "microservices.scenes",
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {"database": "unknown", "redis": "unknown"},
@@ -413,7 +419,7 @@ class BaseView(QuartClassful):
     # VideoSDK Live Implementation
     # -------------------------------------------------------------------------
 
-    @route("/scenes/get-token/<event_id:str>", methods=["POST"])
+    @route("/scenes/get-token/<string:event_id>", methods=["POST"])
     @jwt_required
     async def generate_scene_token(self, event_id):
         """

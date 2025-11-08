@@ -3,14 +3,72 @@ from .signer import generate_cdn_signed_url
 from .veriff import VeriffClient
 from .apple_auth import AppleAuthClient, verify_apple_token
 
+__all__ = [
+    "AsyncEnvelopeCipherService",
+    "EnvelopeCipher",
+    "generate_cdn_signed_url",
+    "VeriffClient",
+    "AppleAuthClient",
+    "verify_apple_token",
+    "parse_rusty_req_response",
+    "get_client_ip",
+    "record_id_to_json",
+    "generate_signed_url",
+    "recursively_sign_object_media",
+]
+
 from surrealdb import RecordID
 from surrealdb.data.types import geometry
 import orjson as json
 import os
 from typing import Optional, Any, Dict
-import httpx
+import rusty_req
 
 MEDIA_MICROSERVICE_URL = os.getenv("MEDIA_MICROSERVICE_URL", "")
+
+
+def parse_rusty_req_response(response: dict, expected_status: tuple = (200,)) -> dict:
+    """
+    Parse and validate rusty_req response with proper error handling.
+    
+    Handles the fact that rusty_req returns all fields as JSON strings:
+    - exception: JSON string (e.g., "{}" for no error)
+    - http_status: String representation of int
+    - response: JSON string containing another JSON object with 'content'
+    
+    Args:
+        response: Response dict from rusty_req.fetch_single()
+        expected_status: Tuple of acceptable HTTP status codes
+        
+    Returns:
+        dict: Parsed content from response
+        
+    Raises:
+        RuntimeError: If request failed or returned unexpected status
+    """
+    # Check for request-level errors
+    exception = response.get("exception")
+    if exception and exception != "{}":  # Ignore empty dict string
+        if isinstance(exception, str):
+            raise RuntimeError(f"Request failed: {exception}")
+        elif isinstance(exception, dict) and exception.get("type"):
+            raise RuntimeError(f"Request failed: {exception.get('message')}")
+    
+    # Check HTTP status
+    http_status = response.get("http_status", "0")
+    http_status = int(http_status) if isinstance(http_status, str) else http_status
+    if http_status not in expected_status:
+        raise RuntimeError(f"Unexpected HTTP status: {http_status}")
+    
+    # Parse response body
+    try:
+        response_data = response.get("response", "{}")
+        if isinstance(response_data, str):
+            response_data = json.loads(response_data)
+        content = response_data.get("content", "")
+        return json.loads(content) if content else {}
+    except (KeyError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Malformed response: {exc}") from exc
 
 
 def get_client_ip(request) -> str:
@@ -53,19 +111,20 @@ from typing import Sequence, Dict
 
 
 async def generate_signed_url(filenames: Sequence[str]) -> Dict[str, str]:
-    async with httpx.AsyncClient(
-        base_url=MEDIA_MICROSERVICE_URL,
-        headers={"Content-Type": "application/json"},
+    url = f"{MEDIA_MICROSERVICE_URL}/media/sign"
+    headers = {"Content-Type": "application/json"}
+    payload = {"filenames": list(filenames)}
+    
+    response = await rusty_req.fetch_single(
+        url=url,
+        method="POST",
+        headers=headers,
+        params=payload,
         timeout=5.0,
-    ) as client:
-        response = await client.post("/media/sign", json={"filenames": list(filenames)})
-        response.raise_for_status()
-
-        try:
-            data = response.json()
-            return data["data"]  # type: ignore[index]
-        except (KeyError, ValueError) as exc:
-            raise RuntimeError("Malformed response from media service") from exc
+    )
+    
+    data = parse_rusty_req_response(response, expected_status=(200,))
+    return data["data"]  # type: ignore[index]
 
 
 async def recursively_sign_object_media(obj: Any) -> Any:

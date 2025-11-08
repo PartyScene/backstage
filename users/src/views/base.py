@@ -1,4 +1,3 @@
-import httpx
 from quart import request, current_app as app, jsonify
 from quart_jwt_extended import get_jwt_identity, jwt_required
 from http import HTTPStatus

@@ -24,6 +24,10 @@ steps:
   args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.payments','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.payments', '-f', 'payments/Dockerfile', '.']
   id: 'build-payments'
 
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '--target', 'prod', '-t', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.scenes','--cache-from', '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.scenes', '-f', 'livestream/Dockerfile', '.']
+  id: 'build-scenes'
+
 # Deploy to GKE - rolling restart of all deployments
 - name: 'gcr.io/cloud-builders/kubectl'
   args:
@@ -33,7 +37,7 @@ steps:
   env:
   - 'CLOUDSDK_COMPUTE_ZONE=us-central1'
   - 'CLOUDSDK_CONTAINER_CLUSTER=backstage-cluster'
-  waitFor: ['build-auth', 'build-events', 'build-posts', 'build-users', 'build-media', 'build-payments']
+  waitFor: ['build-auth', 'build-events', 'build-posts', 'build-users', 'build-media', 'build-payments', 'build-scenes']
   id: 'deploy'
   
 substitutions:
@@ -50,3 +54,4 @@ images:
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.users'
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.media'
 - '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.payments'
+- '${_LOCATION}-docker.pkg.dev/${PROJECT_ID}/scenes-backstage/microservices.scenes'

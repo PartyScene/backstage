@@ -78,9 +78,9 @@ spec:
     - name: microserv-payments-service
       port: 80
   
-  # - matches:
-  #   - path:
-  #       value: /scenes
-  #   backendRefs:
-  #   - name: microserv-scenes-service
-  #     port: 80
+  - matches:
+    - path:
+        value: /scenes
+    backendRefs:
+    - name: microserv-scenes-service
+      port: 80
