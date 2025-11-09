@@ -404,8 +404,12 @@ class BaseView(QuartClassful):
             data = await request.get_json()
             if data and "coordinates" in data:
                 async with self.conn.pool.acquire() as conn:
-                    # Fetch event information
-                    event_info = await conn.select(RecordID("events", event_id))
+                    # Fetch event information (OMIT duration to avoid CBOR parsing bug)
+                    result = await conn.query(
+                        "SELECT * OMIT duration FROM ONLY type::thing('events', $event_id);",
+                        {"event_id": event_id}
+                    )
+                    event_info = result[0][0] if result and result[0] else None
                     
                     if event_info and "location" in event_info:
                         event_coordinates = event_info["location"].get("coordinates")
