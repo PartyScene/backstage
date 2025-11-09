@@ -190,7 +190,7 @@ class BaseView(QuartClassful):
                             
                             # Update database with fresh playback data
                             try:
-                                scene_id = stream.get("id", "").split(":")[-1]  # Extract ID from "scenes:abc123"
+                                scene_id = stream.get("id", "").split(":")[-1] if ":" in stream.get("id", "") else stream.get("id", "")
                                 await self.conn.update_cloudflare_scene_playback(
                                     scene_id,
                                     video_data["playback"]

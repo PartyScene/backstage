@@ -217,11 +217,11 @@ async def init_db(app) -> tuple[PaymentsDB, SurrealDBPoolManager]:
         credentials={"username": SURREAL_USER, "password": SURREAL_PASS},
         namespace=NAMESPACE,
         database=DATABASE,
-        min_connections=2,
-        max_connections=10,
+        min_connections=3,
+        max_connections=20,  # Increased from 10 to handle more concurrent requests
         max_idle_time=300,
-        connection_timeout=5.0,
-        acquisition_timeout=10.0,
+        connection_timeout=10.0,  # Increased from 5s to allow slower connection establishment
+        acquisition_timeout=30.0,  # Increased from 10s to 30s to prevent premature cancellation
         health_check_interval=30,
         max_usage_count=1000,
         connection_retry_attempts=3,
