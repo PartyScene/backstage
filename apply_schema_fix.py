@@ -19,6 +19,7 @@ async def apply_fix():
                 RETURN (
                     SELECT
                     *,
+                    (time + duration) AS end_time,
                     (->has_media->media.{creator, metadata,  filename, url}) AS media,
                     <-attends<-users AS attendees,
                     host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id}
@@ -57,7 +58,7 @@ async def apply_fix():
                 LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
 
                 RETURN (
-                    SELECT * OMIT duration FROM events WHERE creator = $origin
+                    SELECT *, (time + duration) AS end_time OMIT duration FROM events WHERE creator = $origin
                     LIMIT $limit START ($page - 1) * $limit
                 )
             };
