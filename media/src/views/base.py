@@ -153,9 +153,10 @@ class BaseView(QuartClassful):
         data = await request.get_json(silent=True) or {}
         filenames = data.get("filenames")
         if not isinstance(filenames, (list, tuple)) or not filenames:
+            status_code = HTTPStatus.BAD_REQUEST
             return (
-                jsonify(message="`filenames` must be a non-empty list"),
-                HTTPStatus.BAD_REQUEST,
+                jsonify(message="`filenames` must be a non-empty list", status=status_code.phrase),
+                status_code,
             )
         result = {}
         for filename in filenames:

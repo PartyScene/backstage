@@ -36,7 +36,15 @@ class BaseView(QuartClassful):
     @route("/r18e/health", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
     async def healthcheck(self):
-        return jsonify({"status": "healthy"}), HTTPStatus.OK
+        status_code = HTTPStatus.OK
+        return (
+            jsonify(
+                data={"service": "r18e", "healthy": True},
+                message="Service is healthy",
+                status=status_code.phrase
+            ),
+            status_code,
+        )
 
     @route("/r18e/events", methods=["GET"])
     async def recommend_events(self):
