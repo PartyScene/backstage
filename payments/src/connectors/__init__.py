@@ -219,11 +219,11 @@ async def init_db(app) -> tuple[PaymentsDB, SurrealDBPoolManager]:
         database=DATABASE,
         min_connections=3,
         max_connections=20,  # Increased from 10 to handle more concurrent requests
-        max_idle_time=300,
+        max_idle_time=60,  # Reduced - recycle idle connections faster
         connection_timeout=10.0,  # Increased from 5s to allow slower connection establishment
         acquisition_timeout=30.0,  # Increased from 10s to 30s to prevent premature cancellation
-        health_check_interval=30,
-        max_usage_count=1000,
+        health_check_interval=10,  # Reduced - check health more frequently
+        max_usage_count=100,  # Reduced - recycle connections more aggressively
         connection_retry_attempts=3,
         connection_retry_delay=1.0,
         schema_file=SCHEMA_FILE,
