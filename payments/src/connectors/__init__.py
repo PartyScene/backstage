@@ -108,9 +108,10 @@ class PaymentsDB:
         """
         try:
             async with self.pool.acquire() as conn:
+                # Use SELECT id to avoid duration CBOR bug in count subquery
                 result = await conn.query(
                     """
-                    RETURN count((SELECT * FROM events));
+                    RETURN count((SELECT id FROM events));
                     """
                 )
             self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))

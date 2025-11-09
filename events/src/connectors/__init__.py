@@ -152,7 +152,11 @@ class EventsDB:
             Dict[str, Any]: The deleted event
         """
         async with self.pool.acquire() as conn:
-            result = await conn.delete(RecordID("events", event_id))
+            # Use query to OMIT duration (CBOR parsing bug)
+            result = await conn.query(
+                "DELETE type::thing('events', $event_id) RETURN BEFORE OMIT duration;",
+                {"event_id": event_id}
+            )
             return record_id_to_json(result)
 
     async def fetch_by_distance(
@@ -354,7 +358,11 @@ class EventsDB:
             Dict[str, Any]: The updated event data
         """
         async with self.pool.acquire() as conn:
-            result = await conn.merge(RecordID("events", event_id), data)
+            # Use query to OMIT duration (CBOR parsing bug)
+            result = await conn.query(
+                "UPDATE type::thing('events', $event_id) MERGE $data RETURN AFTER OMIT duration;",
+                {"event_id": event_id, "data": data}
+            )
             if result and "ERR" in result:
                 raise Exception(f"Error updating event: {result}")
             self.logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
