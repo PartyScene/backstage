@@ -303,10 +303,9 @@ DEFINE FUNCTION OVERWRITE fn::fetch_attended_events($origin: record, $page: opti
     LET $page = IF (type::is::number($page)) THEN $page ELSE 1 END;
     LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
 
-    RETURN (
-        SELECT ->attends.{out.*, id} AS events_attended FROM ONLY $origin
-        LIMIT $limit START ($page - 1) * $limit
-    )
+    LET $event_ids = (SELECT VALUE ->attends.out.id FROM ONLY $origin LIMIT $limit START ($page - 1) * $limit);
+
+    RETURN array::map($event_ids, |$id| { fn::fetch_event($id) });
 };
 
 DEFINE FUNCTION OVERWRITE fn::fetch_created_events($origin: record, $page: option<number>, $limit: option<number>) {
@@ -315,7 +314,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_created_events($origin: record, $page: optio
     LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
 
     RETURN (
-        SELECT * FROM events WHERE creator = $origin
+        SELECT * OMIT duration FROM events WHERE creator = $origin
         LIMIT $limit START ($page - 1) * $limit
     )
 };
@@ -327,7 +326,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
         host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id}
-    OMIT embeddings
+    OMIT embeddings, duration
     FROM ONLY $event_id
     )
 };
