@@ -1,6 +1,6 @@
 from cloudflare.types.stream.live_input import LiveInput
 from quart import Quart
-from surrealdb import AsyncSurreal
+from surrealdb import AsyncSurreal, RecordID
 import os
 
 from shared.utils import record_id_to_json
@@ -15,14 +15,34 @@ class LiveStreamDB:
         """Get database information."""
         return await self.pool.execute_query("INFO FOR DB")
 
-    async def store_cloudflare_scene(self, input_response: dict | LiveInput, event_id: str):
+    async def _report_resource(self, data: dict):
         """
-        Store the ingest url / playback url / from Cloudflare and attach it to the event.
+        Report a livestream/scene resource.
+        
+        Args:
+            data (dict): The data to report containing:
+                - reporter: User ID who is reporting
+                - resource: Scene/event ID being reported
+                - reason: Reason for the report
+        
+        Returns:
+            dict: Created report record
+        """
+        data["reporter"] = RecordID("users", data["reporter"])
+        data["resource"] = RecordID("scenes", data["resource"])
+        async with self.pool.acquire() as conn:
+            result = await conn.create("reports", data)
+            return record_id_to_json(result)
+
+    async def store_cloudflare_scene(self, input_response: dict | LiveInput, event_id: str, user_id: str):
+        """
+        Store the ingest url / playback url / from Cloudflare and attach it to the event and user.
         Supports SRT, RTMPS, WebRTC ingest and HLS/DASH playback.
 
         Args:
             input_response: Cloudflare LiveInput object or dict with stream configuration
             event_id: Unique identifier for the event
+            user_id: Unique identifier for the user creating the stream
 
         Returns:
             dict: Created scene record with all stream data
@@ -46,6 +66,7 @@ class LiveStreamDB:
                     "meta": input_response.get("meta", {}),
                 },
                 "event_id": event_id,
+                "user_id": user_id,
             }
         else:
             # Handle LiveInput object
@@ -66,63 +87,107 @@ class LiveStreamDB:
                     "meta": input_response.meta if input_response.meta else {},
                 },
                 "event_id": event_id,
+                "user_id": user_id,
             }
         
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 """
                 INSERT INTO scenes 
-                    (input_uid, srt, srtPlayback, rtmps, rtmpsPlayback, webRTC, webRTCPlayback, playback, metadata, event) 
-                VALUES ($input_uid, $srt, $srtPlayback, $rtmps, $rtmpsPlayback, $webRTC, $webRTCPlayback, $playback, $metadata, type::thing("events", $event_id))
+                    (input_uid, srt, srtPlayback, rtmps, rtmpsPlayback, webRTC, webRTCPlayback, playback, metadata, event, user) 
+                VALUES ($input_uid, $srt, $srtPlayback, $rtmps, $rtmpsPlayback, $webRTC, $webRTCPlayback, $playback, $metadata, type::thing("events", $event_id), type::thing("users", $user_id))
                 """,
                 data,
             )
         return record_id_to_json(result)
 
-    async def fetch_cloudflare_scene(self, event_id: str):
+    async def fetch_cloudflare_scene(self, event_id: str, user_id: str = None):
         """
-        Get the current Cloudflare scene data attached to an event
+        Get Cloudflare scene data for an event.
+        If user_id is provided, returns only that user's stream.
+        Otherwise, returns all streams for the event with user information.
+        
+        Args:
+            event_id: Event identifier
+            user_id: Optional user identifier to fetch specific stream
+            
+        Returns:
+            dict or list: Single stream if user_id provided, otherwise list of all streams
         """
         async with self.pool.acquire() as conn:
-            result = await conn.query(
-                """
-                SELECT * FROM ONLY scenes WHERE event = type::thing("events", $event_id)
-                """,
-                {"event_id": event_id},
-            )
-        return record_id_to_json(result)
+            if user_id:
+                # Fetch specific user's stream
+                result = await conn.query(
+                    """
+                    SELECT *, user.{id, first_name, last_name, username, avatar} as user_info 
+                    FROM ONLY scenes 
+                    WHERE event = type::thing("events", $event_id) 
+                    AND user = type::thing("users", $user_id)
+                    """,
+                    {"event_id": event_id, "user_id": user_id},
+                )
+                return record_id_to_json(result)
+            else:
+                # Fetch all streams for the event
+                result = await conn.query(
+                    """
+                    SELECT *, user.{id, first_name, last_name, username, avatar} as user_info 
+                    FROM scenes 
+                    WHERE event = type::thing("events", $event_id)
+                    ORDER BY created_at DESC
+                    """,
+                    {"event_id": event_id},
+                )
+                return record_id_to_json(result)
 
-    async def update_cloudflare_scene_playback(self, event_id: str, playback_data: dict):
+    async def update_cloudflare_scene_playback(self, scene_id: str, playback_data: dict, user_id: str = None):
         """
         Update the playback data (HLS/DASH URLs) for a scene.
         Called when video becomes available after stream starts.
 
         Args:
-            event_id (str): Unique identifier for the event
+            scene_id (str): Scene record ID (e.g., "scenes:abc123") OR event_id if user_id provided
             playback_data (dict): Playback URLs from Cloudflare Video API
+            user_id (str, optional): User ID if updating by event+user combination
 
         Returns:
             bool: True if update was successful
         """
         async with self.pool.acquire() as conn:
-            result = await conn.query(
-                """
-                UPDATE scenes SET playback = $playback 
-                WHERE event = type::thing("events", $event_id)
-                """,
-                {
-                    "event_id": event_id,
-                    "playback": playback_data or {},
-                },
-            )
+            if user_id:
+                # Update specific user's stream for an event
+                result = await conn.query(
+                    """
+                    UPDATE scenes SET playback = $playback 
+                    WHERE event = type::thing("events", $event_id)
+                    AND user = type::thing("users", $user_id)
+                    """,
+                    {
+                        "event_id": scene_id,  # scene_id is actually event_id in this case
+                        "user_id": user_id,
+                        "playback": playback_data or {},
+                    },
+                )
+            else:
+                # Update by direct scene ID
+                result = await conn.query(
+                    """
+                    UPDATE $scene_id SET playback = $playback
+                    """,
+                    {
+                        "scene_id": RecordID("scenes", scene_id) if ":" not in scene_id else scene_id,
+                        "playback": playback_data or {},
+                    },
+                )
         return bool(result and result[0])
 
-    async def delete_cloudflare_scene(self, event_id: str):
+    async def delete_cloudflare_scene(self, event_id: str, user_id: str):
         """
-        Delete the Cloudflare scene data for an event
+        Delete the Cloudflare scene data for a specific user's stream on an event.
 
         Args:
             event_id (str): Unique identifier for the event
+            user_id (str): Unique identifier for the user
 
         Returns:
             bool: True if deletion was successful, False if scene not found
@@ -130,9 +195,11 @@ class LiveStreamDB:
         async with self.pool.acquire() as conn:
             result = await conn.query(
                 """
-                DELETE scenes WHERE event = type::thing("events", $event_id)
+                DELETE scenes 
+                WHERE event = type::thing("events", $event_id) 
+                AND user = type::thing("users", $user_id)
                 """,
-                {"event_id": event_id},
+                {"event_id": event_id, "user_id": user_id},
             )
         return bool(result and result[0])
 

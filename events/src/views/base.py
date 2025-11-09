@@ -30,7 +30,7 @@ from aiocache import cached
 from shared.workers.rmq import RMQBroker
 import uuid_utils as ruuid
 
-from surrealdb import RecordID
+from surrealdb import RecordID, Duration
 
 
 class BaseView(QuartClassful):
@@ -415,6 +415,10 @@ class BaseView(QuartClassful):
             data["is_free"] = (
                 form.get("is_free", "false") == "true"
             )  # Default to False if not specified
+
+            # Handle duration if provided (e.g., "2h", "1h30m", "45m")
+            if duration_str := form.get("duration", type=str):
+                data["duration"] = Duration(duration_str)
 
             for i, file in enumerate(files.values()):
                 # Create isolated data dict for each file to prevent race conditions

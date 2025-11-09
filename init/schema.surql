@@ -99,6 +99,7 @@ DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE point;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
 DEFINE FIELD OVERWRITE attendee_count ON TABLE events TYPE int DEFAULT 0;
+DEFINE FIELD OVERWRITE duration ON TABLE events TYPE option<duration> DEFAULT 1h;
 
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
@@ -145,10 +146,12 @@ DEFINE FIELD OVERWRITE webRTCPlayback ON TABLE scenes FLEXIBLE TYPE OBJECT;
 DEFINE FIELD OVERWRITE playback ON TABLE scenes FLEXIBLE TYPE OBJECT;
 DEFINE FIELD OVERWRITE metadata ON TABLE scenes FLEXIBLE TYPE OBJECT DEFAULT {};
 DEFINE FIELD OVERWRITE event ON TABLE scenes TYPE record<events>;
+DEFINE FIELD OVERWRITE user ON TABLE scenes TYPE record<users>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE scenes TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE scenes TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE idx_scene_event ON TABLE scenes COLUMNS event;
-DEFINE INDEX OVERWRITE unique_scene_event ON TABLE scenes COLUMNS event UNIQUE;
+DEFINE INDEX OVERWRITE idx_scene_user ON TABLE scenes COLUMNS user;
+DEFINE INDEX OVERWRITE unique_scene_event_user ON TABLE scenes COLUMNS event, user UNIQUE;
 
 -- A table for posts
 DEFINE TABLE OVERWRITE posts SCHEMALESS TYPE RELATION IN users TO media;
@@ -278,7 +281,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_public_events($page: number, $limit: number)
 
     RETURN (
 
-        SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false AND time > time::now()
+        SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false AND time + duration > time::now()
      ORDER BY created_at ASC LIMIT $limit START ($page - 1) * $limit
     )
 };
@@ -415,7 +418,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_private_events_for_user($user: record, $page
 
     RETURN (
         SELECT fn::fetch_event(id) AS event, created_at FROM events
-    WHERE is_private = true AND fn::exists_in_degree($user, host, degree_of_freedom) AND time > time::now()
+    WHERE is_private = true AND fn::exists_in_degree($user, host, degree_of_freedom) AND time + duration > time::now()
     ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
     )
 };

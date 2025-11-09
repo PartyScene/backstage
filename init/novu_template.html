@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <title>PartyScene Experience</title>
+    <!--[if mso]>
+    <style type="text/css">
+        table {border-collapse: collapse; border-spacing: 0; border: 0; mso-table-lspace: 0pt; mso-table-rspace: 0pt;}
+        td {padding: 0;}
+    </style>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+    <![endif]-->
+    <style>
+        :root {
+            color-scheme: light dark;
+            supported-color-schemes: light dark;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0a0a0f !important;
+            width: 100% !important;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+        table {
+            border-spacing: 0 !important;
+            border-collapse: collapse !important;
+            table-layout: fixed !important;
+            margin: 0 auto !important;
+        }
+        td {
+            padding: 0;
+            vertical-align: top;
+        }
+        img {
+            border: 0;
+            display: block;
+            max-width: 100%;
+            height: auto;
+            line-height: 100%;
+            outline: none;
+            text-decoration: none;
+            -ms-interpolation-mode: bicubic;
+        }
+        a {
+            text-decoration: none;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #1a1a2e; /* Base color */
+            width: 100%;
+        }
+        .hero-section {
+            background-color: #2d1b4e;
+            text-align: center;
+        }
+        .title {
+            font-size: 52px;
+            font-weight: 700;
+            color: #ffffff !important; /* ALWAYS WHITE: Locked in with !important */
+            margin: 0;
+            line-height: 1.1;
+            padding: 80px 40px 80px 40px;
+            /* ENHANCED BLUR: Multi-layer shadow for a soft, readable glow */
+            text-shadow: 0 0 5px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.6);
+        }
+        .footer-section {
+            background: linear-gradient(135deg, #1a1a2e 0%, #2d1b4e 50%, #4a2573 100%);
+            padding: 30px 20px;
+            text-align: center;
+            color: #ffffff;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .footer-section p {
+            margin: 10px 0;
+            color: #ffffff;
+        }
+        .footer-section a {
+            color: #ffffff;
+            text-decoration: underline;
+        }
+        .footer-section a:hover {
+            color: #e0e0e0;
+        }
+        /* Responsive Design */
+        @media only screen and (max-width: 600px) {
+            .email-container {
+                width: 100% !important;
+            }
+            .title {
+                font-size: 36px !important;
+                padding: 60px 20px !important;
+                color: #ffffff !important; /* ALWAYS WHITE */
+            }
+            .footer-section {
+                padding: 25px 15px !important;
+            }
+        }
+        @media only screen and (max-width: 480px) {
+            .title {
+                font-size: 28px !important;
+                padding-top: 50px !important;
+                padding-bottom: 50px !important;
+                color: #ffffff !important; /* ALWAYS WHITE */
+            }
+        }
+        /* Dark Mode Override Styles */
+        @media (prefers-color-scheme: dark) {
+            .title, .footer-section, .footer-section p, .footer-section a {
+                color: #ffffff !important; /* Re-affirm white text in dark mode */
+            }
+            body, .email-container {
+                background-color: #0a0a0f !important;
+            }
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0a0a0f;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0a0a0f;">
+        <tr>
+            <td align="center" style="padding: 0;">
+                <!--[if mso | IE]>
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600">
+                <tr>
+                <td align="center" valign="top" width="600">
+                <![endif]-->
+                <table role="presentation" class="email-container" width="600" cellpadding="0" cellspacing="0" border="0">
+                    <!-- Hero Section -->
+                    <tr>
+                        <td background="https://storage.googleapis.com/partyscene-assets/city2.png" bgcolor="#2d1b4e" valign="top" class="hero-section" style="background-image: linear-gradient(rgba(26, 26, 46, 0.5), rgba(74, 37, 115, 0.7)), url('https://raw.githubusercontent.com/Jesus-E-Rodriguez/cityscapes-landing-page/master/img/city2.png'); background-repeat: no-repeat; background-position: center bottom; background-size: cover;">
+                            <!--[if mso]>
+                            <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;">
+                                <v:fill type="frame" src="https://raw.githubusercontent.com/Jesus-E-Rodriguez/cityscapes-landing-page/master/img/city2.png" color="#2d1b4e" />
+                                <v:textbox inset="0,0,0,0">
+                            <![endif]-->
+                            <div>
+                                <h1 class="title">{{content}}</h1>
+                            </div>
+                            <!--[if mso]>
+                                </v:textbox>
+                            </v:rect>
+                            <![endif]-->
+                        </td>
+                    </tr>
+                    <!-- Footer Section -->
+                    <tr>
+                        <td class="footer-section">
+                            <p style="margin: 15px 0 5px 0;">© 2025 PartyScene. All rights reserved.</p>
+                            <p style="margin: 5px 0;">
+                                <a href="">Unsubscribe</a> | 
+                                <a href="">View in browser</a>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                <!--[if mso | IE]>
+                </td>
+                </tr>
+                </table>
+                <![endif]-->
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

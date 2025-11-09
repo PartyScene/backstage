@@ -233,6 +233,7 @@ def mock_event():
         "id": "test",
         "time": (datetime.utcnow() + timedelta(days=1)).isoformat() + "Z",
         "coordinates[]": [str(fake.longitude()), str(fake.latitude())],
+        "duration": "2h",
     }
     event = MultiDict(event)
     event.add("categories[]", "beach")

@@ -85,23 +85,35 @@ class UsersDB:
         Returns:
             list: The created relationship details
         """
-
-        async with self.pool.acquire() as conn:
-
-            result = await conn.query(
-                "RETURN fn::fetch_attended_events($origin);",
-                {
-                    "origin": RecordID("users", user_id),
-                },
+        if created:
+            # Execute both queries concurrently with separate connections to avoid timeout
+            import asyncio
+            
+            async def fetch_attended():
+                async with self.pool.acquire() as conn:
+                    return await conn.query(
+                        "RETURN fn::fetch_attended_events($origin);",
+                        {"origin": RecordID("users", user_id)},
+                    )
+            
+            async def fetch_created():
+                async with self.pool.acquire() as conn:
+                    return await conn.query(
+                        "RETURN fn::fetch_created_events($origin);",
+                        {"origin": RecordID("users", user_id)},
+                    )
+            
+            # Execute both queries in parallel
+            attended_result, created_result = await asyncio.gather(
+                fetch_attended(), fetch_created()
             )
-            if created:
-                created_events = await conn.query(
-                    "RETURN fn::fetch_created_events($origin);",
-                    {
-                        "origin": RecordID("users", user_id),
-                    },
+            result = {"attended": attended_result, "created": created_result}
+        else:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    "RETURN fn::fetch_attended_events($origin);",
+                    {"origin": RecordID("users", user_id)},
                 )
-                result = {"attended": result, "created": created_events}
 
         return record_id_to_json(result)
 

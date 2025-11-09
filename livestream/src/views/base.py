@@ -58,30 +58,34 @@ class BaseView(QuartClassful):
             return False
         return True
 
-    async def _check_event_permission(self, event_id: str, user_id: str) -> bool:
+    async def _check_attendee_status(self, event_id: str, user_id: str) -> bool:
         """
-        Check if user has permission to manage livestream for this event.
-        Only the event creator can create/delete streams.
+        Check if user is an attendee of the event.
+        Only attendees can create/manage streams for an event.
         """
         try:
             async with self.conn.pool.acquire() as conn:
-                event = await conn.select(RecordID("events", event_id))
+                # Check if user is attending the event
+                result = await conn.query(
+                    """
+                    SELECT VALUE id FROM attends 
+                    WHERE in = type::thing("users", $user_id) 
+                    AND out = type::thing("events", $event_id)
+                    """,
+                    {"event_id": event_id, "user_id": user_id},
+                )
                 
-                if not event:
-                    app.logger.warning(f"Event {event_id} not found during permission check")
-                    return False
-                
-                creator_id = event.get("creator")
-                if creator_id == RecordID("users", user_id):
+                if result and len(result) > 0:
+                    app.logger.info(f"User {user_id} is attending event {event_id}")
                     return True
                 
                 app.logger.warning(
-                    f"Permission denied: user {user_id} is not creator of event {event_id} (creator: {creator_id})"
+                    f"Permission denied: user {user_id} is not attending event {event_id}"
                 )
                 return False
                 
         except Exception as e:
-            app.logger.error(f"Permission check failed for user {user_id} on event {event_id}: {e}")
+            app.logger.error(f"Attendee check failed for user {user_id} on event {event_id}: {e}")
             return False
 
     @route("/", methods=["GET"])
@@ -137,76 +141,88 @@ class BaseView(QuartClassful):
     @jwt_required
     async def get_livestream(self, event_id):
         """
-        Get livestream information for an event.
-        Supports both live streams and VOD recordings.
-        
-        Query params:
-            vod (bool): If true, retrieve VOD recording instead of live stream
+        Get all livestream information for an event.
+        Returns a list of all active streams with user information.
         """
         # Validate event_id
         if not self._validate_event_id(event_id):
             return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
 
-        # Ensure client is initialized
-        try:
-            await self._ensure_scenes_client_initialized()
-        except Exception as e:
-            app.logger.error(f"Client initialization failed: {e}")
-            return (
-                jsonify({"error": "Streaming service unavailable"}),
-                HTTPStatus.SERVICE_UNAVAILABLE,
-            )
-
         # Check Redis cache first
-        vod = request.args.get("vod", "false").lower() == "true"
-        cache_type = "vod" if vod else "live"
-        cache_key = f"livestream:{cache_type}:{event_id}"
+        cache_key = f"livestream:all:{event_id}"
         cache_ttl = 10  # 10 seconds cache for stream info
 
         try:
             cached_data = await self.redis.get(cache_key)
             if cached_data:
-                app.logger.info(f"Cache HIT for stream {event_id}")
-                import json
-                return jsonify(json.loads(cached_data)), HTTPStatus.OK
+                app.logger.info(f"Cache HIT for all streams {event_id}")
+                import orjson
+                return jsonify(orjson.loads(cached_data)), HTTPStatus.OK
 
-            app.logger.info(f"Cache MISS for stream {event_id}")
+            app.logger.info(f"Cache MISS for all streams {event_id}")
         except redis.exceptions.RedisError as e:
             app.logger.error(f"Redis GET error: {e}. Proceeding without cache.")
 
-        # Fetch from Cloudflare
+        # Fetch all streams from database
         try:
-            if vod:
-                stream_info = await self.scenes_client.get_vods(event_id)
-            else:
-                stream_info = await self.scenes_client.get_live(event_id)
+            streams = await self.conn.fetch_cloudflare_scene(event_id)
 
-            if not stream_info:
-                return (
-                    jsonify({"error": "Stream not found or not ready yet"}),
-                    HTTPStatus.NOT_FOUND,
-                )
+            if not streams:
+                return jsonify({"streams": [], "count": 0}), HTTPStatus.OK
+
+            # Normalize to list
+            streams_list = streams if isinstance(streams, list) else [streams]
+            
+            # Enrich each stream with fresh playback info from Cloudflare
+            await self._ensure_scenes_client_initialized()
+            enriched_streams = []
+            
+            for stream in streams_list:
+                input_uid = stream.get("input_uid")
+                if input_uid:
+                    try:
+                        # Fetch live video data from Cloudflare API: GET /live_inputs/{uid}/videos
+                        video_data = await self.scenes_client._retrieve_video(input_uid, live_only=True)
+                        if video_data and "playback" in video_data:
+                            # Add fresh playback URLs to stream
+                            stream["playback"] = video_data["playback"]
+                            stream["status"] = video_data.get("status", {})
+                            
+                            # Update database with fresh playback data
+                            try:
+                                scene_id = stream.get("id", "").split(":")[-1]  # Extract ID from "scenes:abc123"
+                                await self.conn.update_cloudflare_scene_playback(
+                                    scene_id,
+                                    video_data["playback"]
+                                )
+                            except Exception as db_err:
+                                app.logger.warning(f"Failed to update playback for stream {input_uid}: {db_err}")
+                    except Exception as cf_err:
+                        app.logger.warning(f"Failed to fetch playback for stream {input_uid}: {cf_err}")
+                
+                enriched_streams.append(stream)
+
+            # Format response with enriched user info and playback
+            response_data = {
+                "event_id": event_id,
+                "streams": enriched_streams,
+                "count": len(enriched_streams),
+            }
 
             # Cache the result
             try:
-                import json
-                await self.redis.set(cache_key, json.dumps(stream_info), ex=cache_ttl)
-                app.logger.info(f"Cached stream info for {event_id}")
+                import orjson
+                await self.redis.set(cache_key, orjson.dumps(response_data), ex=cache_ttl)
+                app.logger.info(f"Cached {response_data['count']} streams for event {event_id}")
             except redis.exceptions.RedisError as e:
                 app.logger.error(f"Redis SET error: {e}. Serving without caching.")
 
-            return jsonify(stream_info), HTTPStatus.OK
+            return jsonify(response_data), HTTPStatus.OK
 
-        except APIError as e:
-            app.logger.error(f"Cloudflare API error getting stream {event_id}: {e}")
-            return (
-                jsonify({"error": "Streaming provider error", "detail": str(e)}),
-                HTTPStatus.BAD_GATEWAY,
-            )
         except Exception as e:
-            app.logger.exception(f"Unexpected error getting stream {event_id}")
+            app.logger.exception(f"Unexpected error getting streams for event {event_id}")
             return (
-                jsonify({"error": "Failed to retrieve livestream"}),
+                jsonify({"error": "Failed to retrieve livestreams"}),
                 HTTPStatus.INTERNAL_SERVER_ERROR,
             )
 
@@ -214,20 +230,14 @@ class BaseView(QuartClassful):
     @jwt_required
     async def end_livestream(self, event_id):
         """
-        End and delete a livestream for an event.
-        Only the event creator can delete the stream.
+        End and delete user's own livestream for an event.
+        Users can only delete their own streams.
         """
         # Validate event_id
         if not self._validate_event_id(event_id):
             return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
 
-        # Check permissions
         user_id = get_jwt_identity()
-        if not await self._check_event_permission(event_id, user_id):
-            return (
-                jsonify({"error": "Unauthorized - only event creator can delete stream"}),
-                HTTPStatus.FORBIDDEN,
-            )
 
         # Ensure client is initialized
         try:
@@ -240,12 +250,24 @@ class BaseView(QuartClassful):
             )
 
         try:
-            stream_deleted = await self.scenes_client.delete_stream(event_id)
-            if stream_deleted:
+            # Check if user's stream exists
+            user_stream = await self.conn.fetch_cloudflare_scene(event_id, user_id)
+            if not user_stream:
+                return (
+                    jsonify({"error": "You don't have an active stream for this event"}),
+                    HTTPStatus.NOT_FOUND,
+                )
+
+            # Delete from Cloudflare
+            stream_deleted = await self.scenes_client.delete_stream(event_id, user_id)
+            
+            # Delete from database
+            db_deleted = await self.conn.delete_cloudflare_scene(event_id, user_id)
+            
+            if stream_deleted or db_deleted:
                 # Invalidate cache
                 try:
-                    await self.redis.delete(f"livestream:live:{event_id}")
-                    await self.redis.delete(f"livestream:vod:{event_id}")
+                    await self.redis.delete(f"livestream:all:{event_id}")
                     app.logger.info(f"Invalidated cache for event {event_id}")
                 except redis.exceptions.RedisError as e:
                     app.logger.error(f"Redis DELETE error: {e}")
@@ -258,16 +280,80 @@ class BaseView(QuartClassful):
                 )
 
         except APIError as e:
-            app.logger.error(f"Cloudflare API error deleting stream {event_id}: {e}")
+            app.logger.error(f"Cloudflare API error deleting stream for user {user_id}, event {event_id}: {e}")
             return (
                 jsonify({"error": "Streaming provider error", "detail": str(e)}),
                 HTTPStatus.BAD_GATEWAY,
             )
         except Exception as e:
-            app.logger.exception(f"Unexpected error deleting stream {event_id}")
+            app.logger.exception(f"Unexpected error deleting stream for user {user_id}, event {event_id}")
             return (
                 jsonify({"error": "Failed to delete livestream"}),
                 HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @route("/scenes/<event_id>/report", methods=["POST"])
+    @jwt_required
+    async def report_livestream(self, event_id):
+        """
+        Report a livestream for violations or inappropriate content.
+        Any authenticated user can report a stream.
+        """
+        # Validate event_id
+        if not self._validate_event_id(event_id):
+            return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
+
+        reporter = get_jwt_identity()
+        data = await request.get_json()
+        reason = data.get("reason", "")
+        
+        if not reason:
+            status_code = HTTPStatus.BAD_REQUEST
+            return (
+                jsonify(message="Reason is required", status=status_code.phrase),
+                status_code,
+            )
+
+        # Check if the livestream/scene exists
+        try:
+            scene_info = await self.conn.fetch_cloudflare_scene(event_id)
+            if not scene_info:
+                status_code = HTTPStatus.NOT_FOUND
+                return (
+                    jsonify(message="Livestream not found", status=status_code.phrase),
+                    status_code,
+                )
+
+            # Create report
+            if result := await self.conn._report_resource(
+                {"reason": reason, "reporter": reporter, "resource": scene_info["id"]}
+            ):
+                status_code = HTTPStatus.CREATED
+                return (
+                    jsonify(
+                        message="Livestream reported successfully",
+                        data=result,
+                        status=status_code.phrase,
+                    ),
+                    status_code,
+                )
+            
+            # If _report_resource returned falsy value
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(message="Failed to create report", status=status_code.phrase),
+                status_code,
+            )
+            
+        except Exception as e:
+            app.logger.exception(f"Error reporting livestream {event_id}")
+            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+            return (
+                jsonify(
+                    message=f"Failed to report livestream: {str(e)}",
+                    status=status_code.phrase,
+                ),
+                status_code,
             )
 
     @route("/scenes/<event_id>", methods=["POST"])
@@ -295,11 +381,11 @@ class BaseView(QuartClassful):
         if not self._validate_event_id(event_id):
             return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
 
-        # Check permissions
+        # Check if user is attending the event
         user_id = get_jwt_identity()
-        if not await self._check_event_permission(event_id, user_id):
+        if not await self._check_attendee_status(event_id, user_id):
             return (
-                jsonify({"error": "Unauthorized - only event creator can create stream"}),
+                jsonify({"error": "Unauthorized - only event attendees can create streams"}),
                 HTTPStatus.FORBIDDEN,
             )
 
@@ -361,20 +447,30 @@ class BaseView(QuartClassful):
             # In production, you might want to fail here depending on requirements
 
         try:
-            # Check if stream already exists (idempotency)
-            existing_stream = await self.scenes_client.fetch_stream(event_id)
+            # Check if user already has a stream for this event (idempotency)
+            existing_stream = await self.conn.fetch_cloudflare_scene(event_id, user_id)
             if existing_stream:
-                app.logger.info(f"Stream already exists for event {event_id}")
+                app.logger.info(f"User {user_id} already has a stream for event {event_id}")
                 return jsonify(existing_stream), HTTPStatus.OK
 
-            # Create new stream
-            stream_create_resp = await self.scenes_client.create_stream(event_id)
+            # Create new stream on Cloudflare
+            stream_create_resp = await self.scenes_client.create_stream(event_id, user_id)
             if stream_create_resp:
-                stream_info = await self.scenes_client.fetch_stream(event_id)
-                app.logger.info(f"Successfully created stream for event {event_id}")
+                # Store stream in database with user association
+                stream_info = await self.conn.store_cloudflare_scene(
+                    stream_create_resp, event_id, user_id
+                )
+                
+                # Invalidate cache
+                try:
+                    await self.redis.delete(f"livestream:all:{event_id}")
+                except redis.exceptions.RedisError as e:
+                    app.logger.error(f"Redis cache invalidation error: {e}")
+                
+                app.logger.info(f"Successfully created stream for user {user_id} on event {event_id}")
                 return jsonify(stream_info), HTTPStatus.CREATED
             else:
-                app.logger.error(f"Stream creation returned false for event {event_id}")
+                app.logger.error(f"Stream creation returned false for user {user_id}, event {event_id}")
                 return (
                     jsonify({"error": "Stream creation failed"}),
                     HTTPStatus.INTERNAL_SERVER_ERROR,

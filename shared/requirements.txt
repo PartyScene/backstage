@@ -26,4 +26,3 @@ paystack-sdk
 cloudflare
 tenacity
 rusty-req
-zangy

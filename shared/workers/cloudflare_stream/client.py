@@ -233,64 +233,67 @@ class CloudflareLSClient:
             self.logger.error(f"Unexpected error deleting input {input_id}: {e}")
             raise
 
-    async def fetch_stream(self, event_id):
+    async def fetch_stream(self, event_id, user_id=None):
         """
         Fetch stream information for a specific event from the application's connection.
 
         Args:
             event_id (str): Unique identifier for the event
+            user_id (str, optional): Unique identifier for the user
 
         Returns:
-            Dict: Stream information or None if not found
+            Dict or List: Stream information or None if not found
         """
-        return await self.conn.fetch_cloudflare_scene(event_id)
+        return await self.conn.fetch_cloudflare_scene(event_id, user_id)
 
-    async def create_stream(self, event_id: str) -> bool:
+    async def create_stream(self, event_id: str, user_id: str):
         """
-        Initiate a new livestream for a specific event.
+        Initiate a new livestream for a specific user at an event.
 
         Creates a Cloudflare stream input, stores the scene information,
         and prepares the stream for broadcasting.
 
         Args:
             event_id (str): Unique identifier for the event
+            user_id (str): Unique identifier for the user creating the stream
 
         Returns:
-            bool: True if the stream was successfully created
+            LiveInput: Cloudflare LiveInput object with stream credentials
 
         Raises:
-            ValueError: If stream already exists for this event
+            ValueError: If stream already exists for this user/event
             APIError: If Cloudflare API fails
             Exception: For database or other errors
         """
         # Check for existing stream (idempotency)
-        existing_stream = await self.fetch_stream(event_id)
+        existing_stream = await self.fetch_stream(event_id, user_id)
         if existing_stream:
             self.logger.warning(
-                f"Stream already exists for event {event_id}, returning existing stream"
+                f"Stream already exists for user {user_id} on event {event_id}"
             )
-            return True
+            return existing_stream
 
-        self.logger.info(f"Creating livestream for event {event_id}")
+        self.logger.info(f"Creating livestream for user {user_id} on event {event_id}")
         try:
-            input_response = await self._create_input(event_id)
-            await self.conn.store_cloudflare_scene(input_response, event_id)
-            self.logger.info(f"Successfully created livestream for event {event_id}")
-            return True
+            # Use user_id in the stream name for uniqueness
+            input_response = await self._create_input(f"{event_id}_{user_id}")
+            self.logger.info(f"Successfully created livestream for user {user_id} on event {event_id}")
+            return input_response
         except Exception as e:
             self.logger.error(
-                f"Failed to create livestream for event {event_id}: {e}", exc_info=True
+                f"Failed to create livestream for user {user_id} on event {event_id}: {e}", exc_info=True
             )
             raise
 
-    async def delete_stream(self, event_id: str) -> bool:
+    async def delete_stream(self, event_id: str, user_id: str) -> bool:
         """
-        Delete the livestream input for a specific event.
+        Delete the livestream input for a specific user's stream on an event.
 
         Removes both the Cloudflare stream input and database record.
 
         Args:
             event_id (str): Unique identifier for the event
+            user_id (str): Unique identifier for the user
 
         Returns:
             bool: True if the stream was successfully deleted, False if stream not found
@@ -299,18 +302,16 @@ class CloudflareLSClient:
             APIError: If Cloudflare API fails
             Exception: For other errors
         """
-        self.logger.info(f"Deleting livestream for event {event_id}")
-        scene_info = await self.fetch_stream(event_id)
+        self.logger.info(f"Deleting livestream for user {user_id} on event {event_id}")
+        scene_info = await self.fetch_stream(event_id, user_id)
         if not scene_info:
-            self.logger.warning(f"No stream found for event {event_id}")
+            self.logger.warning(f"No stream found for user {user_id} on event {event_id}")
             return False
 
         try:
             # Delete from Cloudflare first
             await self._delete_input(scene_info["input_uid"])
-            # Then delete from database
-            await self.conn.delete_cloudflare_scene(event_id)
-            self.logger.info(f"Successfully deleted livestream for event {event_id}")
+            self.logger.info(f"Successfully deleted livestream for user {user_id} on event {event_id}")
             return True
         except Exception as e:
             self.logger.error(
