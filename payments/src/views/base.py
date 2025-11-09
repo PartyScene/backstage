@@ -15,7 +15,7 @@ from quart import (
 )
 from payments.src.connectors import PaymentsDB
 from shared.classful import route, QuartClassful
-from shared.utils import get_client_ip
+from shared.utils import get_client_ip, api_response, api_error
 from shared.utils.paystack_client import PaystackClient
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
@@ -576,15 +576,15 @@ class BaseView(QuartClassful):
         except ValueError as e:
             # Invalid payload
             app.logger.error(f"Invalid payload: {e}")
-            return jsonify({"error": "Invalid payload"}), 400
+            return api_error("Invalid payload", HTTPStatus.BAD_REQUEST)
         except stripe.SignatureVerificationError as e:
             # Invalid signature
             app.logger.error(f"Invalid signature: {e}")
-            return jsonify({"error": "Invalid signature"}), 400
+            return api_error("Invalid signature", HTTPStatus.BAD_REQUEST)
         except Exception as e:
             # Catch any other unexpected errors during event construction
             app.logger.error(f"Unexpected error constructing event: {e}")
-            return jsonify({"error": "Internal server error"}), 500
+            return api_error("Internal server error", HTTPStatus.INTERNAL_SERVER_ERROR)
 
         # Handle the event
         if event["type"] == "payment_intent.succeeded":
@@ -695,18 +695,18 @@ class BaseView(QuartClassful):
 
         if not signature:
             app.logger.error("Missing x-paystack-signature header")
-            return jsonify({"error": "Missing signature"}), 400
+            return api_error("Missing signature", HTTPStatus.BAD_REQUEST)
 
         # Verify signature
         if not self._verify_paystack_signature(payload, signature):
             app.logger.error("Invalid Paystack webhook signature")
-            return jsonify({"error": "Invalid signature"}), 403
+            return api_error("Invalid signature", HTTPStatus.FORBIDDEN)
 
         try:
             event_data = json.loads(payload)
         except json.JSONDecodeError as e:
             app.logger.error(f"Invalid JSON payload: {e}")
-            return jsonify({"error": "Invalid payload"}), 400
+            return api_error("Invalid payload", HTTPStatus.BAD_REQUEST)
 
         app.logger.info(f"Paystack event type: {event_data.get('event')}")
 
@@ -719,7 +719,7 @@ class BaseView(QuartClassful):
 
                 if not reference:
                     app.logger.error("Missing transaction reference in webhook")
-                    return jsonify({"error": "Missing reference"}), 400
+                    return api_error("Missing reference", HTTPStatus.BAD_REQUEST)
 
                 app.logger.info(f"Processing successful charge: {reference}")
 
@@ -728,7 +728,7 @@ class BaseView(QuartClassful):
 
                 if not verification.get("status"):
                     app.logger.error(f"Transaction verification failed: {verification}")
-                    return jsonify({"error": "Verification failed"}), 400
+                    return api_error("Verification failed", HTTPStatus.BAD_REQUEST)
 
                 verified_data = verification.get("data", {})
                 if verified_data.get("status") != "success":
@@ -742,7 +742,7 @@ class BaseView(QuartClassful):
 
                 if not user_id or not event_id:
                     app.logger.error(f"Missing user_id or event_id in metadata: {metadata}")
-                    return jsonify({"error": "Missing metadata"}), 400
+                    return api_error("Missing metadata", HTTPStatus.BAD_REQUEST)
 
                 app.logger.info(
                     f"Creating {ticket_count} tickets for user {user_id} on event {event_id}"
