@@ -16,6 +16,7 @@ from shared.classful import route, QuartClassful
 from shared.workers import cloudflare_stream
 from datetime import datetime, timedelta
 import shared.utils
+from shared.utils import api_response, api_error
 from aiocache import cached
 from livestream.src.connectors import LiveStreamDB
 from cloudflare._exceptions import APIError, APIConnectionError, APITimeoutError
@@ -146,7 +147,7 @@ class BaseView(QuartClassful):
         """
         # Validate event_id
         if not self._validate_event_id(event_id):
-            return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
+            return api_error("Invalid event ID format", HTTPStatus.BAD_REQUEST)
 
         # Check Redis cache first
         cache_key = f"livestream:all:{event_id}"
@@ -221,9 +222,9 @@ class BaseView(QuartClassful):
 
         except Exception as e:
             app.logger.exception(f"Unexpected error getting streams for event {event_id}")
-            return (
-                jsonify({"error": "Failed to retrieve livestreams"}),
-                HTTPStatus.INTERNAL_SERVER_ERROR,
+            return api_error(
+                "Failed to retrieve livestreams",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/scenes/<event_id>", methods=["DELETE"])
@@ -235,7 +236,7 @@ class BaseView(QuartClassful):
         """
         # Validate event_id
         if not self._validate_event_id(event_id):
-            return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
+            return api_error("Invalid event ID format", HTTPStatus.BAD_REQUEST)
 
         user_id = get_jwt_identity()
 
@@ -244,18 +245,18 @@ class BaseView(QuartClassful):
             await self._ensure_scenes_client_initialized()
         except Exception as e:
             app.logger.error(f"Client initialization failed: {e}")
-            return (
-                jsonify({"error": "Streaming service unavailable"}),
-                HTTPStatus.SERVICE_UNAVAILABLE,
+            return api_error(
+                "Streaming service unavailable",
+                HTTPStatus.SERVICE_UNAVAILABLE
             )
 
         try:
             # Check if user's stream exists
             user_stream = await self.conn.fetch_cloudflare_scene(event_id, user_id)
             if not user_stream:
-                return (
-                    jsonify({"error": "You don't have an active stream for this event"}),
-                    HTTPStatus.NOT_FOUND,
+                return api_error(
+                    "You don't have an active stream for this event",
+                    HTTPStatus.NOT_FOUND
                 )
 
             # Delete from Cloudflare
@@ -274,22 +275,22 @@ class BaseView(QuartClassful):
 
                 return jsonify({"message": "Stream deleted successfully"}), HTTPStatus.NO_CONTENT
             else:
-                return (
-                    jsonify({"error": "Stream not found"}),
-                    HTTPStatus.NOT_FOUND,
+                return api_error(
+                    "Stream not found",
+                    HTTPStatus.NOT_FOUND
                 )
 
         except APIError as e:
             app.logger.error(f"Cloudflare API error deleting stream for user {user_id}, event {event_id}: {e}")
-            return (
-                jsonify({"error": "Streaming provider error", "detail": str(e)}),
-                HTTPStatus.BAD_GATEWAY,
+            return api_response(
+                f"Streaming provider error: {str(e)}",
+                HTTPStatus.BAD_GATEWAY
             )
         except Exception as e:
             app.logger.exception(f"Unexpected error deleting stream for user {user_id}, event {event_id}")
-            return (
-                jsonify({"error": "Failed to delete livestream"}),
-                HTTPStatus.INTERNAL_SERVER_ERROR,
+            return api_error(
+                "Failed to delete livestream",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/scenes/<event_id>/report", methods=["POST"])
@@ -301,7 +302,7 @@ class BaseView(QuartClassful):
         """
         # Validate event_id
         if not self._validate_event_id(event_id):
-            return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
+            return api_error("Invalid event ID format", HTTPStatus.BAD_REQUEST)
 
         reporter = get_jwt_identity()
         data = await request.get_json()
@@ -379,14 +380,14 @@ class BaseView(QuartClassful):
         """
         # Validate event_id
         if not self._validate_event_id(event_id):
-            return jsonify({"error": "Invalid event ID format"}), HTTPStatus.BAD_REQUEST
+            return api_error("Invalid event ID format", HTTPStatus.BAD_REQUEST)
 
         # Check if user is attending the event
         user_id = get_jwt_identity()
         if not await self._check_attendee_status(event_id, user_id):
-            return (
-                jsonify({"error": "Unauthorized - only event attendees can create streams"}),
-                HTTPStatus.FORBIDDEN,
+            return api_error(
+                "Unauthorized - only event attendees can create streams",
+                HTTPStatus.FORBIDDEN
             )
 
         # Ensure client is initialized
@@ -394,9 +395,9 @@ class BaseView(QuartClassful):
             await self._ensure_scenes_client_initialized()
         except Exception as e:
             app.logger.error(f"Client initialization failed: {e}")
-            return (
-                jsonify({"error": "Streaming service unavailable"}),
-                HTTPStatus.SERVICE_UNAVAILABLE,
+            return api_error(
+                "Streaming service unavailable",
+                HTTPStatus.SERVICE_UNAVAILABLE
             )
 
         # Validate distance: host must be within 1km of event location
@@ -416,9 +417,9 @@ class BaseView(QuartClassful):
                         host_coordinates = shared.utils.coordinates_to_geometry_point(host_coordinates)
                         
                         if not event_coordinates or not host_coordinates:
-                            return (
-                                jsonify({"error": "Coordinates are required for both event and livestream"}),
-                                HTTPStatus.BAD_REQUEST,
+                            return api_error(
+                                "Coordinates are required for both event and livestream",
+                                HTTPStatus.BAD_REQUEST
                             )
                         
                         # Calculate distance
@@ -474,40 +475,40 @@ class BaseView(QuartClassful):
                 return jsonify(stream_info), HTTPStatus.CREATED
             else:
                 app.logger.error(f"Stream creation returned false for user {user_id}, event {event_id}")
-                return (
-                    jsonify({"error": "Stream creation failed"}),
-                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                return api_error(
+                    "Stream creation failed",
+                    HTTPStatus.INTERNAL_SERVER_ERROR
                 )
 
         except APIConnectionError as e:
             app.logger.error(f"Cloudflare connection error for event {event_id}: {e}")
-            return (
-                jsonify({"error": "Cannot connect to streaming provider", "detail": str(e)}),
-                HTTPStatus.SERVICE_UNAVAILABLE,
+            return api_response(
+                f"Cannot connect to streaming provider: {str(e)}",
+                HTTPStatus.SERVICE_UNAVAILABLE
             )
         except APITimeoutError as e:
             app.logger.error(f"Cloudflare timeout error for event {event_id}: {e}")
-            return (
-                jsonify({"error": "Streaming provider timeout", "detail": str(e)}),
-                HTTPStatus.GATEWAY_TIMEOUT,
+            return api_response(
+                f"Streaming provider timeout: {str(e)}",
+                HTTPStatus.GATEWAY_TIMEOUT
             )
         except APIError as e:
             app.logger.error(f"Cloudflare API error for event {event_id}: {e}")
-            return (
-                jsonify({"error": "Streaming provider error", "detail": str(e)}),
-                HTTPStatus.BAD_GATEWAY,
+            return api_response(
+                f"Streaming provider error: {str(e)}",
+                HTTPStatus.BAD_GATEWAY
             )
         except RuntimeError as e:
             app.logger.error(f"Runtime error creating stream for event {event_id}: {e}")
-            return (
-                jsonify({"error": "Service initialization error", "detail": str(e)}),
-                HTTPStatus.SERVICE_UNAVAILABLE,
+            return api_response(
+                f"Service initialization error: {str(e)}",
+                HTTPStatus.SERVICE_UNAVAILABLE
             )
         except Exception as e:
             app.logger.exception(f"Unexpected error creating stream for event {event_id}")
-            return (
-                jsonify({"error": "Failed to create livestream"}),
-                HTTPStatus.INTERNAL_SERVER_ERROR,
+            return api_error(
+                "Failed to create livestream",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     # =========================================================================
