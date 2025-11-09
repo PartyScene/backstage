@@ -8,7 +8,7 @@ novu-py
 surrealdb
 granian[uvloop]; sys_platform != 'win32'
 granian; sys_platform == 'win32'
-purreal
+purreal==0.1.2
 aiocache
 prometheus-client
 faststream[rabbit]
