@@ -14,7 +14,7 @@ import jwt, os
 from http import HTTPStatus
 from shared.classful import route, QuartClassful
 from shared.workers import cloudflare_stream
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import shared.utils
 from shared.utils import api_response, api_error
 from aiocache import cached
@@ -85,7 +85,7 @@ class BaseView(QuartClassful):
                 # Check event timing: only allow streaming if event starts within 1 hour
                 if "time" in event_info:
                     event_time = event_info["time"]
-                    now = datetime.now(datetime.timezone.utc)
+                    now = datetime.now(UTC)
                     one_hour_from_now = now + timedelta(hours=1)
                     
                     # Reject if event starts more than 1 hour in the future
@@ -99,8 +99,7 @@ class BaseView(QuartClassful):
                 event_host_id = event_info.get("host")
                 if event_host_id:
                     # Extract host ID from RecordID format
-                    host_id_str = event_host_id.split(":")[-1] if ":" in str(event_host_id) else str(event_host_id)
-                    if host_id_str == user_id:
+                    if event_host_id == RecordID("users", user_id):
                         app.logger.info(f"User {user_id} is host of event {event_id}")
                         return True, None
                 
@@ -227,6 +226,10 @@ class BaseView(QuartClassful):
                             stream["playback"] = video_data["playback"]
                             stream["status"] = video_data.get("status", {})
                             
+                            # Get live viewer count
+                            viewer_count = await self.scenes_client.get_live_viewer_count(input_uid)
+                            stream["live_viewers"] = viewer_count if viewer_count is not None else 0
+                            
                             # Update database with fresh playback data
                             try:
                                 scene_id = stream.get("id", "").split(":")[-1] if ":" in stream.get("id", "") else stream.get("id", "")
@@ -236,8 +239,12 @@ class BaseView(QuartClassful):
                                 )
                             except Exception as db_err:
                                 app.logger.warning(f"Failed to update playback for stream {input_uid}: {db_err}")
+                        else:
+                            # Stream offline or not ready
+                            stream["live_viewers"] = 0
                     except Exception as cf_err:
                         app.logger.warning(f"Failed to fetch playback for stream {input_uid}: {cf_err}")
+                        stream["live_viewers"] = 0
                 
                 enriched_streams.append(stream)
 

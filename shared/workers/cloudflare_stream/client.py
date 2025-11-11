@@ -393,3 +393,66 @@ class CloudflareLSClient:
         except Exception as e:
             self.logger.error(f"Error retrieving live stream for event {event_id}: {e}")
             raise
+
+    async def get_live_viewer_count(self, input_uid: str) -> int | None:
+        """
+        Get the current live viewer count for a stream using Cloudflare analytics.
+        
+        API endpoint: GET https://customer-{CODE}.cloudflarestream.com/{INPUT_ID}/views
+        Response: {"liveViewers": 113}
+        
+        Args:
+            input_uid (str): Cloudflare live input UID
+            
+        Returns:
+            int | None: Number of live viewers, or None if stream is offline or error occurs
+        """
+        try:
+            # First, get the video UID from the input
+            video_data = await self._retrieve_video(input_uid, live_only=True)
+            if not video_data:
+                self.logger.debug(f"No live video for input {input_uid}")
+                return None
+            
+            video_uid = video_data.get("uid")
+            if not video_uid:
+                self.logger.warning(f"No video UID found for input {input_uid}")
+                return None
+            
+            # Get the customer subdomain from playback URL
+            # Playback URL format: https://customer-{CODE}.cloudflarestream.com/{VIDEO_UID}/manifest/video.m3u8
+            playback = video_data.get("playback", {})
+            hls_url = playback.get("hls")
+            if not hls_url:
+                self.logger.warning(f"No HLS playback URL for video {video_uid}")
+                return None
+            
+            # Extract customer subdomain from HLS URL
+            import re
+            match = re.search(r'https://(customer-[^.]+\.cloudflarestream\.com)', hls_url)
+            if not match:
+                self.logger.error(f"Failed to extract customer subdomain from URL: {hls_url}")
+                return None
+            
+            customer_domain = match.group(1)
+            
+            # Call the views endpoint
+            url = f"https://{customer_domain}/{input_uid}/views"
+            
+            response = await rusty_req.fetch_single(
+                url=url,
+                method="GET",
+                headers={},  # No auth needed for views endpoint
+                timeout=5.0,
+                tag="cloudflare-viewer-count",
+            )
+            
+            result = parse_rusty_req_response(response, expected_status=(200,))
+            live_viewers = result.get("liveViewers", 0)
+            
+            self.logger.debug(f"Live viewers for input {input_uid}: {live_viewers}")
+            return live_viewers
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get live viewer count for input {input_uid}: {e}")
+            return None
