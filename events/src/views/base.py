@@ -418,7 +418,7 @@ class BaseView(QuartClassful):
 
             # Handle duration if provided (e.g., "2h", "1h30m", "45m")
             if duration_str := form.get("duration", type=str):
-                data["duration"] = Duration(duration_str)
+                data["duration"] = Duration.parse(duration_str).minutes
 
             for i, file in enumerate(files.values()):
                 # Create isolated data dict for each file to prevent race conditions

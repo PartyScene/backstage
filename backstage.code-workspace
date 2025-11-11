@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../purreal"
+		},
+		{
+			"path": "../surrealdb.py"
 		}
 	],
 	"settings": {

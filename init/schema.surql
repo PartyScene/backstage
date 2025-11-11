@@ -99,7 +99,7 @@ DEFINE FIELD OVERWRITE location.coordinates ON TABLE events FLEXIBLE TYPE point;
 DEFINE FIELD OVERWRITE metadata ON TABLE events FLEXIBLE TYPE object DEFAULT {};
 DEFINE FIELD OVERWRITE degree_of_freedom ON TABLE events TYPE int DEFAULT 1;
 DEFINE FIELD OVERWRITE attendee_count ON TABLE events TYPE int DEFAULT 0;
-DEFINE FIELD OVERWRITE duration ON TABLE events TYPE option<duration> DEFAULT 1h;
+DEFINE FIELD OVERWRITE duration ON TABLE events TYPE int DEFAULT 60;
 
 -- DEFINE FIELD OVERWRITE embeddings.text ON TABLE events TYPE array DEFAULT [];
 DEFINE INDEX hnsw_event_text_embeddings ON TABLE events FIELDS embeddings.text HNSW DIMENSION 512 M 16 EFC 200;
@@ -281,7 +281,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_public_events($page: number, $limit: number)
 
     RETURN (
 
-        SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false AND time + duration > time::now()
+        SELECT fn::fetch_event(id) AS event, created_at FROM events WHERE is_private = false AND time + duration::from::mins(duration) > time::now()
      ORDER BY created_at ASC LIMIT $limit START ($page - 1) * $limit
     )
 };
@@ -292,7 +292,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_user_tickets($origin: record, $page: option<
     LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
 
     RETURN (
-        SELECT id, (SELECT * OMIT duration FROM out) AS event, (SELECT * FROM tickets WHERE user = $parent.in AND event = $parent.out) AS tickets
+        SELECT id, (SELECT * FROM out) AS event, (SELECT * FROM tickets WHERE user = $parent.in AND event = $parent.out) AS tickets
         FROM attends WHERE in = $origin
         LIMIT $limit START ($page - 1) * $limit
     )
@@ -314,7 +314,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_created_events($origin: record, $page: optio
     LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
 
     RETURN (
-        SELECT *, (time + duration) AS end_time OMIT duration FROM events WHERE creator = $origin
+        SELECT *, (time + duration::from::mins(duration)) AS end_time FROM events WHERE creator = $origin
         LIMIT $limit START ($page - 1) * $limit
     )
 };
@@ -323,11 +323,11 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
     RETURN (
         SELECT
         *,
-        (time + duration) AS end_time,
+        (time + duration::from::mins(duration)) AS end_time,
         (->has_media->media.{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
         host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id}
-    OMIT embeddings, duration
+    OMIT embeddings
     FROM ONLY $event_id
     )
 };
@@ -418,7 +418,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_private_events_for_user($user: record, $page
 
     RETURN (
         SELECT fn::fetch_event(id) AS event, created_at FROM events
-    WHERE is_private = true AND fn::exists_in_degree($user, host, degree_of_freedom) AND time + duration > time::now()
+    WHERE is_private = true AND fn::exists_in_degree($user, host, degree_of_freedom) AND time + duration::from::mins(duration) > time::now()
     ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
     )
 };
