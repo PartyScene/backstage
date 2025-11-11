@@ -152,9 +152,8 @@ class EventsDB:
             Dict[str, Any]: The deleted event
         """
         async with self.pool.acquire() as conn:
-            # Use query to OMIT duration (CBOR parsing bug)
             result = await conn.query(
-                "DELETE type::thing('events', $event_id) RETURN BEFORE OMIT duration;",
+                "DELETE type::thing('events', $event_id) RETURN BEFORE;",
                 {"event_id": event_id}
             )
             return record_id_to_json(result)
@@ -358,9 +357,8 @@ class EventsDB:
             Dict[str, Any]: The updated event data
         """
         async with self.pool.acquire() as conn:
-            # Use query to OMIT duration (CBOR parsing bug)
             result = await conn.query(
-                "UPDATE type::thing('events', $event_id) MERGE $data RETURN AFTER OMIT duration;",
+                "UPDATE type::thing('events', $event_id) MERGE $data RETURN AFTER;",
                 {"event_id": event_id, "data": data}
             )
             if result and "ERR" in result:
@@ -606,31 +604,31 @@ class EventsDB:
                         LIMIT 1
                     )[0];
                     
-                    IF $ticket THEN {
-                        IF $ticket.checked_in_at THEN {
-                            RETURN {
+                    RETURN IF $ticket {
+                        IF $ticket.checked_in_at {
+                            {
                                 valid: true,
                                 already_checked_in: true,
                                 checked_in_at: $ticket.checked_in_at,
                                 ticket: $ticket
-                            };
+                            }
                         } ELSE {
                             UPDATE tickets 
                             SET checked_in_at = time::now() 
                             WHERE id = $ticket.id;
                             
-                            RETURN {
+                            {
                                 valid: true,
                                 already_checked_in: false,
                                 checked_in_at: time::now(),
                                 ticket: $ticket
-                            };
-                        };
+                            }
+                        }
                     } ELSE {
-                        RETURN {
+                        {
                             valid: false,
                             message: "Ticket not found or does not belong to this event"
-                        };
+                        }
                     };
                     """,
                     {"event_id": event_id, "ticket_number": ticket_number},

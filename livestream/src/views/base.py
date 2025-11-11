@@ -59,13 +59,51 @@ class BaseView(QuartClassful):
             return False
         return True
 
-    async def _check_attendee_status(self, event_id: str, user_id: str) -> bool:
+    async def _check_stream_permission(self, event_id: str, user_id: str) -> tuple[bool, str | None]:
         """
-        Check if user is an attendee of the event.
-        Only attendees can create/manage streams for an event.
+        Check if user can create/manage streams for an event.
+        Users can stream if they are either:
+        1. The event host
+        2. An attendee of the event
+        
+        Also validates event timing - event must start within 1 hour.
+        
+        Returns:
+            tuple[bool, str | None]: (permission_granted, error_message)
         """
         try:
             async with self.conn.pool.acquire() as conn:
+                # Fetch event info to check host and timing
+                event_info = await conn.query(
+                    "SELECT host, time FROM ONLY type::thing('events', $event_id);",
+                    {"event_id": event_id}
+                )
+                
+                if not event_info:
+                    return False, "Event not found"
+                
+                # Check event timing: only allow streaming if event starts within 1 hour
+                if "time" in event_info:
+                    event_time = event_info["time"]
+                    now = datetime.now(datetime.timezone.utc)
+                    one_hour_from_now = now + timedelta(hours=1)
+                    
+                    # Reject if event starts more than 1 hour in the future
+                    if event_time > one_hour_from_now:
+                        hours_until_event = (event_time - now).total_seconds() / 3600
+                        error_msg = f"Cannot stream yet. Event starts in {hours_until_event:.1f} hours (streaming allowed 1 hour before event)."
+                        app.logger.warning(f"Timing check failed for user {user_id} on event {event_id}: {error_msg}")
+                        return False, error_msg
+                
+                # Check if user is the host
+                event_host_id = event_info.get("host")
+                if event_host_id:
+                    # Extract host ID from RecordID format
+                    host_id_str = event_host_id.split(":")[-1] if ":" in str(event_host_id) else str(event_host_id)
+                    if host_id_str == user_id:
+                        app.logger.info(f"User {user_id} is host of event {event_id}")
+                        return True, None
+                
                 # Check if user is attending the event
                 result = await conn.query(
                     """
@@ -78,16 +116,16 @@ class BaseView(QuartClassful):
                 
                 if result and len(result) > 0:
                     app.logger.info(f"User {user_id} is attending event {event_id}")
-                    return True
+                    return True, None
                 
                 app.logger.warning(
-                    f"Permission denied: user {user_id} is not attending event {event_id}"
+                    f"Permission denied: user {user_id} is neither host nor attendee of event {event_id}"
                 )
-                return False
+                return False, "Unauthorized - only event hosts and attendees can create streams"
                 
         except Exception as e:
-            app.logger.error(f"Attendee check failed for user {user_id} on event {event_id}: {e}")
-            return False
+            app.logger.error(f"Permission check failed for user {user_id} on event {event_id}: {e}")
+            return False, "Permission check failed"
 
     @route("/", methods=["GET"])
     @cached(ttl=60 * 60 * 72)
@@ -382,11 +420,12 @@ class BaseView(QuartClassful):
         if not self._validate_event_id(event_id):
             return api_error("Invalid event ID format", HTTPStatus.BAD_REQUEST)
 
-        # Check if user is attending the event
+        # Check if user has permission (host or attendee) and event timing
         user_id = get_jwt_identity()
-        if not await self._check_attendee_status(event_id, user_id):
+        has_permission, error_msg = await self._check_stream_permission(event_id, user_id)
+        if not has_permission:
             return api_error(
-                "Unauthorized - only event attendees can create streams",
+                error_msg or "Unauthorized to create stream",
                 HTTPStatus.FORBIDDEN
             )
 
