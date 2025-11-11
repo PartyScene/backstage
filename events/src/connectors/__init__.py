@@ -588,7 +588,7 @@ class EventsDB:
         """
         try:
             async with self.pool.acquire() as conn:
-                result = await conn.query(
+                raw_response = await conn.query_raw(
                     """
                     LET $ticket = (
                         SELECT 
@@ -633,6 +633,15 @@ class EventsDB:
                     """,
                     {"event_id": event_id, "ticket_number": ticket_number},
                 )
+                
+                # query_raw() returns: {'id': '...', 'result': [{}, {}]}
+                # Multiple statements return array of results - last item is RETURN statement
+                # Structure: raw_response['result'][-1]['result'] contains our data
+                if raw_response and 'result' in raw_response and len(raw_response['result']) > 0:
+                    result = raw_response['result'][-1].get('result')
+                else:
+                    result = None
+                    
             return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to verify ticket: {str(e)}")
