@@ -2,7 +2,6 @@
 Shared database utility functions for all microservices.
 """
 from surrealdb import RecordID
-from shared.utils import record_id_to_json
 
 
 async def report_resource(pool, data: dict, resource_table: str) -> dict:
@@ -36,6 +35,9 @@ async def report_resource(pool, data: dict, resource_table: str) -> dict:
         )
         ```
     """
+    # Import here to avoid circular dependency
+    from shared.utils import record_id_to_json
+    
     # Convert string IDs to RecordIDs
     data["reporter"] = RecordID("users", data["reporter"])
     data["resource"] = RecordID(resource_table, data["resource"])
