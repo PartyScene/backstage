@@ -230,13 +230,19 @@ class BaseView(QuartClassful):
                             viewer_count = await self.scenes_client.get_live_viewer_count(input_uid)
                             stream["live_viewers"] = viewer_count if viewer_count is not None else 0
                             
-                            # Update database with fresh playback data
+                            # Update database with fresh playback data and set live_started_at if not set
                             try:
                                 scene_id = stream.get("id", "").split(":")[-1] if ":" in stream.get("id", "") else stream.get("id", "")
                                 await self.conn.update_cloudflare_scene_playback(
                                     scene_id,
                                     video_data["playback"]
                                 )
+                                
+                                # Set live_started_at timestamp if stream just went live (only if not already set)
+                                if not stream.get("live_started_at"):
+                                    await self.conn.update_scene_live_start(scene_id)
+                                    app.logger.info(f"Stream {scene_id} went live - started 3-minute timer")
+                                
                             except Exception as db_err:
                                 app.logger.warning(f"Failed to update playback for stream {input_uid}: {db_err}")
                         else:
@@ -338,12 +344,19 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
-    @route("/scenes/<event_id>/report", methods=["POST"])
+    @route("/scenes/<event_id>/report/<scene_id>", methods=["POST"])
     @jwt_required
-    async def report_livestream(self, event_id):
+    async def report_livestream(self, event_id, scene_id):
         """
         Report a livestream for violations or inappropriate content.
         Any authenticated user can report a stream.
+        
+        URL parameters:
+        - event_id: Event identifier
+        - scene_id: ID of the scene/stream being reported
+        
+        Request body must include:
+        - reason: Description of why the stream is being reported
         """
         # Validate event_id
         if not self._validate_event_id(event_id):
@@ -362,7 +375,11 @@ class BaseView(QuartClassful):
 
         # Check if the livestream/scene exists
         try:
-            scene_info = await self.conn.fetch_cloudflare_scene(event_id)
+            async with self.conn.pool.acquire() as conn:
+                scene_info = await conn.query(
+                    "SELECT * FROM ONLY type::thing('scenes', $scene_id);",
+                    {"scene_id": scene_id}
+                )
             if not scene_info:
                 status_code = HTTPStatus.NOT_FOUND
                 return (

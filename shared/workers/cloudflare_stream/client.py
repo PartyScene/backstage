@@ -450,7 +450,7 @@ class CloudflareLSClient:
             result = parse_rusty_req_response(response, expected_status=(200,))
             live_viewers = result.get("liveViewers", 0)
             
-            self.logger.debug(f"Live viewers for input {input_uid}: {live_viewers}")
+            self.logger.warning(f"Live viewers for input {input_uid}: {live_viewers}")
             return live_viewers
             
         except Exception as e:

@@ -3,7 +3,7 @@ from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
 import os
 
-from shared.utils import record_id_to_json
+from shared.utils import record_id_to_json, report_resource
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 
@@ -22,17 +22,13 @@ class LiveStreamDB:
         Args:
             data (dict): The data to report containing:
                 - reporter: User ID who is reporting
-                - resource: Scene/event ID being reported
+                - resource: Scene ID being reported
                 - reason: Reason for the report
         
         Returns:
             dict: Created report record
         """
-        data["reporter"] = RecordID("users", data["reporter"])
-        data["resource"] = RecordID("scenes", data["resource"])
-        async with self.pool.acquire() as conn:
-            result = await conn.create("reports", data)
-            return record_id_to_json(result)
+        return await report_resource(self.pool, data, resource_table="scenes")
 
     async def store_cloudflare_scene(self, input_response: dict | LiveInput, event_id: str, user_id: str):
         """
@@ -140,13 +136,13 @@ class LiveStreamDB:
                 )
                 return record_id_to_json(result)
 
-    async def update_cloudflare_scene_playback(self, scene_id: str, playback_data: dict, user_id: str = None):
+    async def update_cloudflare_scene_playback(self, scene_or_event_id: str, playback_data: dict, user_id: str = None):
         """
         Update the playback data (HLS/DASH URLs) for a scene.
         Called when video becomes available after stream starts.
 
         Args:
-            scene_id (str): Scene record ID (e.g., "scenes:abc123") OR event_id if user_id provided
+            scene_or_event_id (str): Scene or event identifier, provide event_id if user_id is provided
             playback_data (dict): Playback URLs from Cloudflare Video API
             user_id (str, optional): User ID if updating by event+user combination
 
@@ -163,7 +159,7 @@ class LiveStreamDB:
                     AND user = type::thing("users", $user_id)
                     """,
                     {
-                        "event_id": scene_id,  # scene_id is actually event_id in this case
+                        "event_id": scene_or_event_id,
                         "user_id": user_id,
                         "playback": playback_data or {},
                     },
@@ -175,11 +171,11 @@ class LiveStreamDB:
                     UPDATE $scene_id SET playback = $playback
                     """,
                     {
-                        "scene_id": RecordID("scenes", scene_id) if ":" not in scene_id else scene_id,
+                        "scene_id": RecordID("scenes", scene_or_event_id) if ":" not in scene_or_event_id else scene_or_event_id,
                         "playback": playback_data or {},
                     },
                 )
-        return bool(result and result[0])
+        return bool(result)
 
     async def delete_cloudflare_scene(self, event_id: str, user_id: str):
         """
@@ -201,36 +197,68 @@ class LiveStreamDB:
                 """,
                 {"event_id": event_id, "user_id": user_id},
             )
-        return bool(result and result[0])
+        return bool(result)
+    
+    async def update_scene_live_start(self, scene_id: str):
+        """
+        Set the live_started_at timestamp for a scene when it goes live.
+        
+        Args:
+            scene_id (str): Scene record ID
+            
+        Returns:
+            bool: True if update was successful
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                UPDATE $scene_id SET live_started_at = time::now() 
+                WHERE live_started_at = NONE
+                """,
+                {"scene_id": RecordID("scenes", scene_id) if ":" not in scene_id else scene_id},
+            )
+        return bool(result)
+    
+    async def fetch_expired_scenes(self, max_live_seconds: int = 180):
+        """
+        Fetch all scenes that have been live for longer than the specified duration.
+        
+        Args:
+            max_live_seconds (int): Maximum seconds a stream can be live (default 180 = 3 minutes)
+            
+        Returns:
+            list: List of expired scene records with input_uid, event, and user info
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                SELECT *, user.{id, first_name, last_name, username} as user_info 
+                FROM scenes 
+                WHERE live_started_at != NONE 
+                AND time::now() - live_started_at > $max_duration
+                """,
+                {"max_duration": f"{max_live_seconds}s"},
+            )
+            return record_id_to_json(result) if result else []
+    
+    async def delete_scene_by_id(self, scene_id: str):
+        """
+        Delete a scene by its record ID.
+        
+        Args:
+            scene_id (str): Scene record ID
+            
+        Returns:
+            bool: True if deletion was successful
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "DELETE $scene_id",
+                {"scene_id": RecordID("scenes", scene_id) if ":" not in scene_id else scene_id},
+            )
+        return bool(result)
 
-    # async def delete(self, email) :
-    #     """This db function deletes a user.
 
-    #     Args:
-    #         email (__string_): The user email to delete.
-    #     """
-    #     result = await self.db.query(
-    #         "DELETE users WHERE email = $email;", {"email": email}
-    #     )
-    #     return result[0]["result"][0]
-
-    # async def update(self, data: dict):
-    #     """This function updates a specific field
-
-    #     Args:
-    #         data (dict): _description_
-    #     """
-    #     record_id = (
-    #         await self.db.query(
-    #             "SELECT id FROM users WHERE email = $email;",
-    #             {"email": data["email"]},
-    #         )
-    #     )[0]["result"][0]["id"]
-    #     result = await self.db.query(
-    #         "UPDATE $record_id MERGE $content",
-    #         {"content": data, "record_id": record_id},
-    #     )
-    #     return result
 
 
 async def init_db(app) -> tuple[LiveStreamDB, SurrealDBPoolManager]:

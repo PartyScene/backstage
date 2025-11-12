@@ -5,7 +5,7 @@ import orjson as json
 
 from surrealdb import AsyncSurreal, RecordID
 from typing import Literal
-from shared.utils import record_id_to_json
+from shared.utils import record_id_to_json, report_resource
 import shared.utils
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
@@ -23,13 +23,9 @@ class PostsDB:
 
         Args:
             data (dict): The data to report
+            resource: Table name - either "posts" or "comments"
         """
-
-        data["reporter"] = RecordID("users", data["reporter"])
-        data["resource"] = RecordID(resource, data["resource"])
-        async with self.pool.acquire() as conn:
-            result = await conn.create("reports", data)
-            return record_id_to_json(result)
+        return await report_resource(self.pool, data, resource_table=resource)
 
     async def _info(self):
         """Get database information."""

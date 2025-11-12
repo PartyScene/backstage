@@ -4,7 +4,7 @@ from surrealdb.data import GeometryPoint, RecordID, Table
 from purreal import SurrealDBPoolManager, SurrealDBConnectionPool
 import os
 from typing import Optional, List, Dict, Any
-from shared.utils import record_id_to_json
+from shared.utils import record_id_to_json, report_resource
 import orjson as json
 
 
@@ -25,11 +25,7 @@ class EventsDB:
         Args:
             data (dict): The data to report
         """
-        data["reporter"] = RecordID("users", data["reporter"])
-        data["resource"] = RecordID("events", data["resource"])
-        async with self.pool.acquire() as conn:
-            result = await conn.create("reports", data)
-            return record_id_to_json(result)
+        return await report_resource(self.pool, data, resource_table="events")
 
     async def _info(self):
         """

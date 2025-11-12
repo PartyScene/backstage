@@ -147,6 +147,7 @@ DEFINE FIELD OVERWRITE playback ON TABLE scenes FLEXIBLE TYPE OBJECT;
 DEFINE FIELD OVERWRITE metadata ON TABLE scenes FLEXIBLE TYPE OBJECT DEFAULT {};
 DEFINE FIELD OVERWRITE event ON TABLE scenes TYPE record<events>;
 DEFINE FIELD OVERWRITE user ON TABLE scenes TYPE record<users>;
+DEFINE FIELD OVERWRITE live_started_at ON TABLE scenes TYPE option<datetime> DEFAULT NONE;
 DEFINE FIELD OVERWRITE updated_at ON TABLE scenes TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE scenes TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE idx_scene_event ON TABLE scenes COLUMNS event;

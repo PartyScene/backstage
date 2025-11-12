@@ -5,6 +5,8 @@ import os
 from typing import Optional, Any, Dict
 import rusty_req
 
+from .db import report_resource
+
 MEDIA_MICROSERVICE_URL = os.getenv("MEDIA_MICROSERVICE_URL", "")
 
 
@@ -237,4 +239,5 @@ __all__ = [
     "api_response",
     "api_error",
     "api_success",
+    "report_resource",
 ]
