@@ -145,11 +145,22 @@ class MicroService(Quart):
             if self.microservice_instance.needs_rmq():
                 self.RMQ = rmq.RMQBroker(self)
                 await self.RMQ.start()
+            
+            # Start StreamMonitor for LIVESTREAM microservice
+            if self.microservice_instance == Microservice.LIVESTREAM:
+                if hasattr(self, 'stream_monitor'):
+                    await self.stream_monitor.start()
 
         @self.after_serving
         async def cleanup():
             """Cleanup resources after app is being stopped."""
             logger.warning("Cleaning up resources...")
+            
+            # Stop StreamMonitor for LIVESTREAM microservice
+            if self.microservice_instance == Microservice.LIVESTREAM:
+                if hasattr(self, 'stream_monitor'):
+                    await self.stream_monitor.stop()
+            
             await self.clean_up()
 
     async def init_redis(self):
