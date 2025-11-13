@@ -1,4 +1,5 @@
 from quart import make_response, render_template, current_app as app, request, jsonify
+from shared.utils import api_response, api_error
 from quart.datastructures import FileStorage
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
@@ -89,19 +90,14 @@ class BaseView(QuartClassful):
         try:
             resp = await self.__vector_database.recommend_similar_events(event_id)
             if not event_id or not resp:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(message="Missing event ID", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Missing event ID", HTTPStatus.BAD_REQUEST)
         except Exception as e:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(
-                    message="Event not found or has not been vectorized",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Event not found or has not been vectorized",
+                HTTPStatus.BAD_REQUEST
             )
-        status_code = HTTPStatus.OK
-        return jsonify(data=resp, message=status_code.phrase), status_code
+        return api_response(
+            "Similar events retrieved successfully",
+            HTTPStatus.OK,
+            data=resp
+        )

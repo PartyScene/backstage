@@ -4,7 +4,6 @@ from http import HTTPStatus
 from quart import (
     current_app as app,
     request,
-    jsonify,
     url_for,
 )
 from quart_jwt_extended import create_access_token
@@ -112,35 +111,23 @@ class BaseView(QuartClassful):
             last_name=data.get("last_name"),
         )
         if not brevo_resp:
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message="Failed to create lead in Brevo or Contact already exists.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Failed to create lead in Brevo or Contact already exists.",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
         created_lead = await self.conn._create_lead(
             data.get("email"), data.get("usecase")
         )
         if not created_lead:
-            status_code = HTTPStatus.CONFLICT
-            return (
-                jsonify(
-                    message="Invalid Request Body or Lead already exists",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Invalid Request Body or Lead already exists",
+                HTTPStatus.CONFLICT
             )
 
-        status_code = HTTPStatus.CREATED
-        return (
-            jsonify(
-                message=f"Created Lead {data.get('email')} in Brevo and SurrealDB",
-                status=status_code.phrase,
-            ),
-            status_code,
+        return api_response(
+            f"Created Lead {data.get('email')} in Brevo and SurrealDB",
+            HTTPStatus.CREATED
         )
 
     @route("/auth/forgot-password", methods=["POST"])
@@ -150,26 +137,14 @@ class BaseView(QuartClassful):
         email = data.get("email")
 
         if not email:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Email is required", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Email is required", HTTPStatus.BAD_REQUEST)
 
         if not await self.conn._check_exists(email, "email"):
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="Email not found", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Email not found", HTTPStatus.NOT_FOUND)
 
         user_info = await self.conn._fetch_user_by_email(email)
         if not user_info:
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="User not found", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("User not found", HTTPStatus.NOT_FOUND)
         # Generate OTP and send it to the user
         otp = await self.__generate_and_send_otp(
             user_id=user_info["id"], email=email, data=data, context="forgot-password"
@@ -179,31 +154,21 @@ class BaseView(QuartClassful):
             status_code = HTTPStatus.OK
             # Return otp for testing purposes only
             if os.getenv("ENVIRONMENT") in ["dev", "test"]:
-                return (
-                    jsonify(
-                        data={"otp": otp},
-                        message="OTP sent to your email for password reset.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "OTP sent to your email for password reset.",
+                    HTTPStatus.OK,
+                    data={"otp": otp}
                 )
 
-            return (
-                jsonify(
-                    message="OTP sent to your email for password reset.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "OTP sent to your email for password reset.",
+                HTTPStatus.OK
             )
         else:
             # Otp already exists, return conflict response
-            status_code = HTTPStatus.CONFLICT
-            return (
-                jsonify(
-                    message="Existing OTP, please verify",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Existing OTP, please verify",
+                HTTPStatus.CONFLICT
             )
 
     @route("/auth/reset-password", methods=["POST"])
@@ -214,39 +179,26 @@ class BaseView(QuartClassful):
         new_password = data.get("new_password")
         otp = data.get("otp")
         if not email or not new_password or not otp:
-            status_code = HTTPStatus.BAD_REQUEST
-
-            return (
-                jsonify(
-                    message="Email, new password, and OTP are required",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Email, new password, and OTP are required",
+                HTTPStatus.BAD_REQUEST
             )
 
         # Verify OTP before resetting password
         if not await self.verify_otp(
             email, otp, validate_only=True, context="forgot-password"
         ):
-            status_code = HTTPStatus.UNAUTHORIZED
-            return (
-                jsonify(message="Invalid or expired OTP", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Invalid or expired OTP", HTTPStatus.UNAUTHORIZED)
 
         if await self.conn._reset_password(email, new_password):
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    message="Password reset successfully", status=status_code.phrase
-                ),
-                status_code,
+            return api_response(
+                "Password reset successfully",
+                HTTPStatus.OK
             )
         else:
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(message="Failed to reset password", status=status_code.phrase),
-                status_code,
+            return api_error(
+                "Failed to reset password",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/auth/exists", methods=["GET"])
@@ -280,11 +232,7 @@ class BaseView(QuartClassful):
 
         print("Verify OTP Data %s" % data)
         if not data.get("email") or not data.get("otp") or not context:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Invalid Request Body", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Invalid Request Body", HTTPStatus.BAD_REQUEST)
 
         if result := await self.verify_otp(
             data.get("email"),
@@ -296,32 +244,21 @@ class BaseView(QuartClassful):
             # If validate_only is True, we only return the boolean result
             print("Verify OTP Result %s" % result)
             if validate_only:
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        message="OTP verified successfully", status=status_code.phrase
-                    ),
-                    status_code,
+                return api_response(
+                    "OTP verified successfully",
+                    HTTPStatus.OK
                 )
 
             if isinstance(result, dict):
                 await self.conn._store_after_verify(result)
                 access_token = self.generate_jwt_secret(result["id"])
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data={"access_token": access_token, "token_type": "bearer"},
-                        message="OTP verified successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "OTP verified successfully.",
+                    HTTPStatus.OK,
+                    data={"access_token": access_token, "token_type": "bearer"}
                 )
         else:
-            status_code = HTTPStatus.UNAUTHORIZED
-            return (
-                jsonify(message="Invalid OTP", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Invalid OTP", HTTPStatus.UNAUTHORIZED)
 
     @route("/auth/register", methods=["POST"])
     async def register_user(self):
@@ -373,25 +310,12 @@ class BaseView(QuartClassful):
                         message = "This email is already registered. Please log in instead."
                         error_code = "EMAIL_EXISTS"
                     
-                    status_code = HTTPStatus.CONFLICT
-                    return (
-                        jsonify(
-                            message=message,
-                            error_code=error_code,
-                            status=status_code.phrase
-                        ),
-                        status_code,
-                    )
+                    return api_error(message, HTTPStatus.CONFLICT)
             elif username_exists:
                 # Username taken (but email is available)
-                status_code = HTTPStatus.CONFLICT
-                return (
-                    jsonify(
-                        message="Username already taken. Please choose a different username.",
-                        error_code="USERNAME_EXISTS", 
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "Username already taken. Please choose a different username.",
+                    HTTPStatus.CONFLICT
                 )
 
             await self.__n_register_user(
@@ -399,14 +323,10 @@ class BaseView(QuartClassful):
             )
         except Exception as e:
             logger.error(f"Registration error: {e}")
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             # Consider a more specific error response
-            return (
-                jsonify(
-                    message="Registration failed due to an internal error.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Registration failed due to an internal error.",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
         if otp_result := await self.__generate_and_send_otp(
@@ -417,22 +337,15 @@ class BaseView(QuartClassful):
             if os.getenv("ENVIRONMENT") in ["dev", "test"]:
                 response_data["otp"] = otp_result  # Include OTP for testing
 
-            status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    data=response_data,
-                    message="User registered, OTP sent.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User registered, OTP sent.",
+                HTTPStatus.CREATED,
+                data=response_data
             )
         else:
-            status_code = HTTPStatus.CONFLICT
-            return (
-                jsonify(
-                    message="Existing OTP, please verify", status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Existing OTP, please verify",
+                HTTPStatus.CONFLICT
             )
 
     @route("/auth/kyc/update", methods=["POST", "PATCH"])
@@ -447,12 +360,9 @@ class BaseView(QuartClassful):
             "id": user_id,
         }
         if await self.conn.update_user(updated_data):
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    message="KYC Data updated successfully.", status=status_code.phrase
-                ),
-                status_code,
+            return api_response(
+                "KYC Data updated successfully.",
+                HTTPStatus.OK
             )
 
     @route("/auth/kyc/session", methods=["POST"])
@@ -461,23 +371,15 @@ class BaseView(QuartClassful):
         """"""
         veriff_resp = await self.__veriff_client.create_session(user_id=get_jwt_identity())
         if not veriff_resp:
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message="Failed to create session in Veriff.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Failed to create session in Veriff.",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
-        status_code = HTTPStatus.CREATED
-        return (
-            jsonify(
-                message=f"Veriff session created.",
-                data=veriff_resp,
-                status=status_code.phrase,
-            ),
-            status_code,
+        return api_response(
+            "Veriff session created.",
+            HTTPStatus.CREATED,
+            data=veriff_resp
         )
 
     @route("/auth/login", methods=["POST"])
@@ -489,34 +391,19 @@ class BaseView(QuartClassful):
         # Handle SSO blocking responses
         if isinstance(result, str):
             if result == "use_google":
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="This account was created with Google Sign-In. Please use Google Sign-In to log in.",
-                        error_code="MUST_USE_GOOGLE_SSO",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "This account was created with Google Sign-In. Please use Google Sign-In to log in.",
+                    HTTPStatus.BAD_REQUEST
                 )
             elif result == "use_apple":
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="This account was created with Apple Sign-In. Please use Apple Sign-In to log in.",
-                        error_code="MUST_USE_APPLE_SSO",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "This account was created with Apple Sign-In. Please use Apple Sign-In to log in.",
+                    HTTPStatus.BAD_REQUEST
                 )
             elif result == "use_sso":
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="This account was created with social sign-in. Please use social sign-in to log in.",
-                        error_code="MUST_USE_SSO",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "This account was created with social sign-in. Please use social sign-in to log in.",
+                    HTTPStatus.BAD_REQUEST
                 )
         
         # Handle successful password login
@@ -526,21 +413,16 @@ class BaseView(QuartClassful):
                 user_id=result["id"],
                 ip_address=get_client_ip(request),
             )
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data={"access_token": access_token, "token_type": "bearer"},
-                    message="Login successful.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Login successful.",
+                HTTPStatus.OK,
+                data={"access_token": access_token, "token_type": "bearer"}
             )
 
         # Handle failed login (None result)
-        status_code = HTTPStatus.UNAUTHORIZED
-        return (
-            jsonify(message="Bad username or password", status=status_code.phrase),
-            status_code,
+        return api_error(
+            "Bad username or password",
+            HTTPStatus.UNAUTHORIZED
         )
 
     async def __n_register_user(self, email: str, user_data: dict, user_id: str = ""):
@@ -562,11 +444,7 @@ class BaseView(QuartClassful):
         token_str = data.get("id_token")
 
         if not token_str:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Missing ID token", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Missing ID token", HTTPStatus.BAD_REQUEST)
 
         # try:
         # Verify the token
@@ -611,13 +489,9 @@ class BaseView(QuartClassful):
         
         if not created_or_existing_user:
             logger.error(f"SSO store failed for Google user: {email}")
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message="Authentication failed, please try again",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Authentication failed, please try again",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
         
         # Check if this was a new user (created) or existing user (fetched)
@@ -652,13 +526,10 @@ class BaseView(QuartClassful):
         except Exception as login_notif_error:
             logger.warning(f"Recent login notification failed for {email}: {login_notif_error}")
         
-        return (
-            jsonify(
-                data={"access_token": access_token, "token_type": "bearer"},
-                message=message,
-                status=status_code.phrase,
-            ),
+        return api_response(
+            message,
             status_code,
+            data={"access_token": access_token, "token_type": "bearer"}
         )
 
         # except ValueError:
@@ -691,20 +562,12 @@ class BaseView(QuartClassful):
         user_info = data.get("user")  # Only provided on first sign in
         
         if not identity_token:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Missing identity token", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Missing identity token", HTTPStatus.BAD_REQUEST)
         
         if not APPLE_CLIENT_ID:
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message="Apple Sign In not configured",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Apple Sign In not configured",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
         
         try:
@@ -730,13 +593,9 @@ class BaseView(QuartClassful):
             
             # Check if email verification is required
             if not email_verified:
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(
-                        message="Email not verified",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "Email not verified",
+                    HTTPStatus.FORBIDDEN
                 )
             
             # Extract name from user info if provided (only on first sign in)
@@ -771,13 +630,9 @@ class BaseView(QuartClassful):
             
             if not created_or_existing_user:
                 logger.error(f"SSO store failed for Apple user: {email}")
-                status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-                return (
-                    jsonify(
-                        message="Authentication failed, please try again",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "Authentication failed, please try again",
+                    HTTPStatus.INTERNAL_SERVER_ERROR
                 )
             
             # Check if this was a new user or existing user for appropriate messaging
@@ -812,68 +667,45 @@ class BaseView(QuartClassful):
             except Exception as login_notif_error:
                 logger.warning(f"Recent login notification failed for {email}: {login_notif_error}")
             
-            return (
-                jsonify(
-                    data={"access_token": access_token, "token_type": "bearer"},
-                    message=message,
-                    status=status_code.phrase,
-                ),
+            return api_response(
+                message,
                 status_code,
+                data={"access_token": access_token, "token_type": "bearer"}
             )
         
         except jwt.ExpiredSignatureError:
             logger.warning(f"Expired Apple token attempted from {get_client_ip()}")
-            status_code = HTTPStatus.UNAUTHORIZED
-            return (
-                jsonify(
-                    message="Apple token has expired, please sign in again",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Apple token has expired, please sign in again",
+                HTTPStatus.UNAUTHORIZED
             )
             
         except jwt.InvalidAudienceError:
             logger.error("Invalid audience in Apple token - client ID mismatch")
-            status_code = HTTPStatus.UNAUTHORIZED
-            return (
-                jsonify(
-                    message="Invalid Apple token configuration",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Invalid Apple token configuration",
+                HTTPStatus.UNAUTHORIZED
             )
             
         except jwt.InvalidIssuerError:
             logger.error("Invalid issuer in Apple token - not from Apple")
-            status_code = HTTPStatus.UNAUTHORIZED
-            return (
-                jsonify(
-                    message="Invalid Apple token source",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Invalid Apple token source",
+                HTTPStatus.UNAUTHORIZED
             )
             
         except jwt.InvalidTokenError as e:
             logger.warning(f"Invalid Apple token from {get_client_ip()}: {e}")
-            status_code = HTTPStatus.UNAUTHORIZED
-            return (
-                jsonify(
-                    message="Invalid or malformed Apple token",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Invalid or malformed Apple token",
+                HTTPStatus.UNAUTHORIZED
             )
             
         except Exception as e:
             logger.error(f"Unexpected error during Apple Sign In: {e}")
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message="Authentication service temporarily unavailable",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "Authentication service temporarily unavailable",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/auth/create-stripe-account", methods=["POST"])

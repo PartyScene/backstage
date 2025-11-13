@@ -13,7 +13,7 @@ import os
 import orjson as json
 from aiocache import cached
 from shared.workers.rmq import RMQBroker
-from shared.utils import recursively_sign_object_media
+from shared.utils import recursively_sign_object_media, api_response, api_error
 
 
 
@@ -213,10 +213,7 @@ class BaseView(QuartClassful):
             message = "Service degraded: Redis connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        return (
-            jsonify(data=health_status, message=message, status=status_code.phrase),
-            status_code,
-        )
+        return api_response(message, status_code, data=health_status)
 
     @route("/user/tickets", methods=["GET"])
     @jwt_required
@@ -225,32 +222,20 @@ class BaseView(QuartClassful):
         try:
             tickets = await self.conn.fetch_user_tickets(user_id)
             if not tickets:
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(message="No tickets found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_response("No tickets found", HTTPStatus.OK)
 
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=tickets,
-                    message="User tickets fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User tickets fetched successfully.",
+                HTTPStatus.OK,
+                data=tickets
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching user tickets ({user_id}): {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch user tickets: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch user tickets: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/user/events", methods=["GET"])
@@ -262,32 +247,20 @@ class BaseView(QuartClassful):
         try:
             events = await self.conn.fetch_user_events(user_id, created=created)
             if not events:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="No events found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_response("No events found", HTTPStatus.NOT_FOUND)
 
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=events,
-                    message="User events fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User events fetched successfully.",
+                HTTPStatus.OK,
+                data=events
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching user events ({user_id}): {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch user events: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch user events: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/user", methods=["GET"])
@@ -298,33 +271,21 @@ class BaseView(QuartClassful):
         try:
             user = await self.conn.fetch(user_id)
             if not user:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="User not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("User not found", HTTPStatus.NOT_FOUND)
             
             user = await recursively_sign_object_media(user)
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=user,
-                    message="User details fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User details fetched successfully.",
+                HTTPStatus.OK,
+                data=user
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching current user ({user_id}): {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch user details: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch user details: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/user", methods=["DELETE"])
@@ -335,28 +296,16 @@ class BaseView(QuartClassful):
         try:
             result = await self.conn.delete(user_id)
             if not result:  # Assuming delete returns None or False if user not found
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="User not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("User not found", HTTPStatus.NOT_FOUND)
             # Consider triggering cleanup tasks (e.g., delete associated data in other services)
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(message="User deleted successfully", status=status_code.phrase),
-                status_code,
-            )
+            return api_response("User deleted successfully", HTTPStatus.OK)
         except Exception as e:
             app.logger.error(
                 f"Error deleting current user ({user_id}): {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to delete user: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to delete user: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/user", methods=["PATCH"])
@@ -367,13 +316,7 @@ class BaseView(QuartClassful):
         try:
             data = await request.get_json()
             if not data:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="Request body required.", status=status_code.phrase
-                    ),
-                    status_code,
-                )
+                return api_error("Request body required.", HTTPStatus.BAD_REQUEST)
 
             data["id"] = user_id  # Ensure ID is set for the update operation
 
@@ -386,35 +329,23 @@ class BaseView(QuartClassful):
             result = await self.conn.update(data)
             if not result:  # Handle case where update fails or user doesn't exist
                 # Check if user exists first? Might be redundant if update handles it.
-                status_code = HTTPStatus.NOT_FOUND  # Or BAD_REQUEST?
-                return (
-                    jsonify(
-                        message="User not found or update failed.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    "User not found or update failed.",
+                    HTTPStatus.NOT_FOUND
                 )  # Or BAD_REQUEST?
 
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="User updated successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User updated successfully.",
+                HTTPStatus.OK,
+                data=result
             )
         except Exception as e:
             app.logger.error(
                 f"Error updating current user ({user_id}): {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to update user: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to update user: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/users/<user_id>", methods=["GET"])
@@ -424,34 +355,22 @@ class BaseView(QuartClassful):
         try:
             user = await self.conn.fetch(user_id)
             if not user:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="User not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("User not found", HTTPStatus.NOT_FOUND)
             # Could filter sensitive information here if needed before returning
             # Example: user.pop('email', None)
             user = await recursively_sign_object_media(user)
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=user,
-                    message="User profile fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User profile fetched successfully.",
+                HTTPStatus.OK,
+                data=user
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching user profile ({user_id}): {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch user profile: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch user profile: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/users/<user_id>/report", methods=["POST"])
@@ -462,21 +381,13 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         reason = data.get("reason", "")
         if not reason:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Reason is required", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Reason is required", HTTPStatus.BAD_REQUEST)
 
         # Check if the event exists
 
         user_info = await self.conn.fetch(user_id)
         if not user_info:
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="User not found", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("User not found", HTTPStatus.NOT_FOUND)
 
         if result := await self.conn._report_resource(
             {"reason": reason, "reporter": reporter, "resource": user_info["id"]}

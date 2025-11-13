@@ -1,4 +1,4 @@
-from quart import current_app as app, request, jsonify, logging, Response
+from quart import current_app as app, request, logging, Response
 from quart.datastructures import FileStorage
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from google.cloud import storage
@@ -83,10 +83,7 @@ class BaseView(QuartClassful):
             message = "Service degraded: Redis connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        return (
-            jsonify(data=health_status, message=message, status=status_code.phrase),
-            status_code,
-        )
+        return api_response(message, status_code, data=health_status)
 
     async def sign_media_url(self, filename, cache=True):
         """Sign a media URL for access and cache it in Redis"""
@@ -153,11 +150,7 @@ class BaseView(QuartClassful):
         data = await request.get_json(silent=True) or {}
         filenames = data.get("filenames")
         if not isinstance(filenames, (list, tuple)) or not filenames:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="`filenames` must be a non-empty list", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("`filenames` must be a non-empty list", HTTPStatus.BAD_REQUEST)
         result = {}
         for filename in filenames:
             # Generate signed URL for each filename
@@ -168,13 +161,9 @@ class BaseView(QuartClassful):
                 self.logger.error(
                     f"Error generating signed URL for {filename}: {e}", exc_info=True
                 )
-                status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-                return (
-                    jsonify(
-                        message=f"Failed to generate signed URL for {filename}",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    f"Failed to generate signed URL for {filename}",
+                    HTTPStatus.INTERNAL_SERVER_ERROR
                 )
 
         # Return the newly generated URLs
