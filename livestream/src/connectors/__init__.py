@@ -235,9 +235,8 @@ class LiveStreamDB:
                 SELECT *, user.{id, first_name, last_name, username} as user_info 
                 FROM scenes 
                 WHERE live_started_at != NONE 
-                AND time::now() - live_started_at > $max_duration
+                AND live_started_at + 3m < time::now()
                 """,
-                {"max_duration": f"{max_live_seconds}s"},
             )
             return record_id_to_json(result) if result else []
     

@@ -649,7 +649,7 @@ class BaseView(QuartClassful):
             app.logger.info(f"Unhandled event type: {event['type']}")
 
         # Return a 200 OK response to Stripe to acknowledge receipt of the event
-        return jsonify({"status": "success"}), 200
+        return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
 
     def _verify_paystack_signature(self, payload: bytes, signature: str) -> bool:
         """
@@ -733,7 +733,7 @@ class BaseView(QuartClassful):
                 verified_data = verification.get("data", {})
                 if verified_data.get("status") != "success":
                     app.logger.warning(f"Transaction {reference} status is not success: {verified_data.get('status')}")
-                    return jsonify({"status": "success"}), 200
+                    return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
 
                 # Extract metadata
                 user_id = metadata.get("user_id")
@@ -778,10 +778,10 @@ class BaseView(QuartClassful):
                 )
                 # Return 200 to prevent Paystack from retrying
                 # Log error for manual investigation
-                return jsonify({"status": "success"}), 200
+                return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
 
         else:
             app.logger.info(f"Unhandled Paystack event: {event_data.get('event')}")
 
         # Return 200 OK to acknowledge receipt
-        return jsonify({"status": "success"}), 200
+        return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})

@@ -9,3 +9,8 @@ app = client.MicroService("LIVESTREAM", init_db, BaseView)
 
 # Attach stream monitor to app instance (will be started by MicroService before_serving hook)
 app.stream_monitor = StreamMonitor(app)
+
+# Verify assignment happened
+import logging
+logger = logging.getLogger(__name__)
+logger.warning(f"run.py: stream_monitor assigned to app instance. hasattr check: {hasattr(app, 'stream_monitor')}")

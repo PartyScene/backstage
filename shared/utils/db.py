@@ -40,7 +40,7 @@ async def report_resource(pool, data: dict, resource_table: str) -> dict:
     
     # Convert string IDs to RecordIDs
     data["reporter"] = RecordID("users", data["reporter"])
-    data["resource"] = RecordID(resource_table, data["resource"])
+    data["resource"] = RecordID(resource_table, data["resource"]) if not isinstance(data["resource"], RecordID) else data["resource"]
     
     # Create report in database
     async with pool.acquire() as conn:

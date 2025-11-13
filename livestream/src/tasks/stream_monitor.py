@@ -36,7 +36,7 @@ class StreamMonitor:
         
         self.running = True
         self._task = asyncio.create_task(self._monitor_loop())
-        logger.info(f"Stream monitor started (checking every {self.CHECK_INTERVAL}s for streams >{self.MAX_LIVE_SECONDS}s)")
+        logger.warning(f"Stream monitor started (checking every {self.CHECK_INTERVAL}s for streams >{self.MAX_LIVE_SECONDS}s)")
     
     async def stop(self):
         """Stop the background monitoring task."""

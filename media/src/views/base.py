@@ -6,7 +6,7 @@ import google.auth
 from datetime import timedelta, datetime
 
 from shared.classful import route, QuartClassful
-from shared.utils import signer
+from shared.utils import signer, api_response, api_error
 from media.src.connectors import MediaDB
 from http import HTTPStatus
 
@@ -178,8 +178,11 @@ class BaseView(QuartClassful):
                 )
 
         # Return the newly generated URLs
-        status_code = HTTPStatus.OK
-        return jsonify(data=result, status=status_code.phrase), status_code
+        return api_response(
+            "Signed URLs generated successfully",
+            HTTPStatus.OK,
+            data=result
+        )
 
     async def generate_download_signed_url_v4(self, blob_name):
         """Generates a v4 signed URL for downloading a blob.

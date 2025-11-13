@@ -22,7 +22,7 @@ import orjson as json
 from auth.src.connectors import AuthDB
 from shared.classful import route, QuartClassful
 from shared.workers.brevo import Brevo
-from shared.utils import veriff, get_client_ip
+from shared.utils import veriff, get_client_ip, api_response, api_error
 from shared.utils.apple_auth import AppleAuthClient
 from shared.workers.novu import NotificationManager
 from google.oauth2 import id_token
@@ -260,14 +260,9 @@ class BaseView(QuartClassful):
             result = None
 
         if result:
-            status_code = HTTPStatus.CONFLICT
-            return (
-                jsonify(message="Already Exists.", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Already Exists.", HTTPStatus.CONFLICT)
         else:
-            status_code = HTTPStatus.OK
-            return jsonify(message="Available.", status=status_code.phrase), status_code
+            return api_response("Available.", HTTPStatus.OK)
 
     @route("/auth/verify", methods=["POST"])
     async def verify(self):
@@ -581,7 +576,7 @@ class BaseView(QuartClassful):
 
         # Optional: check email is verified
         if not idinfo.get("email_verified"):
-            return jsonify({"error": "Email not verified"}), 403
+            return api_error("Email not verified", HTTPStatus.FORBIDDEN)
 
         # Extract user info
         user_id = idinfo["sub"]  # Google unique ID
@@ -923,14 +918,13 @@ class BaseView(QuartClassful):
                 type="account_onboarding",
             )
 
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(url=account_link.url),
-                status_code,
+            return api_response(
+                "Stripe account link generated",
+                HTTPStatus.OK,
+                data={"url": account_link.url}
             )  # Frontend redirects to this URL
         except StripeError as e:
-            status_code = HTTPStatus.BAD_REQUEST
-            return jsonify(error=str(e)), status_code
+            return api_error(str(e), HTTPStatus.BAD_REQUEST)
 
     @route("/auth/stripe-return", methods=["GET"])
     async def stripe_return(self):
@@ -944,7 +938,7 @@ class BaseView(QuartClassful):
         user = await self.conn._fetch_user(account_id, "stripe_account_id")
 
         if not user:
-            return jsonify(message="User not found", status=HTTPStatus.NOT_FOUND.phrase), HTTPStatus.NOT_FOUND
+            return api_error("User not found", HTTPStatus.NOT_FOUND)
         
         account = await stripe.Account.retrieve_async(account_id)
 
@@ -954,7 +948,7 @@ class BaseView(QuartClassful):
         await self.conn.update_user(
             {"id": user["id"], "stripe_account_kyc_status": True}
         )
-        return jsonify(message="onboarding success"), HTTPStatus.OK
+        return api_response("Onboarding completed successfully", HTTPStatus.OK)
 
     @route("/auth/reauth-stripe", methods=["GET"])
     async def reauth_stripe(self):
@@ -976,7 +970,11 @@ class BaseView(QuartClassful):
             return_url=url_for(".stripe_return", account_id=account_id, _external=True).replace("http://", "https://"),
             type="account_onboarding",
         )
-        return jsonify(url=account_link.url), HTTPStatus.OK
+        return api_response(
+            "Stripe account link generated",
+            HTTPStatus.OK,
+            data={"url": account_link.url}
+        )
 
     async def __generate_and_send_otp(
         self,
@@ -1045,7 +1043,7 @@ class BaseView(QuartClassful):
             # Handle rejection
             await self.conn.update_user({"id": user_id, "kyc_status": False})
 
-        return jsonify({"status": "received"}), 200
+        return api_response("Webhook received", HTTPStatus.OK, data={"status": "received"})
 
     @route("/auth/account", methods=["DELETE"])
     @jwt_required

@@ -7,7 +7,7 @@ import uuid
 
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
-from shared.utils import recursively_sign_object_media
+from shared.utils import recursively_sign_object_media, api_response, api_error
 from shared.middleware.validation import ValidationMiddleware
 
 from dataclasses import dataclass
@@ -641,29 +641,20 @@ class BaseView(QuartClassful):
                 event_id, status=new_status, metadata=data.get("metadata")
             )
             app.logger.info(f"Successfully updated status for event {event_id}")
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="Event status updated successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Event status updated successfully.",
+                HTTPStatus.OK,
+                data=result
             )
         except ValueError as ve:  # Catch specific validation errors from connector
-            status_code = HTTPStatus.BAD_REQUEST
-            return jsonify(message=str(ve), status=status_code.phrase), status_code
+            return api_error(str(ve), HTTPStatus.BAD_REQUEST)
         except Exception as e:
             app.logger.error(
                 f"Error updating event status for {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to update event status: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to update event status: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/live", methods=["GET"])

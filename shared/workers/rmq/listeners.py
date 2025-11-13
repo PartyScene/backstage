@@ -213,34 +213,57 @@ class RMQBroker(RabbitBroker):
 
     async def compress_image(self, image_bytes: bytes) -> bytes:
         """Compress image while preserving quality."""
-        img = Image.open(io.BytesIO(image_bytes))
-        
-        # Apply EXIF orientation to prevent rotation issues from phone cameras
-        img = ImageOps.exif_transpose(img)
-        
-        # Convert to RGB if necessary (for JPEG compatibility)
-        if img.mode in ('RGBA', 'LA', 'P'):
-            # Create white background for transparent images
-            background = Image.new('RGB', img.size, IMAGE_BACKGROUND_COLOR)
-            if img.mode == 'RGBA':
-                background.paste(img, mask=img.split()[-1])  # Use alpha as mask
-            else:
-                background.paste(img)
-            img = background
-        
-        # Resize if too large (max dimension on longest side)
-        if max(img.size) > IMAGE_MAX_DIMENSION:
-            ratio = IMAGE_MAX_DIMENSION / max(img.size)
-            new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-        
-        # Compress with high quality
-        output = io.BytesIO()
-        img.save(output, 'JPEG', quality=IMAGE_JPEG_QUALITY, optimize=True, progressive=True)
-        compressed_bytes = output.getvalue()
-        
-        self.logger.info(f"Image compressed: {len(image_bytes)} -> {len(compressed_bytes)} bytes")
-        return compressed_bytes
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            
+            # Apply EXIF orientation to prevent rotation issues from phone cameras
+            img = ImageOps.exif_transpose(img) or img  # Fallback to original if None
+            
+            # CRITICAL FIX: Convert ALL non-RGB modes to RGB for maximum Android compatibility
+            if img.mode != 'RGB':
+                # Handle transparency modes (RGBA, LA, P with transparency)
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    # Create white background for transparent images
+                    background = Image.new('RGB', img.size, IMAGE_BACKGROUND_COLOR)
+                    if img.mode == 'RGBA':
+                        background.paste(img, mask=img.split()[-1])  # Use alpha as mask
+                    elif img.mode == 'LA':
+                        background.paste(img, mask=img.split()[-1])  # Use alpha as mask
+                    else:  # P mode with transparency
+                        background.paste(img)
+                    img = background
+                else:
+                    # Convert all other modes (CMYK, L, LAB, HSV, YCbCr, etc.) directly to RGB
+                    original_mode = img.mode  # Capture mode before conversion
+                    img = img.convert('RGB')
+                    self.logger.debug(f"Converted {original_mode} image to RGB")
+            
+            # Resize if too large (max dimension on longest side)
+            if max(img.size) > IMAGE_MAX_DIMENSION:
+                ratio = IMAGE_MAX_DIMENSION / max(img.size)
+                new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+            
+            # Compress with high quality
+            output = io.BytesIO()
+            # FIX: Remove progressive=True for Android compatibility
+            img.save(
+                output, 
+                'JPEG', 
+                quality=IMAGE_JPEG_QUALITY, 
+                optimize=True,
+                progressive=False,  # Better Android compatibility
+                subsampling=0  # Better quality, no chroma subsampling
+            )
+            compressed_bytes = output.getvalue()
+            
+            self.logger.info(f"Image compressed: {len(image_bytes)} -> {len(compressed_bytes)} bytes")
+            return compressed_bytes
+            
+        except Exception as e:
+            # Fallback: Return original bytes if compression fails
+            self.logger.error(f"Image compression failed: {e}, returning original")
+            return image_bytes
 
     async def _background_upload(self, filename: str, content_type: str, file_bytes: bytes) -> None:
         """Upload file to GCS in the background without blocking the queue."""

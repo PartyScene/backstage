@@ -173,7 +173,11 @@ class BaseView(QuartClassful):
             else HTTPStatus.SERVICE_UNAVAILABLE
         )
 
-        return jsonify(health_status), status_code
+        return api_response(
+            "Service health check completed",
+            status_code,
+            data=health_status
+        )
 
     @route("/scenes/<event_id>", methods=["GET"])
     @jwt_required
@@ -195,7 +199,11 @@ class BaseView(QuartClassful):
             if cached_data:
                 app.logger.info(f"Cache HIT for all streams {event_id}")
                 import orjson
-                return jsonify(orjson.loads(cached_data)), HTTPStatus.OK
+                return api_response(
+                    "Livestreams retrieved successfully",
+                    HTTPStatus.OK,
+                    data=orjson.loads(cached_data)
+                )
 
             app.logger.info(f"Cache MISS for all streams {event_id}")
         except redis.exceptions.RedisError as e:
@@ -206,7 +214,11 @@ class BaseView(QuartClassful):
             streams = await self.conn.fetch_cloudflare_scene(event_id)
 
             if not streams:
-                return jsonify({"streams": [], "count": 0}), HTTPStatus.OK
+                return api_response(
+                    "No active livestreams found",
+                    HTTPStatus.OK,
+                    data={"streams": [], "count": 0}
+                )
 
             # Normalize to list
             streams_list = streams if isinstance(streams, list) else [streams]
@@ -269,7 +281,11 @@ class BaseView(QuartClassful):
             except redis.exceptions.RedisError as e:
                 app.logger.error(f"Redis SET error: {e}. Serving without caching.")
 
-            return jsonify(response_data), HTTPStatus.OK
+            return api_response(
+                "Livestreams retrieved successfully",
+                HTTPStatus.OK,
+                data=response_data
+            )
 
         except Exception as e:
             app.logger.exception(f"Unexpected error getting streams for event {event_id}")
@@ -324,7 +340,10 @@ class BaseView(QuartClassful):
                 except redis.exceptions.RedisError as e:
                     app.logger.error(f"Redis DELETE error: {e}")
 
-                return jsonify({"message": "Stream deleted successfully"}), HTTPStatus.NO_CONTENT
+                return api_response(
+                    "Stream deleted successfully",
+                    HTTPStatus.OK
+                )
             else:
                 return api_error(
                     "Stream not found",
@@ -367,11 +386,7 @@ class BaseView(QuartClassful):
         reason = data.get("reason", "")
         
         if not reason:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Reason is required", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Reason is required", HTTPStatus.BAD_REQUEST)
 
         # Check if the livestream/scene exists
         try:
@@ -381,42 +396,29 @@ class BaseView(QuartClassful):
                     {"scene_id": scene_id}
                 )
             if not scene_info:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Livestream not found", status=status_code.phrase),
-                    status_code,
-                )
-
+                return api_error("Livestream not found", HTTPStatus.NOT_FOUND)
+            
             # Create report
             if result := await self.conn._report_resource(
                 {"reason": reason, "reporter": reporter, "resource": scene_info["id"]}
             ):
-                status_code = HTTPStatus.CREATED
-                return (
-                    jsonify(
-                        message="Livestream reported successfully",
-                        data=result,
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Livestream reported successfully",
+                    HTTPStatus.CREATED,
+                    data=result
                 )
             
             # If _report_resource returned falsy value
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(message="Failed to create report", status=status_code.phrase),
-                status_code,
+            return api_error(
+                "Failed to create report",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
             
         except Exception as e:
             app.logger.exception(f"Error reporting livestream {event_id}")
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to report livestream: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to report livestream: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/scenes/<event_id>", methods=["POST"])
@@ -498,11 +500,9 @@ class BaseView(QuartClassful):
                         # Enforce 1km radius
                         MAX_DISTANCE_METERS = 1000
                         if distance_meters > MAX_DISTANCE_METERS:
-                            return (
-                                jsonify({
-                                    "error": f"Host location is {distance_meters:.0f}m from event location (maximum: {MAX_DISTANCE_METERS}m). You must be at the event to go live."
-                                }),
-                                HTTPStatus.FORBIDDEN,
+                            return api_error(
+                                f"Host location is {distance_meters:.0f}m from event location (maximum: {MAX_DISTANCE_METERS}m). You must be at the event to go live.",
+                                HTTPStatus.FORBIDDEN
                             )
                         
                         app.logger.info(f"Distance check passed: {distance_meters:.0f}m from event")
@@ -518,7 +518,11 @@ class BaseView(QuartClassful):
             existing_stream = await self.conn.fetch_cloudflare_scene(event_id, user_id)
             if existing_stream:
                 app.logger.info(f"User {user_id} already has a stream for event {event_id}")
-                return jsonify(existing_stream), HTTPStatus.OK
+                return api_response(
+                    "Stream already exists for this event",
+                    HTTPStatus.OK,
+                    data=[existing_stream] # Next build make this an object
+                )
 
             # Create new stream on Cloudflare
             stream_create_resp = await self.scenes_client.create_stream(event_id, user_id)
@@ -535,7 +539,11 @@ class BaseView(QuartClassful):
                     app.logger.error(f"Redis cache invalidation error: {e}")
                 
                 app.logger.info(f"Successfully created stream for user {user_id} on event {event_id}")
-                return jsonify(stream_info), HTTPStatus.CREATED
+                return api_response(
+                    "Stream created successfully",
+                    HTTPStatus.CREATED,
+                    data=stream_info
+                )
             else:
                 app.logger.error(f"Stream creation returned false for user {user_id}, event {event_id}")
                 return api_error(
@@ -603,9 +611,9 @@ class BaseView(QuartClassful):
 
         token = jwt.encode(payload, VIDEOSDK_SECRET_KEY, algorithm="HS256")
 
-        return jsonify(
-            token=token,
-            message="Token generated successfully",
-            status=HTTPStatus.OK.phrase,
+        return api_response(
+            "Token generated successfully",
+            HTTPStatus.OK,
+            data={"token": token}
         )
 

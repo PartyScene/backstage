@@ -39,12 +39,12 @@ dictConfig(
             "console": {
                 "class": "logging.StreamHandler",
                 "formatter": "default",
-                "level": "WARNING",
+                "level": "INFO",
             }
         },
         "root": {
             "handlers": ["console"],
-            "level": "WARNING",
+            "level": "INFO",
         },
     }
 )
@@ -148,8 +148,13 @@ class MicroService(Quart):
             
             # Start StreamMonitor for LIVESTREAM microservice
             if self.microservice_instance == Microservice.LIVESTREAM:
+                logger.warning(f"LIVESTREAM microservice detected, checking for stream_monitor...")
                 if hasattr(self, 'stream_monitor'):
+                    logger.warning("stream_monitor found, starting...")
                     await self.stream_monitor.start()
+                    logger.warning("stream_monitor.start() completed")
+                else:
+                    logger.error("stream_monitor attribute NOT FOUND on app instance!")
 
         @self.after_serving
         async def cleanup():
