@@ -34,3 +34,4 @@ prometheus-client
 faststream[rabbit]==0.5.39
 stripe
 ipinfo
+pyJWT

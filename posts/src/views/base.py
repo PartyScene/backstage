@@ -2,7 +2,7 @@ import orjson as json
 import asyncio
 import os
 
-from quart import current_app as app, request, jsonify
+from quart import current_app as app, request
 from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from posts.src.connectors import PostsDB
@@ -12,7 +12,7 @@ from datetime import datetime
 from aiocache import cached
 
 from shared.workers.rmq import RMQBroker
-from shared.utils import recursively_sign_object_media
+from shared.utils import recursively_sign_object_media, api_response, api_error
 from shared.middleware.validation import ValidationMiddleware
 import uuid_utils as ruuid
 
@@ -73,10 +73,7 @@ class BaseView(QuartClassful):
             message = "Service degraded: Redis connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        return (
-            jsonify(data=health_status, message=message, status=status_code.phrase),
-            status_code,
-        )
+        return api_response(message, status_code, data=health_status)
 
     @route("/posts/<post_id>/report", methods=["POST"])
     @jwt_required
@@ -86,32 +83,22 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         reason = data.get("reason", "")
         if not reason:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Reason is required", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Reason is required", HTTPStatus.BAD_REQUEST)
 
         # Check if the event exists
 
         post_info = await self.__posts_handler.fetch_post(post_id)
         if not post_info:
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="Post not found", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Post not found", HTTPStatus.NOT_FOUND)
 
         if result := await self.__posts_handler._report_resource(
             {"reason": reason, "reporter": reporter, "resource": post_info["id"]},
             "posts",
         ):
-            status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    message="Resource reported", data=result, status=status_code.phrase
-                ),
-                status_code,
+            return api_response(
+                "Resource reported",
+                HTTPStatus.CREATED,
+                data=result,
             )
 
     @route("/posts/<post_id>/comments", methods=["GET"])
@@ -123,34 +110,22 @@ class BaseView(QuartClassful):
         try:
             current_user_id = get_jwt_identity()
             if result := await self.__posts_handler.fetch_comments(post_id, current_user_id):
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data=result,
-                        message="Comments fetched successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Comments fetched successfully.",
+                    HTTPStatus.OK,
+                    data=result,
                 )
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(
-                    message="No Comments found or Post not found",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "No Comments found or Post not found",
+                HTTPStatus.NOT_FOUND
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching comments for post {post_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch comments: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch comments: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/posts/<post_id>/comments", methods=["POST"])
@@ -164,11 +139,7 @@ class BaseView(QuartClassful):
             if not data or not data.get(
                 "content"
             ):  # Check if data exists and has content
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(message="Content is required", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Content is required", HTTPStatus.BAD_REQUEST)
 
             result = await self.__posts_handler.create_comment(
                 post_id, data, get_jwt_identity()
@@ -176,26 +147,16 @@ class BaseView(QuartClassful):
             # Assuming the connector returns the created comment object on success
             # and raises an exception or returns None/False on failure.
             if result:  # Check if result is truthy (i.e., comment created)
-                status_code = HTTPStatus.CREATED
-                return (
-                    jsonify(
-                        data=result,
-                        message="Comment created successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Comment created successfully.",
+                    HTTPStatus.CREATED,
+                    data=result,
                 )
             else:  # Handle cases where connector indicates failure without exception
                 app.logger.warning(
                     f"Failed to create comment for post {post_id} (connector returned non-truthy)"
                 )
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="Failed to create comment.", status=status_code.phrase
-                    ),
-                    status_code,
-                )
+                return api_error("Failed to create comment.", HTTPStatus.BAD_REQUEST)
 
         except (
             Exception
@@ -203,14 +164,10 @@ class BaseView(QuartClassful):
             app.logger.error(
                 f"Error creating comment for post {post_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
             # Provide a more specific error message if possible, e.g., based on exception type
-            return (
-                jsonify(
-                    message=f"Failed to create comment: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to create comment: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/posts/<post_id>/comments/<comment_id>", methods=["DELETE"])
@@ -239,39 +196,24 @@ class BaseView(QuartClassful):
             if (
                 result
             ):  # Adjust condition based on what delete_comment returns on success
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        message="Comment deleted successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return api_response("Comment deleted successfully.", HTTPStatus.OK)
             else:
                 # This might mean the comment didn't exist or deletion failed for other reasons
                 app.logger.warning(
                     f"Comment {comment_id} not found or deletion failed."
                 )
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(
-                        message="Comment not found or could not be deleted.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    "Comment not found or could not be deleted.",
+                    HTTPStatus.NOT_FOUND
                 )
 
         except Exception as e:
             app.logger.error(
                 f"Error deleting comment {comment_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to delete comment: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to delete comment: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/posts/<post_id>/comments/<comment_id>/report", methods=["POST"])
@@ -282,32 +224,22 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         reason = data.get("reason", "")
         if not reason:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Reason is required", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Reason is required", HTTPStatus.BAD_REQUEST)
 
         # Check if the event exists
 
         comment_info = await self.__posts_handler.fetch_comment(comment_id)
         if not comment_info:
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="Comment not found", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Comment not found", HTTPStatus.NOT_FOUND)
 
         if result := await self.__posts_handler._report_resource(
             {"reason": reason, "reporter": reporter, "resource": comment_info["id"]},
             "comments",
         ):
-            status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    message="Resource reported", data=result, status=status_code.phrase
-                ),
-                status_code,
+            return api_response(
+                "Resource reported",
+                HTTPStatus.CREATED,
+                data=result,
             )
 
     @route("/posts/event/<id>", methods=["GET"])
@@ -318,26 +250,18 @@ class BaseView(QuartClassful):
             current_user_id = get_jwt_identity()
             result = await self.__posts_handler.fetch_event_posts(id, current_user_id)
             reuslt = await recursively_sign_object_media(result)
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="Event posts fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Event posts fetched successfully.",
+                HTTPStatus.OK,
+                data=result,
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching posts for event {id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch event posts: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch event posts: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/posts/user/<id>", methods=["GET"])
@@ -348,26 +272,18 @@ class BaseView(QuartClassful):
             current_user_id = get_jwt_identity()
             result = await self.__posts_handler.fetch_user_posts(id, current_user_id)
             reuslt = await recursively_sign_object_media(result)
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="User posts fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User posts fetched successfully.",
+                HTTPStatus.OK,
+                data=result,
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching posts for user {id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch user posts: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch user posts: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/posts", methods=["POST"])
@@ -390,11 +306,7 @@ class BaseView(QuartClassful):
 
 
             if not content:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(message="Content is required", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Content is required", HTTPStatus.BAD_REQUEST)
 
             # data["post_id"] = str(ruuid.uuid4()).split("-")[-1]
             data["coordinates"] = form.getlist("coordinates[]", type=float)
@@ -445,37 +357,23 @@ class BaseView(QuartClassful):
                     await asyncio.gather(*media_publish_tasks)  # Upload media concurrently
                 
                 # Return success response
-                status_code = HTTPStatus.CREATED
-                return (
-                    jsonify(
-                        data=result,
-                        message="Post created successfully, upload media to signed_urls.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Post created successfully, upload media to signed_urls.",
+                    HTTPStatus.CREATED,
+                    data=result,
                 )
             else:
                 app.logger.error(f"Failed to create post in DB for user {user_id}")
                 # Attempt to clean up potentially uploaded media if post creation failed? (Complex)
-                status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-                return (
-                    jsonify(
-                        message="Failed to create post.", status=status_code.phrase
-                    ),
-                    status_code,
-                )
+                return api_error("Failed to create post.", HTTPStatus.INTERNAL_SERVER_ERROR)
 
         except Exception as e:
             app.logger.error(
                 f"Error creating post for user {user_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to create post: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to create post: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/posts/<id>", methods=["GET"])
@@ -487,28 +385,17 @@ class BaseView(QuartClassful):
         try:
             if result := await self.__posts_handler.fetch_post(id):
                 result = await recursively_sign_object_media(result)
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data=result,
-                        message="Post fetched successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Post fetched successfully.",
+                    HTTPStatus.OK,
+                    data=result,
                 )
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="Post not found", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Post not found", HTTPStatus.NOT_FOUND)
         except Exception as e:
             app.logger.error(f"Error fetching post {id}: {str(e)}", exc_info=True)
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch post: {str(e)}", status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch post: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/posts/<id>", methods=["DELETE"])
@@ -532,30 +419,16 @@ class BaseView(QuartClassful):
             # Check if deletion was successful (adjust based on connector's return value)
             if result:
                 # Consider deleting associated media from storage here or via another mechanism
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        message="Post deleted successfully.", status=status_code.phrase
-                    ),
-                    status_code,
-                )
+                return api_response("Post deleted successfully.", HTTPStatus.OK)
             else:
                 app.logger.warning(f"Post {id} not found or deletion failed.")
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(
-                        message="Post not found or could not be deleted.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    "Post not found or could not be deleted.",
+                    HTTPStatus.NOT_FOUND
                 )
         except Exception as e:
             app.logger.error(f"Error deleting post {id}: {str(e)}", exc_info=True)
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to delete post: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to delete post: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )

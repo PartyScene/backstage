@@ -18,7 +18,6 @@ from quart import (
     render_template,
     current_app as app,
     request,
-    jsonify,
     websocket,
 )
 from events.src.connectors import EventsDB
@@ -102,10 +101,7 @@ class BaseView(QuartClassful):
             message = "Service degraded: Redis connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        return (
-            jsonify(data=health_status, message=message, status=status_code.phrase),
-            status_code,
-        )
+        return api_response(message, status_code, data=health_status)
 
     @route("/events/<event_id>/attend", methods=["POST"])
     @jwt_required
@@ -116,11 +112,7 @@ class BaseView(QuartClassful):
 
             event = await self.conn.fetch(event_id)
             if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             # Create the attendance relationship
             attendance_data = {
@@ -132,26 +124,19 @@ class BaseView(QuartClassful):
             # Assuming you have a method to create the relationship in your database
             result = await self.conn.create_attendance(attendance_data)
 
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    message="Ticket purchased successfully",
-                    status=status_code.phrase,
-                    data=result,
-                ),
-                status_code,
+            return api_response(
+                "Ticket purchased successfully",
+                HTTPStatus.OK,
+                data=result,
             )
 
         except Exception as e:
             app.logger.error(
                 f"Error buying ticket for event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to buy ticket: {str(e)}", status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                f"Failed to buy ticket: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>", methods=["GET"])
@@ -168,31 +153,21 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         reason = data.get("reason", "")
         if not reason:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Reason is required", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Reason is required", HTTPStatus.BAD_REQUEST)
 
         # Check if the event exists
 
         event_info = await self.conn.fetch(event_id)
         if not event_info:
-            status_code = HTTPStatus.NOT_FOUND
-            return (
-                jsonify(message="Event not found", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
         if result := await self.conn._report_resource(
             {"reason": reason, "reporter": reporter, "resource": event_info["id"]}
         ):
-            status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    message="Resource reported", data=result, status=status_code.phrase
-                ),
-                status_code,
+            return api_response(
+                "Resource reported",
+                HTTPStatus.CREATED,
+                data=result,
             )
 
     @route("/events", methods=["GET"])
@@ -212,19 +187,12 @@ class BaseView(QuartClassful):
                     except Exception as e:
                         app.logger.warning(f"Failed to sign media URLS: {str(e)}")
                         # continue
-                    return (
-                        jsonify(
-                            data=result,
-                            message="Event fetched successfully.",
-                            status=status_code.phrase,
-                        ),
-                        status_code,
+                    return api_response(
+                        "Event fetched successfully.",
+                        HTTPStatus.OK,
+                        data=result,
                     )
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             if any([x in request.args for x in ("lat", "lng")]):
                 # They requested for Lat Lng soo
@@ -235,13 +203,9 @@ class BaseView(QuartClassful):
                     )
                     distance = int(request.args.get("distance", 1000))
                 except ValueError:
-                    status_code = HTTPStatus.BAD_REQUEST
-                    return (
-                        jsonify(
-                            message="Invalid latitude, longitude, or distance parameters.",
-                            status=status_code.phrase,
-                        ),
-                        status_code,
+                    return api_error(
+                        "Invalid latitude, longitude, or distance parameters.",
+                        HTTPStatus.BAD_REQUEST
                     )
 
                 result = await self.conn.fetch_by_distance(location, distance)
@@ -249,38 +213,26 @@ class BaseView(QuartClassful):
                 for event in result:
                     event['event']['host'] = await recursively_sign_object_media(event['event']['host'])
 
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data=result,
-                        message="Events fetched by distance successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Events fetched by distance successfully.",
+                    HTTPStatus.OK,
+                    data=result,
                 )
 
             result = await self.conn.fetch_all(page, limit)
             result = await recursively_sign_object_media(result)
             for event in result:
                 event["event"]["host"] = await recursively_sign_object_media(event['event']['host'])
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="Events fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Events fetched successfully.",
+                HTTPStatus.OK,
+                data=result,
             )
         except Exception as e:
             app.logger.error(f"Error fetching events: {str(e)}", exc_info=True)
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch events: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch events: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>", methods=["PATCH"])
@@ -290,60 +242,31 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         requester = get_jwt_identity()
         if not data:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Request body is required.", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Request body is required.", HTTPStatus.BAD_REQUEST)
         try:
             if event_id:
                 event_info = await self.conn.fetch(event_id)
                 if not event_info:
-                    status_code = HTTPStatus.NOT_FOUND
-                    return (
-                        jsonify(message="Event not found", status=status_code.phrase),
-                        status_code,
-                    )
+                    return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
                 if event_info["creator"] == requester:
                     if result := await self.conn.update_event_data(event_id, data):
-                        status_code = HTTPStatus.OK
-                        return (
-                            jsonify(
-                                data=result,
-                                message="Event updated successfully.",
-                                status=status_code.phrase,
-                            ),
-                            status_code,
+                        return api_response(
+                            "Event updated successfully.",
+                            HTTPStatus.OK,
+                            data=result,
                         )
                 else:
-                    status_code = HTTPStatus.FORBIDDEN
-                    return (
-                        jsonify(
-                            message="Unauthorized attempt", status=status_code.phrase
-                        ),
-                        status_code,
-                    )
+                    return api_error("Unauthorized attempt", HTTPStatus.FORBIDDEN)
             else:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="Event ID is required in the path.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return api_error("Event ID is required in the path.", HTTPStatus.BAD_REQUEST)
         except Exception as e:
             app.logger.error(
                 f"Error updating event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to update event: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to update event: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events", methods=["POST"])
@@ -372,13 +295,9 @@ class BaseView(QuartClassful):
             # missing_fields = any( [field not in data for])
             missing_fields = [field for field in required_fields if not field in data]
             if missing_fields:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message=f"Missing required fields: {', '.join(missing_fields)}",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    f"Missing required fields: {', '.join(missing_fields)}",
+                    HTTPStatus.BAD_REQUEST
                 )
 
             media_links = []
@@ -439,31 +358,19 @@ class BaseView(QuartClassful):
             if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
-                status_code = HTTPStatus.CREATED
-                return (
-                    jsonify(
-                        data=result,
-                        message="Event created successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Event created successfully.",
+                    HTTPStatus.CREATED,
+                    data=result,
                 )
 
             app.logger.error("Failed to create event in DB")
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(message="Failed to create event", status=status_code.phrase),
-                status_code,
-            )
+            return api_error("Failed to create event", HTTPStatus.BAD_REQUEST)
         except Exception as e:
             app.logger.error(f"Error creating event: {str(e)}", exc_info=True)
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to create event: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to create event: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route(
@@ -477,40 +384,19 @@ class BaseView(QuartClassful):
             user_id = get_jwt_identity()
             event = await self.conn.fetch(event_id)
             if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
             if event.get("creator") != user_id:  # Assuming host field stores user ID
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(
-                        message="Unauthorized to delete this event",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return api_error("Unauthorized to delete this event", HTTPStatus.FORBIDDEN)
 
             await self.conn.delete_event(event_id)
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    message="Event deleted successfully", status=status_code.phrase
-                ),
-                status_code,
-            )
+            return api_response("Event deleted successfully", HTTPStatus.OK)
         except Exception as e:
             app.logger.error(
                 f"Error deleting event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to delete event: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to delete event: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/private", methods=["GET"])
@@ -525,24 +411,16 @@ class BaseView(QuartClassful):
             result = await recursively_sign_object_media(result)
             for event in result:
                 event['event']['host'] = await recursively_sign_object_media(event['event']['host'])
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="Private events fetched successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Private events fetched successfully.",
+                HTTPStatus.OK,
+                data=result,
             )
         except Exception as e:
             app.logger.error(f"Error fetching private events: {str(e)}", exc_info=True)
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch private events: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch private events: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/distance", methods=["GET"])
@@ -561,35 +439,23 @@ class BaseView(QuartClassful):
             for event in result:
                 event['event']['host'] = await recursively_sign_object_media(event['event']['host'])
 
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="Events fetched by distance successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Events fetched by distance successfully.",
+                HTTPStatus.OK,
+                data=result,
             )
         except ValueError:
-            status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(
-                    message="Invalid latitude, longitude, or distance parameters.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                "Invalid latitude, longitude, or distance parameters.",
+                HTTPStatus.BAD_REQUEST
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching events by distance: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch events by distance: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to fetch events by distance: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/status", methods=["PATCH"])
@@ -602,14 +468,7 @@ class BaseView(QuartClassful):
             new_status = data.get("status")
 
             if not new_status:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="Status is required in request body.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return api_error("Status is required in request body.", HTTPStatus.BAD_REQUEST)
 
             # Verify user has permission to update this event
             event = await self.conn.fetch(event_id)
@@ -618,24 +477,13 @@ class BaseView(QuartClassful):
             )
             if not event:
                 app.logger.warning(f"Event not found: {event_id}")
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             if event.get("creator") != user_id:  # Assuming host field stores user ID
                 app.logger.warning(
                     f"Unauthorized access attempt to event {event_id} by user {user_id}"
                 )
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(
-                        message="Unauthorized to update this event",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return api_error("Unauthorized to update this event", HTTPStatus.FORBIDDEN)
 
             result = await self.conn.update_event_status(
                 event_id, status=new_status, metadata=data.get("metadata")
@@ -671,37 +519,25 @@ class BaseView(QuartClassful):
             )
             if not event:
                 app.logger.warning(f"Event not found: {event_id}")
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             if event.get("creator") != user_id:  # Assuming host field stores user ID
                 app.logger.warning(
                     f"Unauthorized live updates access attempt for event {event_id} by user {user_id}"
                 )
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(
-                        message="Unauthorized to start live updates for this event",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    "Unauthorized to start live updates for this event",
+                    HTTPStatus.FORBIDDEN
                 )
 
             # Check if live query already exists
             existing_live_id = await self._get_live_query(event_id)
             if existing_live_id:
                 app.logger.info(f"Returning existing live query for event {event_id}")
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data={"live_query_id": existing_live_id},
-                        message="Live updates already running.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Live updates already running.",
+                    HTTPStatus.OK,
+                    data={"live_query_id": existing_live_id}
                 )
 
             # Start the live query and get its ID
@@ -710,27 +546,19 @@ class BaseView(QuartClassful):
                 app.logger.error(
                     f"Failed to obtain live_id for event {event_id} from connector"
                 )
-                status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-                return (
-                    jsonify(
-                        message="Failed to start live updates.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    "Failed to start live updates.",
+                    HTTPStatus.INTERNAL_SERVER_ERROR
                 )
 
             # Store in Redis
             await self._store_live_query(event_id, live_id)
 
             app.logger.info(f"Started new live query for event {event_id}")
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data={"live_query_id": live_id},
-                    message="Live updates started successfully.",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Live updates started successfully.",
+                HTTPStatus.OK,
+                data={"live_query_id": live_id}
             )
 
         except Exception as e:
@@ -738,13 +566,9 @@ class BaseView(QuartClassful):
                 f"Failed to start live query for event {event_id}: {str(e)}",
                 exc_info=True,
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to start live updates: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to start live updates: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/live", methods=["DELETE"])
@@ -761,24 +585,16 @@ class BaseView(QuartClassful):
             )
             if not event:
                 app.logger.warning(f"Event not found: {event_id}")
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             # Use .get() with default for safer access if host might be missing
             if event.get("creator") != user_id:
                 app.logger.warning(
                     f"Unauthorized attempt to stop live updates for event {event_id} by user {user_id}"
                 )
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(
-                        message="Unauthorized to stop live updates for this event",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_error(
+                    "Unauthorized to stop live updates for this event",
+                    HTTPStatus.FORBIDDEN
                 )
 
             # Get live query ID from Redis
@@ -789,37 +605,25 @@ class BaseView(QuartClassful):
                 app.logger.info(
                     f"Successfully stopped live updates for event {event_id}"
                 )
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        message="Live updates stopped successfully.",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
+                return api_response(
+                    "Live updates stopped successfully.",
+                    HTTPStatus.OK
                 )
 
             app.logger.info(f"No live updates running for event {event_id}")
-            status_code = HTTPStatus.OK  # Or OK if preferred
-            return (
-                jsonify(
-                    message="No live updates running for this event.",
-                    status=status_code.phrase,
-                ),
-                status_code,
-            )  # Or OK if preferred
+            return api_response(
+                "No live updates running for this event.",
+                HTTPStatus.OK
+            )
 
         except Exception as e:
             app.logger.error(
                 f"Failed to stop live query for event {event_id}: {str(e)}",
                 exc_info=True,
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to stop live updates: {str(e)}",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_error(
+                f"Failed to stop live updates: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/guestlist", methods=["GET"])
@@ -835,43 +639,27 @@ class BaseView(QuartClassful):
             # Check if user has permission to view guestlist
             event = await self.conn.fetch(event_id)
             if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             # Only allow event host to view guestlist (you can modify this logic)
             if event.get("host", {}).get("id") != user_id:
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(message="Only event hosts can view guestlist", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Only event hosts can view guestlist", HTTPStatus.FORBIDDEN)
 
             guestlist = await self.conn.fetch_event_guestlist(event_id)
             
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=guestlist,
-                    message="Guestlist retrieved successfully",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Guestlist retrieved successfully",
+                HTTPStatus.OK,
+                data=guestlist,
             )
 
         except Exception as e:
             app.logger.error(
                 f"Error retrieving guestlist for event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to retrieve guestlist: {str(e)}", 
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                f"Failed to retrieve guestlist: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/guestlist", methods=["POST"])
@@ -886,28 +674,16 @@ class BaseView(QuartClassful):
             data = await request.get_json()
             
             if not data or not data.get("user_id"):
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(message="user_id is required", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("user_id is required", HTTPStatus.BAD_REQUEST)
 
             # Check if user has permission to manage guestlist
             event = await self.conn.fetch(event_id)
             if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             # Only allow event host to manage guestlist (you can modify this logic)
             if event.get("host", {}).get("id") != current_user_id:
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(message="Only event hosts can manage guestlist", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Only event hosts can manage guestlist", HTTPStatus.FORBIDDEN)
 
             target_user_id = data["user_id"]
             invitation_status = data.get("status", "invited")
@@ -919,27 +695,19 @@ class BaseView(QuartClassful):
                 status=invitation_status
             )
             
-            status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    data=result,
-                    message="User added to guestlist successfully",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "User added to guestlist successfully",
+                HTTPStatus.CREATED,
+                data=result,
             )
 
         except Exception as e:
             app.logger.error(
                 f"Error adding user to guestlist for event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to add user to guestlist: {str(e)}", 
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                f"Failed to add user to guestlist: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/guestlist/<user_id>", methods=["DELETE"])
@@ -954,52 +722,26 @@ class BaseView(QuartClassful):
             # Check if user has permission to manage guestlist
             event = await self.conn.fetch(event_id)
             if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             # Only allow event host to manage guestlist (you can modify this logic)
             if event.get("host", {}).get("id") != current_user_id:
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(message="Only event hosts can manage guestlist", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Only event hosts can manage guestlist", HTTPStatus.FORBIDDEN)
 
             success = await self.conn.remove_from_guestlist(event_id, user_id)
             
             if success:
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        message="User removed from guestlist successfully",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return api_response("User removed from guestlist successfully", HTTPStatus.OK)
             else:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(
-                        message="User not found in guestlist",
-                        status=status_code.phrase,
-                    ),
-                    status_code,
-                )
+                return api_error("User not found in guestlist", HTTPStatus.NOT_FOUND)
 
         except Exception as e:
             app.logger.error(
                 f"Error removing user from guestlist for event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to remove user from guestlist: {str(e)}", 
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                f"Failed to remove user from guestlist: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/guestlist/<user_id>/status", methods=["PATCH"])
@@ -1014,56 +756,36 @@ class BaseView(QuartClassful):
             data = await request.get_json()
             
             if not data or not data.get("status"):
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(message="status is required", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("status is required", HTTPStatus.BAD_REQUEST)
 
             # Allow both event host and invited user to update status
             event = await self.conn.fetch(event_id)
             if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
 
             # Check permission: either event host or the invited user themselves
             is_host = event.get("host", {}).get("id") == current_user_id
             is_invited_user = user_id == current_user_id
             
             if not (is_host or is_invited_user):
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(message="Permission denied", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Permission denied", HTTPStatus.FORBIDDEN)
 
             new_status = data["status"]
             result = await self.conn.update_guestlist_status(event_id, user_id, new_status)
             
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message="Guestlist status updated successfully",
-                    status=status_code.phrase,
-                ),
-                status_code,
+            return api_response(
+                "Guestlist status updated successfully",
+                HTTPStatus.OK,
+                data=result,
             )
 
         except Exception as e:
             app.logger.error(
                 f"Error updating guestlist status for event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to update guestlist status: {str(e)}", 
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                f"Failed to update guestlist status: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
     @route("/events/<event_id>/tickets/verify", methods=["POST"])
@@ -1083,79 +805,52 @@ class BaseView(QuartClassful):
             data = await request.get_json()
             
             if not data or "ticket_number" not in data:
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="ticket_number is required in request body",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "ticket_number is required in request body",
+                    HTTPStatus.BAD_REQUEST
                 )
-            
+
             # Verify user has permission (event host or authorized staff)
             event = await self.conn.fetch(event_id)
             if not event:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="Event not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
             
-            # Only allow event host to verify tickets
+            # Allow both event host and staff with access to verify tickets
+            # You can extend this logic to check for specific roles or permissions
             if event.get("host", {}).get("id") != user_id:
-                status_code = HTTPStatus.FORBIDDEN
-                return (
-                    jsonify(
-                        message="Only event hosts can verify tickets",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    "Only event hosts can verify tickets",
+                    HTTPStatus.FORBIDDEN
                 )
             
             ticket_number = data["ticket_number"]
             result = await self.conn.verify_ticket(event_id, ticket_number)
             
             if not result.get("valid"):
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(
-                        message=result.get("message", "Invalid ticket"),
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_error(
+                    result.get("message", "Invalid ticket"),
+                    HTTPStatus.NOT_FOUND
                 )
-            
-            # Ticket is valid
+
+            # Handle already checked-in tickets differently
             if result.get("already_checked_in"):
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data=result,
-                        message="Ticket already checked in",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_response(
+                    "Ticket already checked in",
+                    HTTPStatus.OK,
+                    data=result,
                 )
             else:
-                status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data=result,
-                        message="Ticket verified and checked in successfully",
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_response(
+                    "Ticket verified and checked in successfully",
+                    HTTPStatus.OK,
+                    data=result,
                 )
         
         except Exception as e:
             app.logger.error(
                 f"Error verifying ticket for event {event_id}: {str(e)}", exc_info=True
             )
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to verify ticket: {str(e)}",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                f"Failed to verify ticket: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
