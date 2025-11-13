@@ -95,10 +95,7 @@ class BaseView(QuartClassful):
             message = "Service degraded: Redis connection failed"
             status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
-        return (
-            jsonify(data=health_status, message=message, status=status_code.phrase),
-            status_code,
-        )
+        return api_response(message, status_code, data=health_status)
 
     @route("/leads", methods=["POST"])
     async def create_lead(self):
@@ -899,22 +896,14 @@ class BaseView(QuartClassful):
             )
             
             if not user_data or not user_data[0]:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="User not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("User not found", HTTPStatus.NOT_FOUND)
             
             # Check if deletion is already scheduled
             if user_data[0].get("scheduled_deletion_at"):
-                status_code = HTTPStatus.CONFLICT
-                return (
-                    jsonify(
-                        message="Account deletion already scheduled",
-                        data={"scheduled_deletion_at": user_data[0].get("scheduled_deletion_at")},
-                        status=status_code.phrase
-                    ),
-                    status_code,
+                return api_response(
+                    "Account deletion already scheduled",
+                    HTTPStatus.CONFLICT,
+                    data={"scheduled_deletion_at": user_data[0].get("scheduled_deletion_at")}
                 )
             
             # Schedule deletion for 30 days from now
@@ -936,28 +925,20 @@ class BaseView(QuartClassful):
             except Exception as e:
                 logger.warning(f"Failed to send deletion notification: {e}")
             
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    message="Account deletion scheduled. You have 30 days to cancel.",
-                    data={
-                        "scheduled_deletion_at": deletion_date.isoformat(),
-                        "days_remaining": 30
-                    },
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_response(
+                "Account deletion scheduled. You have 30 days to cancel.",
+                HTTPStatus.OK,
+                data={
+                    "scheduled_deletion_at": deletion_date.isoformat(),
+                    "message": "Your account is scheduled for deletion in 30 days",
+                }
             )
         
         except Exception as e:
             logger.error(f"Account deletion scheduling error for user {user_id}: {e}")
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message="An error occurred while scheduling account deletion",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "An error occurred while scheduling account deletion",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
     
     @route("/auth/account/cancel-deletion", methods=["POST"])
@@ -981,22 +962,11 @@ class BaseView(QuartClassful):
             )
             
             if not user_data or not user_data:
-                status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="User not found", status=status_code.phrase),
-                    status_code,
-                )
+                return api_error("User not found", HTTPStatus.NOT_FOUND)
             
             # Check if deletion is scheduled
             if not user_data.get("scheduled_deletion_at"):
-                status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="No scheduled deletion to cancel",
-                        status=status_code.phrase
-                    ),
-                    status_code,
-                )
+                return api_error("No scheduled deletion to cancel", HTTPStatus.BAD_REQUEST)
             
             # Cancel the scheduled deletion
             await self.conn.pool.execute_query(
@@ -1006,24 +976,13 @@ class BaseView(QuartClassful):
             
             logger.info(f"Cancelled scheduled deletion for user {user_id}")
             
-            status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    message="Account deletion cancelled successfully",
-                    status=status_code.phrase
-                ),
-                status_code,
-            )
+            return api_response("Account deletion cancelled successfully", HTTPStatus.OK)
         
         except Exception as e:
             logger.error(f"Cancellation error for user {user_id}: {e}")
-            status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message="An error occurred while cancelling deletion",
-                    status=status_code.phrase
-                ),
-                status_code,
+            return api_error(
+                "An error occurred while cancelling deletion",
+                HTTPStatus.INTERNAL_SERVER_ERROR
             )
     
     async def verify_otp(

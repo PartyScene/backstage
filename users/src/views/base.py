@@ -1,4 +1,4 @@
-from quart import request, current_app as app, jsonify
+from quart import request, current_app as app
 from quart_jwt_extended import get_jwt_identity, jwt_required
 from http import HTTPStatus
 from typing import Tuple, Dict, Any
