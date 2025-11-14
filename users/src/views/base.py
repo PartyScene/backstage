@@ -43,11 +43,8 @@ class BaseView(QuartClassful):
 
             if not file or not file.filename:
                 status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="No file provided or file has no name.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "No file provided or file has no name.",
                     status_code,
                 )
 
@@ -82,13 +79,10 @@ class BaseView(QuartClassful):
 
             # Return success indicating the upload process has started
             status_code = HTTPStatus.ACCEPTED  # 202 Accepted is suitable here
-            return (
-                jsonify(
-                    data=response,
-                    message="Media upload process initiated successfully.",
-                    status=status_code.phrase,
-                ),
+            return api_response(
+                "Media upload process initiated successfully.",
                 status_code,
+                data=response,
             )  # 202 Accepted is suitable here
 
         except Exception as e:
@@ -97,11 +91,8 @@ class BaseView(QuartClassful):
                 exc_info=True,
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to initiate media upload: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to initiate media upload: {str(e)}",
                 status_code,
             )
 
@@ -113,23 +104,16 @@ class BaseView(QuartClassful):
         username = request.args.get("username")
         if not username:
             status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(
-                    message="Username query parameter is required.",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                "Username query parameter is required.",
                 status_code,
             )
         # Add search logic here using self.conn
         # result = await self.conn.search_by_username(username)
         # status_code = HTTPStatus.OK
-        # return jsonify(data=result, message="Search results retrieved.", status=status_code.phrase), status_code
         status_code = HTTPStatus.NOT_IMPLEMENTED
-        return (
-            jsonify(
-                message="Search endpoint not yet implemented.",
-                status=status_code.phrase,
-            ),
+        return api_error(
+            "Search endpoint not yet implemented.",
             status_code,
         )
 
@@ -142,30 +126,24 @@ class BaseView(QuartClassful):
             blocked_users = await self.conn.get_blocked_users(user_id)
             if not blocked_users:
                 status_code = HTTPStatus.OK
-                return (
-                    jsonify(message="No blocked users found", status=status_code.phrase),
+                return api_response(
+                    "No blocked users found",
                     status_code,
                 )
 
             status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=blocked_users,
-                    message="Blocked users fetched successfully.",
-                    status=status_code.phrase,
-                ),
+            return api_response(
+                "Blocked users fetched successfully.",
                 status_code,
+                data=blocked_users,
             )
         except Exception as e:
             app.logger.error(
                 f"Error fetching blocked users for user ({user_id}): {str(e)}", exc_info=True
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch blocked users: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to fetch blocked users: {str(e)}",
                 status_code,
             )
 
@@ -393,11 +371,10 @@ class BaseView(QuartClassful):
             {"reason": reason, "reporter": reporter, "resource": user_info["id"]}
         ):
             status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    message="Resource reported", data=result, status=status_code.phrase
-                ),
+            return api_response(
+                "Resource reported",
                 status_code,
+                data=result,
             )
 
     @route("/users/<user_id>/block", methods=["POST"])
@@ -409,11 +386,8 @@ class BaseView(QuartClassful):
             # Prevent self-blocking
             if blocker_id == user_id:
                 status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="Cannot block yourself.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "Cannot block yourself.",
                     status_code,
                 )
 
@@ -421,8 +395,8 @@ class BaseView(QuartClassful):
             user_info = await self.conn.fetch(user_id)
             if not user_info:
                 status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(message="User not found", status=status_code.phrase),
+                return api_error(
+                    "User not found",
                     status_code,
                 )
 
@@ -430,13 +404,10 @@ class BaseView(QuartClassful):
             result = await self.conn.block_user(blocker_id, user_id)
             
             status_code = HTTPStatus.CREATED
-            return (
-                jsonify(
-                    data=result,
-                    message="User blocked successfully.",
-                    status=status_code.phrase,
-                ),
+            return api_response(
+                "User blocked successfully.",
                 status_code,
+                data=result,
             )
 
         except Exception as e:
@@ -445,11 +416,8 @@ class BaseView(QuartClassful):
                 exc_info=True
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to block user: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to block user: {str(e)}",
                 status_code,
             )
 
@@ -464,21 +432,15 @@ class BaseView(QuartClassful):
             
             if result:
                 status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data=result,
-                        message="User unblocked successfully.",
-                        status=status_code.phrase,
-                    ),
+                return api_response(
+                    "User unblocked successfully.",
                     status_code,
+                    data=result,
                 )
             else:
                 status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(
-                        message="Block relationship not found.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "Block relationship not found.",
                     status_code,
                 )
 
@@ -488,11 +450,8 @@ class BaseView(QuartClassful):
                 exc_info=True
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to unblock user: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to unblock user: {str(e)}",
                 status_code,
             )
 
@@ -515,31 +474,22 @@ class BaseView(QuartClassful):
 
             if not 1 <= max_degree <= 6:
                 status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="max_degree must be between 1 and 6",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "max_degree must be between 1 and 6",
                     status_code,
                 )
 
             result = await self.conn.get_connections_at_degree(user_id, max_degree)
             status_code = HTTPStatus.OK
-            return (
-                jsonify(
-                    data=result,
-                    message=f"Connections up to degree {max_degree} fetched.",
-                    status=status_code.phrase,
-                ),
+            return api_response(
+                f"Connections up to degree {max_degree} fetched.",
                 status_code,
+                data=result,
             )
         except ValueError:  # Catch potential type error for max_degree
             status_code = HTTPStatus.BAD_REQUEST
-            return (
-                jsonify(
-                    message="Invalid value for max_degree parameter.",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                "Invalid value for max_degree parameter.",
                 status_code,
             )
         except Exception as e:
@@ -548,11 +498,8 @@ class BaseView(QuartClassful):
                 exc_info=True,
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to fetch connections: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to fetch connections: {str(e)}",
                 status_code,
             )
 
@@ -565,11 +512,8 @@ class BaseView(QuartClassful):
             target_id = data.get("target_id")
             if not target_id:
                 status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="target_id is required in request body.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "target_id is required in request body.",
                     status_code,
                 )
 
@@ -578,11 +522,8 @@ class BaseView(QuartClassful):
             # Prevent self-friending
             if data["origin_id"] == target_id:
                 status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="Cannot send friend request to yourself.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "Cannot send friend request to yourself.",
                     status_code,
                 )
 
@@ -610,9 +551,10 @@ class BaseView(QuartClassful):
                     if notification_sent
                     else "Friend request created, but notification failed."
                 )
-                return (
-                    jsonify(data=result, message=message, status=status_code.phrase),
+                return api_response(
+                    message,
                     status_code,
+                    data=result,
                 )
 
             # Handle case where connector returns non-truthy without exception
@@ -620,22 +562,16 @@ class BaseView(QuartClassful):
                 f"Failed to create friend request between {data['origin_id']} and {target_id} (connector returned non-truthy)"
             )
             status_code = HTTPStatus.BAD_REQUEST  # Or CONFLICT?
-            return (
-                jsonify(
-                    message="Failed to create friend request (e.g., already exists or invalid IDs).",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                "Failed to create friend request (e.g., already exists or invalid IDs).",
                 status_code,
             )  # Or CONFLICT?
 
         except Exception as e:
             app.logger.error(f"Error creating friend request: {str(e)}", exc_info=True)
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to send friend request: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to send friend request: {str(e)}",
                 status_code,
             )
 
@@ -651,11 +587,8 @@ class BaseView(QuartClassful):
 
             if not new_status:
                 status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message="Status is required in request body.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "Status is required in request body.",
                     status_code,
                 )
 
@@ -670,11 +603,8 @@ class BaseView(QuartClassful):
             ]  # Include pending if needed
             if new_status not in allowed_statuses:
                 status_code = HTTPStatus.BAD_REQUEST
-                return (
-                    jsonify(
-                        message=f"Invalid status. Must be one of: {', '.join(allowed_statuses)}",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    f"Invalid status. Must be one of: {', '.join(allowed_statuses)}",
                     status_code,
                 )
 
@@ -685,24 +615,18 @@ class BaseView(QuartClassful):
                 # if new_status == "accepted":
                 #     await self.__notification_manager.send_friend_request_accepted_notification(...)
                 status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        data=result,
-                        message="Connection status updated successfully.",
-                        status=status_code.phrase,
-                    ),
+                return api_response(
+                    "Connection status updated successfully.",
                     status_code,
+                    data=result,
                 )
             else:
                 app.logger.warning(
                     f"Failed to update connection {connection_id} (connector returned non-truthy)"
                 )
                 status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(
-                        message="Connection not found or update failed.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "Connection not found or update failed.",
                     status_code,
                 )
 
@@ -711,11 +635,8 @@ class BaseView(QuartClassful):
                 f"Error updating connection {connection_id}: {str(e)}", exc_info=True
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to update connection: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to update connection: {str(e)}",
                 status_code,
             )
 
@@ -728,11 +649,8 @@ class BaseView(QuartClassful):
             result = await self.conn.update_friend_relationship(connection_id, {"status": "removed"})
             if result:  # Assuming delete returns True or affected count > 0
                 status_code = HTTPStatus.OK
-                return (
-                    jsonify(
-                        message="Connection deleted successfully.",
-                        status=status_code.phrase,
-                    ),
+                return api_response(
+                    "Connection deleted successfully.",
                     status_code,
                 )
             else:
@@ -740,11 +658,8 @@ class BaseView(QuartClassful):
                     f"Connection {connection_id} not found or deletion failed."
                 )
                 status_code = HTTPStatus.NOT_FOUND
-                return (
-                    jsonify(
-                        message="Connection not found or could not be deleted.",
-                        status=status_code.phrase,
-                    ),
+                return api_error(
+                    "Connection not found or could not be deleted.",
                     status_code,
                 )
 
@@ -753,10 +668,7 @@ class BaseView(QuartClassful):
                 f"Error deleting connection {connection_id}: {str(e)}", exc_info=True
             )
             status_code = HTTPStatus.INTERNAL_SERVER_ERROR
-            return (
-                jsonify(
-                    message=f"Failed to delete connection: {str(e)}",
-                    status=status_code.phrase,
-                ),
+            return api_error(
+                f"Failed to delete connection: {str(e)}",
                 status_code,
             )
