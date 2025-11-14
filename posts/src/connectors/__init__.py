@@ -216,12 +216,16 @@ class PostsDB:
             data["creator"] = RecordID("users", author)
             data["event"] = RecordID("events", data["event"])
 
-            # Check if user has ticket
-            if not await self.user_has_ticket(data["creator"], data["event"]):
-                raise ValueError("User does not have a ticket for this event.")
-
             
             event_info = await conn.select(data["event"])
+            
+            # Check if user is the event creator/host - they don't need tickets
+            is_event_host = event_info.get("host") == data["creator"]
+            
+            # Only check for ticket if user is not the event host
+            if not is_event_host:
+                if not await self.user_has_ticket(data["creator"], data["event"]):
+                    raise ValueError("User does not have a ticket for this event.")
 
             # Check if post is close to event location
             if "coordinates" in data and "location" in event_info:
