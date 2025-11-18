@@ -102,7 +102,7 @@ class RMQBroker(RabbitBroker):
     async def decode_message(self, msg: RabbitMessage, original_decoder) -> Optional[RabbitMessage]:
         """Decode RabbitMQ message, trying ormsgpack first, then original decoder."""
         try:
-            msg.body = ormsgpack.unpackb(msg.body)
+            msg.body = await asyncio.to_thread(ormsgpack.unpackb, msg.body)
             return msg
         except (ormsgpack.MsgpackDecodeError, TypeError, ValueError) as e:
             self.logger.debug(f"ormsgpack decode failed: {e}, trying original decoder")
@@ -116,7 +116,7 @@ class RMQBroker(RabbitBroker):
         """Compress video to 720p MP4 with H.264 codec."""
         # Create temp input file
         with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1], delete=False) as temp_input:
-            temp_input.write(input_bytes)
+            await asyncio.to_thread(temp_input.write, input_bytes)
             temp_input_path = temp_input.name
         
         # Create temp output file (separate file to avoid collision)
@@ -193,8 +193,9 @@ class RMQBroker(RabbitBroker):
                 self.logger.info("✅ Software encoding complete")
             
             # Read compressed file
-            with open(temp_output_path, 'rb') as f:
-                compressed_bytes = f.read()
+            compressed_bytes = await asyncio.to_thread(
+                lambda: open(temp_output_path, 'rb').read()
+            )
             
             # Log compression ratio, avoiding division by zero
             if len(compressed_bytes) > 0:
@@ -209,53 +210,57 @@ class RMQBroker(RabbitBroker):
             # Clean up temp files
             for path in [temp_input_path, temp_output_path]:
                 if os.path.exists(path):
-                    os.unlink(path)
+                    await asyncio.to_thread(os.unlink, path)
 
     async def compress_image(self, image_bytes: bytes) -> bytes:
         """Compress image while preserving quality."""
         try:
-            img = Image.open(io.BytesIO(image_bytes))
+            # Wrap entire CPU-bound image processing in to_thread
+            def _process_image():
+                img = Image.open(io.BytesIO(image_bytes))
+                
+                # Apply EXIF orientation to prevent rotation issues from phone cameras
+                img = ImageOps.exif_transpose(img) or img  # Fallback to original if None
+                
+                # CRITICAL FIX: Convert ALL non-RGB modes to RGB for maximum Android compatibility
+                if img.mode != 'RGB':
+                    # Handle transparency modes (RGBA, LA, P with transparency)
+                    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                        # Create white background for transparent images
+                        background = Image.new('RGB', img.size, IMAGE_BACKGROUND_COLOR)
+                        if img.mode == 'RGBA':
+                            background.paste(img, mask=img.split()[-1])  # Use alpha as mask
+                        elif img.mode == 'LA':
+                            background.paste(img, mask=img.split()[-1])  # Use alpha as mask
+                        else:  # P mode with transparency
+                            background.paste(img)
+                        img = background
+                    else:
+                        # Convert all other modes (CMYK, L, LAB, HSV, YCbCr, etc.) directly to RGB
+                        original_mode = img.mode  # Capture mode before conversion
+                        img = img.convert('RGB')
+                        self.logger.debug(f"Converted {original_mode} image to RGB")
+                
+                # Resize if too large (max dimension on longest side)
+                if max(img.size) > IMAGE_MAX_DIMENSION:
+                    ratio = IMAGE_MAX_DIMENSION / max(img.size)
+                    new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                
+                # Compress with high quality
+                output = io.BytesIO()
+                # FIX: Remove progressive=True for Android compatibility
+                img.save(
+                    output, 
+                    'JPEG', 
+                    quality=IMAGE_JPEG_QUALITY, 
+                    optimize=True,
+                    progressive=False,  # Better Android compatibility
+                    subsampling=0  # Better quality, no chroma subsampling
+                )
+                return output.getvalue()
             
-            # Apply EXIF orientation to prevent rotation issues from phone cameras
-            img = ImageOps.exif_transpose(img) or img  # Fallback to original if None
-            
-            # CRITICAL FIX: Convert ALL non-RGB modes to RGB for maximum Android compatibility
-            if img.mode != 'RGB':
-                # Handle transparency modes (RGBA, LA, P with transparency)
-                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
-                    # Create white background for transparent images
-                    background = Image.new('RGB', img.size, IMAGE_BACKGROUND_COLOR)
-                    if img.mode == 'RGBA':
-                        background.paste(img, mask=img.split()[-1])  # Use alpha as mask
-                    elif img.mode == 'LA':
-                        background.paste(img, mask=img.split()[-1])  # Use alpha as mask
-                    else:  # P mode with transparency
-                        background.paste(img)
-                    img = background
-                else:
-                    # Convert all other modes (CMYK, L, LAB, HSV, YCbCr, etc.) directly to RGB
-                    original_mode = img.mode  # Capture mode before conversion
-                    img = img.convert('RGB')
-                    self.logger.debug(f"Converted {original_mode} image to RGB")
-            
-            # Resize if too large (max dimension on longest side)
-            if max(img.size) > IMAGE_MAX_DIMENSION:
-                ratio = IMAGE_MAX_DIMENSION / max(img.size)
-                new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
-                img = img.resize(new_size, Image.Resampling.LANCZOS)
-            
-            # Compress with high quality
-            output = io.BytesIO()
-            # FIX: Remove progressive=True for Android compatibility
-            img.save(
-                output, 
-                'JPEG', 
-                quality=IMAGE_JPEG_QUALITY, 
-                optimize=True,
-                progressive=False,  # Better Android compatibility
-                subsampling=0  # Better quality, no chroma subsampling
-            )
-            compressed_bytes = output.getvalue()
+            compressed_bytes = await asyncio.to_thread(_process_image)
             
             self.logger.info(f"Image compressed: {len(image_bytes)} -> {len(compressed_bytes)} bytes")
             return compressed_bytes
@@ -337,11 +342,12 @@ class RMQBroker(RabbitBroker):
         self, filename: str, file: Any, content_type: Literal["MEDIA", "POST", "EVENT"]
     ) -> None:
         """Publish file to R18E (content moderation) queue."""
-        file_bytes = (
-            ormsgpack.packb(file.read())
-            if not isinstance(file, bytes)
-            else ormsgpack.packb(file)
-        )
+        if not isinstance(file, bytes):
+            file_data = await asyncio.to_thread(file.read)
+            file_bytes = await asyncio.to_thread(ormsgpack.packb, file_data)
+        else:
+            file_bytes = await asyncio.to_thread(ormsgpack.packb, file)
+        
         await self.publisher(self.RABBITMQ_R18E_QUEUE).publish(
             file_bytes,
             headers={"type": content_type, "filename": filename},
@@ -367,7 +373,8 @@ class RMQBroker(RabbitBroker):
             self.logger.error(f"Missing required data: filename={filename}, type={content_type}")
             return
         
-        file_bytes: bytes = ormsgpack.packb(file.read())
+        file_data = await asyncio.to_thread(file.read)
+        file_bytes: bytes = await asyncio.to_thread(ormsgpack.packb, file_data)
         await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(
             file_bytes,
             headers={
