@@ -96,9 +96,10 @@ class EventsDB:
 
             # Now create media records with the CORRECT event ID
             media_ids = []
-            for i, filename in enumerate(filenames):
-                media_type = types[i]
-                async with self.pool.acquire() as conn:
+            async with self.pool.acquire() as conn:
+                for i, filename in enumerate(filenames):
+                    media_type = types[i]
+                    
                     media_query_result = await conn.create(
                         "media",
                         {
@@ -110,12 +111,10 @@ class EventsDB:
                     )
                     if isinstance(media_query_result, dict):
                         media_ids.append(media_query_result["id"])
-                self.logger.warning(
-                    f"Created media: {json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)}"
-                )
+                    self.logger.warning(
+                        f"Created media: {json.dumps(media_query_result, option=json.OPT_INDENT_2, default=str)}"
+                    )
 
-            # Create relations using the correct event ID
-            async with self.pool.acquire() as conn:
                 # Create individual RELATE statements for each media item
                 for media_id in media_ids:
                     relation_result = await conn.query(

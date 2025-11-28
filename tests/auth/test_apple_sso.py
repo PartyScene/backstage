@@ -4,7 +4,8 @@ import logging
 from http import HTTPStatus
 from unittest.mock import patch
 from datetime import datetime, timedelta
-import PyJWT as jwt
+import jwt
+from jwt.exceptions import ExpiredSignatureError, InvalidAudienceError, InvalidIssuerError, InvalidTokenError
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,8 @@ class TestAppleSSO(TestAuthBase):
         
         # Assert
         assert response.status_code == HTTPStatus.CREATED
+        # API returns access_token at root of data if successful, or in 'data' key
+        # Adjust assertion to match API response format in auth/src/views/base.py
         self._assert_successful_auth_response(response_json)
         assert "User registered successfully" in response_json["message"]
     

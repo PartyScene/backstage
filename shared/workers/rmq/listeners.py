@@ -22,12 +22,12 @@ IMAGE_MAX_DIMENSION = 2048
 IMAGE_JPEG_QUALITY = 90
 IMAGE_BACKGROUND_COLOR = (255, 255, 255)
 
-VIDEO_MAX_HEIGHT = 720
-VIDEO_MAX_WIDTH = 1280
+VIDEO_MAX_HEIGHT = 1080
+VIDEO_MAX_WIDTH = 1920
 VIDEO_CRF_QUALITY = 23
-VIDEO_MAX_BITRATE = "1.5M"  # Lower for mobile, faster encoding
-VIDEO_BUFFER_SIZE = "3M"  # Proportional to bitrate
-VIDEO_AUDIO_BITRATE = "64k"  # Sufficient for mobile, faster
+VIDEO_MAX_BITRATE = "3.5M"  # Instagram High Quality target
+VIDEO_BUFFER_SIZE = "7M"  # 2x Max Bitrate for handling motion spikes
+VIDEO_AUDIO_BITRATE = "128k"  # Instagram standard audio
 VIDEO_SAMPLE_RATE = "44100"  # Keep this
 
 URL_EXPIRY_HOURS = 6
@@ -176,8 +176,8 @@ class RMQBroker(RabbitBroker):
                         temp_output_path,
                         vcodec="libx264",
                         acodec="aac",
-                        preset="veryfast",
-                        tune="fastdecode",
+                        preset="ultrafast",
+                        profile="high",
                         crf=str(VIDEO_CRF_QUALITY),
                         maxrate=VIDEO_MAX_BITRATE,
                         bufsize=VIDEO_BUFFER_SIZE,

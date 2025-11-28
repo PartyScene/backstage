@@ -13,7 +13,7 @@ import httpx
 from datetime import datetime, timedelta
 
 # Use the same PyJWT import pattern as the shared utilities
-import PyJWT as jwt
+import jwt
 
 # Configuration
 API_URL = "http://localhost:8080"  # Change to your local dev server

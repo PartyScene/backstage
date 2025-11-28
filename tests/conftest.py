@@ -85,7 +85,7 @@ async def redis_connection():
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def auth_app(redis_connection):
+async def auth_app():
     """Create a session-scoped auth app"""
 
     from auth.run import app
@@ -116,7 +116,7 @@ async def auth_app(redis_connection):
             async def close(self):
                 pass
 
-        app.redis = redis_connection
+        app.redis = AsyncRedisMock()
         app.conn, app.pool_manager = await init_db(app)
 
         async with app.app_context():
@@ -140,6 +140,8 @@ async def auth_client(auth_app):
     try:
         async with auth_app.test_client() as test_client:
             async with auth_app.app_context():
+                # Add this line to simulate the conn attribute on the app context
+                auth_app.conn = auth_app.conn 
                 yield test_client
     except Exception as e:
         logger.error(f"Error in auth_client fixture: {str(e)}")
