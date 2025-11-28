@@ -94,9 +94,9 @@ class EventsDB:
                     f"Created event: {json.dumps(result, option=json.OPT_INDENT_2, default=str)}"
                 )
 
-            # Now create media records with the CORRECT event ID
-            media_ids = []
-            async with self.pool.acquire() as conn:
+                # Now create media records with the CORRECT event ID
+                media_ids = []
+                
                 for i, filename in enumerate(filenames):
                     media_type = types[i]
                     
