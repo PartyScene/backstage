@@ -52,7 +52,6 @@ class PaystackClient:
 		Returns:
 			Dict with authorization_url, access_code, reference, etc.
 		"""
-		loop = asyncio.get_event_loop()
 		# Use official paystack-sdk API: paystack.Transaction.initialize()
 		# Metadata must be stringified JSON according to Paystack docs
 		func = partial(
@@ -64,7 +63,7 @@ class PaystackClient:
 			split_code=split_code,
 			bearer=bearer if subaccount else None
 		)
-		response = await loop.run_in_executor(None, func)
+		response = await asyncio.to_thread(func)
 		return response
 
 	async def verify_transaction(self, reference: str) -> Dict[str, Any]:
@@ -78,10 +77,9 @@ class PaystackClient:
 		Returns:
 			Dict with transaction status, amount, customer info, etc.
 		"""
-		loop = asyncio.get_event_loop()
 		# Use official paystack-sdk API: paystack.Transaction.verify()
 		func = partial(paystack.Transaction.verify, reference)
-		response = await loop.run_in_executor(None, func)
+		response = await asyncio.to_thread(func)
 		return response
 
 	async def create_subaccount(
@@ -105,7 +103,6 @@ class PaystackClient:
 		Returns:
 			Dict with subaccount_code, business_name, etc.
 		"""
-		loop = asyncio.get_event_loop()
 		# Use official paystack-sdk API: paystack.Subaccount.create()
 		func = partial(
 			paystack.Subaccount.create,
@@ -115,7 +112,7 @@ class PaystackClient:
 			percentage_charge,
 			description=description
 		)
-		response = await loop.run_in_executor(None, func)
+		response = await asyncio.to_thread(func)
 		return response
 
 	async def get_subaccount(self, subaccount_code: str) -> Dict[str, Any]:
@@ -128,10 +125,9 @@ class PaystackClient:
 		Returns:
 			Dict with subaccount details
 		"""
-		loop = asyncio.get_event_loop()
 		# Use official paystack-sdk API: paystack.Subaccount.fetch()
 		func = partial(paystack.Subaccount.fetch, subaccount_code)
-		response = await loop.run_in_executor(None, func)
+		response = await asyncio.to_thread(func)
 		return response
 
 	async def list_subaccounts(self, per_page: int = 50, page: int = 1) -> Dict[str, Any]:
@@ -145,10 +141,9 @@ class PaystackClient:
 		Returns:
 			Dict with list of subaccounts
 		"""
-		loop = asyncio.get_event_loop()
 		# Use official paystack-sdk API: paystack.Subaccount.list()
 		func = partial(paystack.Subaccount.list, per_page=per_page, page=page)
-		response = await loop.run_in_executor(None, func)
+		response = await asyncio.to_thread(func)
 		return response
 
 	async def create_split(
@@ -174,7 +169,6 @@ class PaystackClient:
 		Returns:
 			Dict with split_code and details
 		"""
-		loop = asyncio.get_event_loop()
 		# Use official paystack-sdk API: paystack.Split.create()
 		func = partial(
 			paystack.Split.create,
@@ -185,7 +179,7 @@ class PaystackClient:
 			bearer_type=bearer_type,
 			bearer_subaccount=bearer_subaccount
 		)
-		response = await loop.run_in_executor(None, func)
+		response = await asyncio.to_thread(func)
 		return response
 
 	async def get_transaction_timeline(self, reference: str) -> Dict[str, Any]:
@@ -198,8 +192,7 @@ class PaystackClient:
 		Returns:
 			Dict with transaction timeline events
 		"""
-		loop = asyncio.get_event_loop()
 		# Note: timeline is called 'event' in paystack-sdk
 		func = partial(paystack.Transaction.event, reference)
-		response = await loop.run_in_executor(None, func)
+		response = await asyncio.to_thread(func)
 		return response

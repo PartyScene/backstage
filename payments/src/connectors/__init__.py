@@ -83,11 +83,18 @@ class PaymentsDB:
 
         Args:
             data (dict): The ticket data to create
+                - event (str): Event ID (required)
+                - user (str): User ID (optional, for authenticated users)
+                - guest_email (str): Email (optional, for guest purchases)
 
         Returns:
             dict: The created ticket object
         """
-        data["user"] = RecordID("users", data.pop("user"))
+        if "user" in data and data["user"]:
+            data["user"] = RecordID("users", data.pop("user"))
+        elif "user" in data:
+            data.pop("user")
+        
         data["event"] = RecordID("events", data.pop("event"))
 
         try:
@@ -188,6 +195,78 @@ class PaymentsDB:
             return None
         except Exception as e:
             self.logger.error(f"Failed to get Paystack subaccount: {str(e)}")
+            raise
+
+    async def _get_ticket_details_by_email(self, email: str, event_id: str) -> list:
+        """
+        Get ticket details for an email and event (for guest purchases).
+
+        Args:
+            email (str): The guest email
+            event_id (str): The event ID
+
+        Returns:
+            list: Ticket details including ticket number, event info
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    SELECT 
+                        ticket_number,
+                        guest_email,
+                        event.title,
+                        event.description,
+                        event.time,
+                        event.location,
+                        event.duration
+                    FROM tickets 
+                    WHERE guest_email = $email 
+                    AND event = type::thing('events', $event_id)
+                    ORDER BY created_at DESC;
+                    """,
+                    {"email": email, "event_id": event_id}
+                )
+            return record_id_to_json(result) if result else []
+        except Exception as e:
+            self.logger.error(f"Failed to get ticket details: {str(e)}")
+            raise
+
+    async def _get_ticket_details_by_user(self, user_id: str, event_id: str) -> list:
+        """
+        Get ticket details for a user and event (for authenticated purchases).
+
+        Args:
+            user_id (str): The user ID
+            event_id (str): The event ID
+
+        Returns:
+            list: Ticket details including ticket number, event info
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    SELECT 
+                        ticket_number,
+                        event.title,
+                        event.description,
+                        event.time,
+                        event.location,
+                        event.duration,
+                        user.email,
+                        user.first_name,
+                        user.last_name
+                    FROM tickets 
+                    WHERE user = type::thing('users', $user_id) 
+                    AND event = type::thing('events', $event_id)
+                    ORDER BY created_at DESC;
+                    """,
+                    {"user_id": user_id, "event_id": event_id}
+                )
+            return record_id_to_json(result) if result else []
+        except Exception as e:
+            self.logger.error(f"Failed to get ticket details: {str(e)}")
             raise
 
 

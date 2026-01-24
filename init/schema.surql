@@ -111,7 +111,8 @@ DEFINE INDEX OVERWRITE idx_event_private_time ON TABLE events COLUMNS is_private
 
 
 DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
-DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE record<users>;
+DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE option<record<users>>;
+DEFINE FIELD OVERWRITE guest_email ON TABLE tickets TYPE option<string>;
 DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
 DEFINE FIELD OVERWRITE ticket_number ON TABLE tickets TYPE option<string>;
 DEFINE FIELD OVERWRITE checked_in_at ON TABLE tickets TYPE option<datetime>;
@@ -125,6 +126,7 @@ DEFINE EVENT OVERWRITE update_ticket_number ON TABLE tickets WHEN $event = "CREA
     + rand::string(4)
     };
 DEFINE INDEX OVERWRITE idx_ticket_user ON TABLE tickets COLUMNS user;
+DEFINE INDEX OVERWRITE idx_ticket_guest_email ON TABLE tickets COLUMNS guest_email;
 DEFINE INDEX OVERWRITE idx_ticket_event ON TABLE tickets COLUMNS event;
 DEFINE INDEX OVERWRITE idx_ticket_number ON TABLE tickets COLUMNS ticket_number UNIQUE;
 DEFINE INDEX OVERWRITE idx_ticket_user_event ON TABLE tickets COLUMNS user, event;
