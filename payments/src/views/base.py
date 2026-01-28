@@ -344,6 +344,61 @@ class BaseView(QuartClassful):
                     f"Event {event_id} is paid but host {host_data.get('id')} has no Stripe account"
                 )
 
+            # Handle free events
+            if event.get("price", 0) == 0:
+                app.logger.info(f"Processing free event registration for guest {email}")
+                
+                # Create tickets
+                for i in range(ticket_count):
+                    await self.conn._create_ticket({
+                        "guest_email": email,
+                        "event": event_id
+                    })
+                
+                # Send email
+                if self.resend_client:
+                    try:
+                        ticket_details = await self.conn._get_ticket_details_by_email(email, event_id)
+                        
+                        if ticket_details:
+                            first_ticket = ticket_details[0]
+                            event_data = first_ticket.get("event", {})
+                            user_name = email.split('@')[0]
+                            
+                            event_title = event_data.get("title", "Event")
+                            event_time = str(event_data.get("time", "TBA"))
+                            event_location = event_data.get("location", {}).get("address", "Location TBA")
+                            
+                            await self.resend_client.send_ticket_email(
+                                to_email=email,
+                                user_name=user_name,
+                                event_title=event_title,
+                                event_time=event_time,
+                                event_location=event_location,
+                                tickets=ticket_details,
+                            )
+                            app.logger.info(f"Ticket email sent to {email} for event {event_id}")
+                    except Exception as email_err:
+                        app.logger.error(
+                            f"Failed to send ticket email: {str(email_err)}",
+                            exc_info=True
+                        )
+
+                return (
+                    jsonify(
+                        data={
+                            "free": True,
+                            "event_id": event_id,
+                            "ticket_count": ticket_count,
+                            "amount": 0,
+                            "currency": "usd"
+                        },
+                        message="Tickets issued successfully.",
+                        status=HTTPStatus.OK.phrase,
+                    ),
+                    HTTPStatus.OK,
+                )
+
             intent = await self.create_payment_stripe_intent(
                 amount=event.get("price", 0),
                 user_id=email,
