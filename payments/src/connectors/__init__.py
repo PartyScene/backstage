@@ -219,7 +219,8 @@ class PaymentsDB:
                         event.description,
                         event.time,
                         event.location,
-                        event.duration
+                        event.duration,
+                        created_at
                     FROM tickets 
                     WHERE guest_email = $email 
                     AND event = type::thing('events', $event_id)
@@ -267,6 +268,25 @@ class PaymentsDB:
             return record_id_to_json(result) if result else []
         except Exception as e:
             self.logger.error(f"Failed to get ticket details: {str(e)}")
+            raise
+
+    async def increment_attendee_count(self, event_id: str, count: int = 1) -> None:
+        """
+        Increment the attendee_count for an event.
+
+        Args:
+            event_id (str): The event ID
+            count (int): Number to increment by (default 1)
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.query(
+                    "UPDATE type::thing('events', $event_id) SET attendee_count += $count;",
+                    {"event_id": event_id, "count": count}
+                )
+            self.logger.info(f"Incremented attendee_count by {count} for event {event_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to increment attendee_count: {str(e)}")
             raise
 
 

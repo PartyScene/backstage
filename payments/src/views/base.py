@@ -355,6 +355,9 @@ class BaseView(QuartClassful):
                         "event": event_id
                     })
                 
+                # Increment attendee count
+                await self.conn.increment_attendee_count(event_id, ticket_count)
+                
                 # Send email
                 if self.resend_client:
                     try:
