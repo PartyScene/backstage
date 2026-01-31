@@ -26,6 +26,7 @@ DEFINE FIELD OVERWRITE email ON TABLE users TYPE option<string>;
 
 DEFINE EVENT OVERWRITE hash_pass ON TABLE users WHEN $event = "CREATE" AND auth_provider = "password" THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
 DEFINE EVENT OVERWRITE hash_email ON TABLE users WHEN $event = "CREATE" THEN {UPDATE $after SET hashed_email = crypto::argon2::generate(hashed_email)};
+DEFINE EVENT OVERWRITE hash_pass_update ON TABLE users WHEN $event = "UPDATE" AND $before.hashed_password != $after.hashed_password AND $after.hashed_password != NONE AND string::starts_with($after.hashed_password, "$argon2") = false THEN {UPDATE $after SET hashed_password = crypto::argon2::generate(hashed_password)};
 
 DEFINE INDEX OVERWRITE unique_email ON TABLE users COLUMNS email UNIQUE;
 DEFINE INDEX OVERWRITE idx_google_sub ON TABLE users COLUMNS google_sub;

@@ -198,6 +198,67 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
+    @route("/auth/set-password", methods=["POST"])
+    @jwt_required
+    async def set_password(self):
+        """Allow SSO users to set a password for dual authentication."""
+        user_id = get_jwt_identity()
+        data = await request.get_json()
+        password = data.get("password")
+        
+        if not password:
+            return api_error("Password is required", HTTPStatus.BAD_REQUEST)
+        
+        if len(password) < 8:
+            return api_error(
+                "Password must be at least 8 characters long",
+                HTTPStatus.BAD_REQUEST
+            )
+        
+        try:
+            user_email = await self.conn.decrypt_credentials(user_id)
+            user_email = user_email.decode() if isinstance(user_email, bytes) else user_email
+            
+            user = await self.conn._fetch_user_by_email(user_email)
+            if not user:
+                return api_error("User not found", HTTPStatus.NOT_FOUND)
+            
+            auth_provider = user.get("auth_provider", "password")
+            
+            if auth_provider not in ["google", "apple", "sso"]:
+                return api_error(
+                    "This endpoint is for SSO users only. Use /auth/reset-password to change your existing password.",
+                    HTTPStatus.BAD_REQUEST
+                )
+            
+            if user.get("hashed_password"):
+                return api_error(
+                    "Password already set. Use /auth/reset-password to change it.",
+                    HTTPStatus.CONFLICT
+                )
+            
+            updated_user = await self.conn.update_user({
+                "id": user_id,
+                "hashed_password": password
+            })
+            
+            if updated_user:
+                return api_response(
+                    "Password set successfully. You can now login with either SSO or password.",
+                    HTTPStatus.OK
+                )
+            else:
+                return api_error(
+                    "Failed to set password",
+                    HTTPStatus.INTERNAL_SERVER_ERROR
+                )
+        except Exception as e:
+            logger.error(f"Error setting password for user {user_id}: {e}")
+            return api_error(
+                "Failed to set password",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
     @route("/auth/exists", methods=["GET"])
     async def check_exists(self):
         """Verify if a user with the provided parameter already exists."""
@@ -385,21 +446,11 @@ class BaseView(QuartClassful):
         data = await request.get_json()
         result = await self.conn._login(data)
         
-        # Handle SSO blocking responses
+        # Handle SSO user without password set
         if isinstance(result, str):
-            if result == "use_google":
+            if result == "no_password_set":
                 return api_error(
-                    "This account was created with Google Sign-In. Please use Google Sign-In to log in.",
-                    HTTPStatus.BAD_REQUEST
-                )
-            elif result == "use_apple":
-                return api_error(
-                    "This account was created with Apple Sign-In. Please use Apple Sign-In to log in.",
-                    HTTPStatus.BAD_REQUEST
-                )
-            elif result == "use_sso":
-                return api_error(
-                    "This account was created with social sign-in. Please use social sign-in to log in.",
+                    "This account uses SSO authentication. Please login with SSO first, then you can set a password in account settings for dual authentication.",
                     HTTPStatus.BAD_REQUEST
                 )
         

@@ -242,7 +242,7 @@ class AuthDB:
     async def _login(self, data) -> dict | None:
         """
         Authenticate a user with email and password.
-        Blocks password login if user registered with SSO.
+        Supports dual authentication: SSO users can set a password for password login.
 
         Args:
             data: Dict containing email and password
@@ -250,36 +250,30 @@ class AuthDB:
         Returns:
             dict: User data if authentication succeeds
             None: If login fails
-            str: If user must use SSO (returns "use_sso" or "use_google" or "use_apple")
+            str: "no_password_set" if SSO user hasn't set a password yet
         """
         try:
             email = data["email"]
             
-            # First check if user exists with SSO auth provider
-            sso_check = await self.pool.execute_query(
-                "SELECT auth_provider, google_sub, apple_sub FROM users WHERE crypto::argon2::compare(hashed_email, $email);",
+            # Check if user exists and get auth provider + password status
+            user_check = await self.pool.execute_query(
+                "SELECT auth_provider, hashed_password FROM users WHERE crypto::argon2::compare(hashed_email, $email);",
                 {"email": email},
             )
             
-            if sso_check and sso_check[0]:
-                user = sso_check[0]
+            if user_check and user_check[0]:
+                user = user_check[0]
                 auth_provider = user.get("auth_provider")
+                has_password = user.get("hashed_password") is not None
                 
-                # If user registered with SSO, block password login
-                if auth_provider in ["google", "apple", "sso"]:
-                    logger.info(f"User {email} registered with {auth_provider}, blocking password login")
-                    
-                    # Return specific SSO provider based on auth_provider field for better UX
-                    if auth_provider == "google":
-                        return "use_google"
-                    elif auth_provider == "apple":
-                        return "use_apple"
-                    else:
-                        return "use_sso"
+                # If user registered with SSO but hasn't set a password, guide them
+                if auth_provider in ["google", "apple", "sso"] and not has_password:
+                    logger.info(f"User {email} registered with {auth_provider}, no password set")
+                    return "no_password_set"
             
-            # Proceed with password authentication for password-registered users
+            # Authenticate with password (works for both password-registered and SSO users with password set)
             result = await self.pool.execute_query(
-                "SELECT * FROM users WHERE auth_provider = 'password' AND hashed_password != NONE AND crypto::argon2::compare(hashed_password, $password) AND crypto::argon2::compare(hashed_email, $email);",
+                "SELECT * FROM users WHERE hashed_password != NONE AND crypto::argon2::compare(hashed_password, $password) AND crypto::argon2::compare(hashed_email, $email);",
                 {"password": data["password"], "email": email},
             )
             
@@ -454,6 +448,7 @@ class AuthDB:
             "organization_name": form.get("organization_name", ""),
             "hashed_password": form.get("password", ""),
             "hashed_email": email,
+            "auth_provider": "password",
         }
         # Generate Crypto credentials
         credentials = await self.envelope_service.encrypt(email.encode())
