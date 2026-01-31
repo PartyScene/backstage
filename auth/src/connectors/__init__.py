@@ -349,70 +349,83 @@ class AuthDB:
                 # First attempt: Try to create the user
                 try:
                     result = await conn.create("users", {**form, **data})
+                    
+                    # Check if result indicates a constraint violation (string error)
+                    is_constraint_violation = False
+                    if isinstance(result, str):
+                        error_msg = result.lower()
+                        is_constraint_violation = any(keyword in error_msg for keyword in ['unique', 'duplicate', 'already', 'constraint'])
+                        if is_constraint_violation:
+                            logger.info(f"User creation returned constraint violation string: {email}")
+                    
+                    # Successfully created user
                     if isinstance(result, dict):
-                        # Successfully created - update cuckoo filter
+                        # Update cuckoo filter
                         try:
                             await self.cuckoo_filter.add("email", email)
                         except Exception as filter_error:
                             logger.warning(f"Failed to add email to cuckoo filter: {filter_error}")
-
+                        
                         # Create credentials
-                        await conn.create(
-                            "credentials", {**credentials, "user": result["id"]}
-                        )
-
+                        await conn.create("credentials", {**credentials, "user": result["id"]})
                         logger.info(f"Created new SSO user: {email}")
                         return record_id_to_json(result)
+                    
+                    # Handle constraint violation from string result
+                    elif is_constraint_violation:
+                        logger.info(f"User already exists (string result), checking for account linking: {email}")
+                        # Fall through to account linking logic below
                     else:
                         logger.warning(f"User creation returned unexpected result: {result}")
+                        return None
 
                 except Exception as create_error:
-                    # Check if this is a unique constraint violation
+                    # Check if this is a unique constraint violation exception
                     error_msg = str(create_error).lower()
-                    if any(keyword in error_msg for keyword in ['unique', 'duplicate', 'already exists', 'constraint']):
-                        logger.info(f"User already exists during SSO creation, checking for account linking: {email}")
-
-                        # User already exists - check if we can link accounts
-                        try:
-                            existing_user = await self._fetch_user_by_email(email)
-                            if existing_user:
-                                # If existing user registered with password, link SSO account
-                                if existing_user.get("auth_provider") == "password":
-                                    logger.info(f"Linking SSO account to existing password user: {email}")
-                                    
-                                    # Update existing user with SSO fields
-                                    update_data = {
-                                        "id": existing_user["id"]
-                                    }
-                                    
-                                    # Add SSO provider fields
-                                    if form.get("google_sub"):
-                                        update_data["google_sub"] = form.get("google_sub")
-                                    if form.get("apple_sub"):
-                                        update_data["apple_sub"] = form.get("apple_sub")
-                                    
-                                    # Update avatar if provided and user doesn't have one
-                                    if form.get("avatar") and not existing_user.get("avatar"):
-                                        update_data["avatar"] = form.get("avatar")
-                                    
-                                    # Update the user record with SSO linking
-                                    linked_user = await self.update_user(update_data)
-                                    if linked_user and isinstance(linked_user, dict):
-                                        logger.info(f"Successfully linked SSO account for {email}")
-                                        return linked_user
-                                    else:
-                                        logger.warning(f"Failed to link SSO account for {email}, returning existing user")
-                                        return existing_user
-                                else:
-                                    # User already has SSO account
-                                    logger.info(f"User {email} already has SSO account, returning existing")
-                                    return existing_user
-                            else:
-                                logger.error(f"User should exist but fetch returned None: {email}")
-                        except Exception as fetch_error:
-                            logger.error(f"Error during account linking for {email}: {fetch_error}")
+                    if any(keyword in error_msg for keyword in ['unique', 'duplicate', 'already', 'constraint']):
+                        logger.info(f"User already exists (exception), checking for account linking: {email}")
+                        # Fall through to account linking logic below
                     else:
                         logger.error(f"Unexpected error creating SSO user {email}: {create_error}")
+                        return None
+
+                # Account linking logic - executed for both string and exception-based constraint violations
+                try:
+                    existing_user = await self._fetch_user_by_email(email)
+                    if existing_user:
+                        # If existing user registered with password, link SSO account
+                        if existing_user.get("auth_provider") == "password":
+                            logger.info(f"Linking SSO account to existing password user: {email}")
+                            
+                            # Update existing user with SSO fields
+                            update_data = {"id": existing_user["id"]}
+                            
+                            # Add SSO provider fields
+                            if form.get("google_sub"):
+                                update_data["google_sub"] = form.get("google_sub")
+                            if form.get("apple_sub"):
+                                update_data["apple_sub"] = form.get("apple_sub")
+                            
+                            # Update avatar if provided and user doesn't have one
+                            if form.get("avatar") and not existing_user.get("avatar"):
+                                update_data["avatar"] = form.get("avatar")
+                            
+                            # Update the user record with SSO linking
+                            linked_user = await self.update_user(update_data)
+                            if linked_user and isinstance(linked_user, dict):
+                                logger.info(f"Successfully linked SSO account for {email}")
+                                return linked_user
+                            else:
+                                logger.warning(f"Failed to link SSO account for {email}, returning existing user")
+                                return existing_user
+                        else:
+                            # User already has SSO account
+                            logger.info(f"User {email} already has SSO account, returning existing")
+                            return existing_user
+                    else:
+                        logger.error(f"User should exist but fetch returned None: {email}")
+                except Exception as fetch_error:
+                    logger.error(f"Error during account linking for {email}: {fetch_error}")
 
                 return None
 

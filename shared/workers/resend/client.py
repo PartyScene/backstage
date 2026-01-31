@@ -68,12 +68,12 @@ class ResendClient:
 		event_time: str,
 		event_location: str,
 		tickets: List[Dict[str, Any]],
-		from_email: str = "PartyScene <tickets@partyscene.app>",
+		from_email: str = "D from Scenes! <no-reply@mail.partyscene.app>",
 	) -> Dict[str, Any]:
 		ticket_rows = ""
 		for ticket in tickets:
 			ticket_number = ticket.get("ticket_number", "N/A")
-			qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={ticket_number}"
+			qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=DOWNLOAD:{ticket.get('event', {}).get('id', '')}:{ticket_number}"
 			ticket_rows += f"""
 			<tr>
 				<td style="padding: 15px; border-bottom: 1px solid #e5e7eb;">

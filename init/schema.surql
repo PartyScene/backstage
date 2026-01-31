@@ -3,7 +3,7 @@ DEFINE DATABASE OVERWRITE partyscene;
 DEFINE TABLE OVERWRITE users SCHEMALESS;
 DEFINE FIELD OVERWRITE first_name ON TABLE users TYPE string;
 DEFINE FIELD OVERWRITE last_name ON TABLE users TYPE string;
-DEFINE FIELD OVERWRITE organization_name ON TABLE users TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE organization_name ON TABLE users TYPE option<string> DEFAULT "";
 DEFINE FIELD OVERWRITE bio ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE username ON TABLE users TYPE option<string> DEFAULT "";
 DEFINE FIELD OVERWRITE avatar ON TABLE users TYPE string | record<media> DEFAULT "";

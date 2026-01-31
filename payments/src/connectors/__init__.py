@@ -215,6 +215,7 @@ class PaymentsDB:
                     SELECT 
                         ticket_number,
                         guest_email,
+                        event.id,
                         event.title,
                         event.description,
                         event.time,
