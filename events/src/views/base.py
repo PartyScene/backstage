@@ -788,6 +788,75 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
+    @route("/events/<event_id>/media", methods=["PUT"])
+    @ValidationMiddleware.validate_file_upload(
+        max_size=50 * 1024 * 1024,
+        required=True
+    )
+    @jwt_required
+    async def update_event_media(self, event_id: str):
+        """
+        Update event images/media by replacing all existing media with new uploads.
+        Requires multipart/form-data with file uploads.
+        """
+        try:
+            user_id = get_jwt_identity()
+            
+            # Verify event exists and user has permission
+            event = await self.conn.fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+            
+            if event.get("creator") != user_id:
+                return api_error("Unauthorized to update this event", HTTPStatus.FORBIDDEN)
+            
+            files = await request.files
+            if not files:
+                return api_error("At least one image file is required", HTTPStatus.BAD_REQUEST)
+            
+            # Prepare media data
+            media_data = []
+            filenames = [
+                f"events/{user_id}/{event_id}/{str(ruuid.uuid4()).split('-')[-1]}{os.path.splitext(file.filename)[-1]}"
+                for file in files.values()
+            ]
+            
+            # Upload files to GCP
+            for i, file in enumerate(files.values()):
+                file_upload_data = {
+                    "filename": filenames[i],
+                    "type": file.content_type,
+                    "host": user_id,
+                    "event_id": RecordID("events", event_id),
+                    "creator": user_id,
+                }
+                app.logger.info(f"Uploading updated event media to GCP: {file_upload_data['filename']}")
+                await app.RMQ._publish_media(file_upload_data, file)
+                
+                media_data.append({
+                    "filename": filenames[i],
+                    "type": file.content_type,
+                    "creator": RecordID("users", user_id),
+                })
+            
+            # Update media in database
+            result = await self.conn.update_event_media(event_id, media_data)
+            
+            return api_response(
+                "Event media updated successfully",
+                HTTPStatus.OK,
+                data=result,
+            )
+            
+        except Exception as e:
+            app.logger.error(
+                f"Error updating media for event {event_id}: {str(e)}", exc_info=True
+            )
+            return api_error(
+                f"Failed to update event media: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
     @route("/events/<event_id>/tickets/verify", methods=["POST"])
     @jwt_required
     async def verify_ticket(self, event_id: str):

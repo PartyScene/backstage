@@ -642,6 +642,60 @@ class EventsDB:
             self.logger.error(f"Failed to verify ticket: {str(e)}")
             raise
 
+    async def update_event_media(self, event_id: str, media_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Update event media by replacing existing media with new media.
+
+        Args:
+            event_id (str): The event ID
+            media_data (List[Dict[str, Any]]): List of media data dicts with 'filename', 'type', 'creator'
+
+        Returns:
+            Dict[str, Any]: The updated event with new media
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                event_record_id = RecordID("events", event_id)
+                
+                # Delete old media relationships and media records
+                await conn.query(
+                    """
+                    DELETE has_media WHERE in = type::thing('events', $event_id);
+                    DELETE media WHERE event = type::thing('events', $event_id);
+                    """,
+                    {"event_id": event_id}
+                )
+                
+                # Create new media records
+                media_ids = []
+                for media in media_data:
+                    media_record = await conn.create(
+                        "media",
+                        {
+                            "filename": media["filename"],
+                            "type": media["type"],
+                            "creator": media["creator"],
+                            "event": event_record_id,
+                        },
+                    )
+                    if isinstance(media_record, dict):
+                        media_ids.append(media_record["id"])
+                        
+                # Create new has_media relationships
+                for media_id in media_ids:
+                    await conn.query(
+                        "RELATE $event -> has_media -> $media",
+                        {"event": event_record_id, "media": media_id},
+                    )
+                
+                # Return updated event
+                result = await conn.select(event_record_id)
+                
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to update event media: {str(e)}")
+            raise
+
 async def init_db(app) -> tuple[EventsDB, SurrealDBPoolManager]:
     """
     Initialize the database connection pool and return an EventsDB instance.
