@@ -111,10 +111,25 @@ DEFINE INDEX OVERWRITE idx_event_privacy ON TABLE events COLUMNS is_private;
 DEFINE INDEX OVERWRITE idx_event_private_time ON TABLE events COLUMNS is_private, time;
 
 
+-- Ticket tiers (max 3 per event)
+DEFINE TABLE OVERWRITE ticket_tiers SCHEMAFULL;
+DEFINE FIELD OVERWRITE event ON TABLE ticket_tiers TYPE record<events>;
+DEFINE FIELD OVERWRITE name ON TABLE ticket_tiers TYPE string;
+DEFINE FIELD OVERWRITE price ON TABLE ticket_tiers TYPE number;
+DEFINE FIELD OVERWRITE capacity ON TABLE ticket_tiers TYPE option<int>;
+DEFINE FIELD OVERWRITE description ON TABLE ticket_tiers TYPE string DEFAULT "";
+DEFINE FIELD OVERWRITE sold_count ON TABLE ticket_tiers TYPE int DEFAULT 0;
+DEFINE FIELD OVERWRITE updated_at ON TABLE ticket_tiers TYPE datetime VALUE time::now();
+DEFINE FIELD OVERWRITE created_at ON TABLE ticket_tiers TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE idx_tier_event ON TABLE ticket_tiers COLUMNS event;
+DEFINE INDEX OVERWRITE unique_tier_name_event ON TABLE ticket_tiers COLUMNS event, name UNIQUE;
+
 DEFINE TABLE OVERWRITE tickets SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE tickets TYPE option<record<users>>;
 DEFINE FIELD OVERWRITE guest_email ON TABLE tickets TYPE option<string>;
+DEFINE FIELD OVERWRITE guest_name ON TABLE tickets TYPE option<string>;
 DEFINE FIELD OVERWRITE event ON TABLE tickets TYPE record<events>;
+DEFINE FIELD OVERWRITE tier ON TABLE tickets TYPE option<record<ticket_tiers>>;
 DEFINE FIELD OVERWRITE ticket_number ON TABLE tickets TYPE option<string>;
 DEFINE FIELD OVERWRITE checked_in_at ON TABLE tickets TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE tickets TYPE datetime VALUE time::now();
@@ -126,9 +141,13 @@ DEFINE EVENT OVERWRITE update_ticket_number ON TABLE tickets WHEN $event = "CREA
     + "-" 
     + rand::string(4)
     };
+DEFINE EVENT OVERWRITE increment_tier_sold ON TABLE tickets WHEN $event = "CREATE" AND $after.tier != NONE THEN {
+    UPDATE $after.tier SET sold_count += 1
+    };
 DEFINE INDEX OVERWRITE idx_ticket_user ON TABLE tickets COLUMNS user;
 DEFINE INDEX OVERWRITE idx_ticket_guest_email ON TABLE tickets COLUMNS guest_email;
 DEFINE INDEX OVERWRITE idx_ticket_event ON TABLE tickets COLUMNS event;
+DEFINE INDEX OVERWRITE idx_ticket_tier ON TABLE tickets COLUMNS tier;
 DEFINE INDEX OVERWRITE idx_ticket_number ON TABLE tickets COLUMNS ticket_number UNIQUE;
 DEFINE INDEX OVERWRITE idx_ticket_user_event ON TABLE tickets COLUMNS user, event;
 
@@ -330,7 +349,8 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         (time + duration::from::mins(duration)) AS end_time,
         (->has_media->media[WHERE event = $parent.id].{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
-        host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id}
+        host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id},
+        (SELECT id, name, price, capacity, description, sold_count FROM ticket_tiers WHERE event = $parent.id ORDER BY price ASC) AS tiers
     OMIT embeddings
     FROM ONLY $event_id
     )

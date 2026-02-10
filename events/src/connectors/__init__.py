@@ -446,6 +446,11 @@ class EventsDB:
         data["event"] = RecordID("events", data.pop("event"))
         data["is_free"] = is_free
 
+        if "tier" in data and data["tier"]:
+            data["tier"] = RecordID("ticket_tiers", data["tier"])
+        else:
+            data.pop("tier", None)
+
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("tickets", data)
@@ -453,6 +458,150 @@ class EventsDB:
 
         except Exception as e:
             self.logger.error(f"Failed to create ticket: {str(e)}")
+            raise
+
+    async def create_ticket_tier(
+        self, event_id: str, tier_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Create a ticket tier for an event. Max 3 tiers per event.
+
+        Args:
+            event_id (str): The event ID
+            tier_data (dict): Tier fields: name, price, capacity, description
+
+        Returns:
+            Dict[str, Any]: The created tier
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                count = await conn.query(
+                    "RETURN count(SELECT id FROM ticket_tiers WHERE event = type::thing('events', $event_id));",
+                    {"event_id": event_id},
+                )
+                if count and count >= 3:
+                    raise ValueError("Maximum of 3 tiers per event")
+
+                tier_data["event"] = RecordID("events", event_id)
+                result = await conn.create("ticket_tiers", tier_data)
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to create ticket tier: {str(e)}")
+            raise
+
+    async def update_ticket_tier(
+        self, tier_id: str, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update a ticket tier.
+
+        Args:
+            tier_id (str): The tier ID
+            data (dict): Fields to update (name, price, capacity, description)
+
+        Returns:
+            Dict[str, Any]: The updated tier
+        """
+        try:
+            allowed = {"name", "price", "capacity", "description"}
+            update_data = {k: v for k, v in data.items() if k in allowed}
+
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    "UPDATE ONLY type::thing('ticket_tiers', $tier_id) MERGE $data RETURN AFTER;",
+                    {"tier_id": tier_id, "data": update_data},
+                )
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to update ticket tier: {str(e)}")
+            raise
+
+    async def delete_ticket_tier(self, tier_id: str) -> bool:
+        """
+        Delete a ticket tier. Only allowed if no tickets have been sold.
+
+        Args:
+            tier_id (str): The tier ID
+
+        Returns:
+            bool: True if deleted successfully
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                tier = await conn.select(RecordID("ticket_tiers", tier_id))
+                if not tier:
+                    raise ValueError("Tier not found")
+                if tier.get("sold_count", 0) > 0:
+                    raise ValueError("Cannot delete tier with sold tickets")
+
+                await conn.query(
+                    "DELETE type::thing('ticket_tiers', $tier_id);",
+                    {"tier_id": tier_id},
+                )
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to delete ticket tier: {str(e)}")
+            raise
+
+    async def fetch_event_tiers(self, event_id: str) -> List[Dict[str, Any]]:
+        """
+        Fetch all ticket tiers for an event.
+
+        Args:
+            event_id (str): The event ID
+
+        Returns:
+            List[Dict[str, Any]]: List of tiers ordered by price ascending
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    """
+                    SELECT * FROM ticket_tiers
+                    WHERE event = type::thing('events', $event_id)
+                    ORDER BY price ASC;
+                    """,
+                    {"event_id": event_id},
+                )
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to fetch event tiers: {str(e)}")
+            raise
+
+    async def check_tier_availability(
+        self, tier_id: str, count: int = 1
+    ) -> Dict[str, Any]:
+        """
+        Check if a tier has enough capacity for the requested ticket count.
+
+        Args:
+            tier_id (str): The tier ID
+            count (int): Number of tickets requested
+
+        Returns:
+            Dict[str, Any]: Tier data if available
+
+        Raises:
+            ValueError: If tier not found or sold out
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                tier = await conn.select(RecordID("ticket_tiers", tier_id))
+            if not tier:
+                raise ValueError("Tier not found")
+
+            tier = record_id_to_json(tier)
+            capacity = tier.get("capacity")
+            sold = tier.get("sold_count", 0)
+
+            if capacity is not None and sold + count > capacity:
+                raise ValueError(
+                    f"Tier '{tier.get('name')}' is sold out "
+                    f"({sold}/{capacity} sold)"
+                )
+            return tier
+        except Exception as e:
+            self.logger.error(f"Failed to check tier availability: {str(e)}")
             raise
 
     async def fetch_event_guestlist(self, event_id: str) -> List[Dict[str, Any]]:

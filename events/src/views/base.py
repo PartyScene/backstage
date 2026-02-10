@@ -950,3 +950,148 @@ class BaseView(QuartClassful):
                 f"Failed to verify ticket: {str(e)}",
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
+
+    @route("/events/<event_id>/tiers", methods=["GET"])
+    async def get_tiers(self, event_id: str):
+        """Fetch all ticket tiers for an event"""
+        try:
+            event = await self.conn.fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            tiers = await self.conn.fetch_event_tiers(event_id)
+            return api_response(
+                "Event tiers fetched successfully",
+                HTTPStatus.OK,
+                data=tiers,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching tiers for event {event_id}: {str(e)}", exc_info=True
+            )
+            return api_error(
+                f"Failed to fetch tiers: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    @route("/events/<event_id>/tiers", methods=["POST"])
+    @jwt_required
+    async def create_tier(self, event_id: str):
+        """Create a ticket tier for an event (host only, max 3)"""
+        try:
+            user_id = get_jwt_identity()
+
+            event = await self.conn.fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            if event.get("host", {}).get("id") != user_id:
+                return api_error(
+                    "Only event hosts can manage tiers",
+                    HTTPStatus.FORBIDDEN
+                )
+
+            data = await request.get_json()
+            if not data or not data.get("name") or data.get("price") is None:
+                return api_error(
+                    "name and price are required",
+                    HTTPStatus.BAD_REQUEST
+                )
+
+            tier_data = {
+                "name": data["name"],
+                "price": float(data["price"]),
+            }
+            if "capacity" in data and data["capacity"] is not None:
+                tier_data["capacity"] = int(data["capacity"])
+            if "description" in data:
+                tier_data["description"] = str(data["description"])
+
+            result = await self.conn.create_ticket_tier(event_id, tier_data)
+            return api_response(
+                "Tier created successfully",
+                HTTPStatus.CREATED,
+                data=result,
+            )
+        except ValueError as e:
+            return api_error(str(e), HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            app.logger.error(
+                f"Error creating tier for event {event_id}: {str(e)}", exc_info=True
+            )
+            return api_error(
+                f"Failed to create tier: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    @route("/events/<event_id>/tiers/<tier_id>", methods=["PATCH"])
+    @jwt_required
+    async def update_tier(self, event_id: str, tier_id: str):
+        """Update a ticket tier (host only)"""
+        try:
+            user_id = get_jwt_identity()
+
+            event = await self.conn.fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            if event.get("host", {}).get("id") != user_id:
+                return api_error(
+                    "Only event hosts can manage tiers",
+                    HTTPStatus.FORBIDDEN
+                )
+
+            data = await request.get_json()
+            if not data:
+                return api_error(
+                    "Request body is required",
+                    HTTPStatus.BAD_REQUEST
+                )
+
+            result = await self.conn.update_ticket_tier(tier_id, data)
+            return api_response(
+                "Tier updated successfully",
+                HTTPStatus.OK,
+                data=result,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error updating tier {tier_id}: {str(e)}", exc_info=True
+            )
+            return api_error(
+                f"Failed to update tier: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    @route("/events/<event_id>/tiers/<tier_id>", methods=["DELETE"])
+    @jwt_required
+    async def delete_tier(self, event_id: str, tier_id: str):
+        """Delete a ticket tier (host only, no sold tickets)"""
+        try:
+            user_id = get_jwt_identity()
+
+            event = await self.conn.fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            if event.get("host", {}).get("id") != user_id:
+                return api_error(
+                    "Only event hosts can manage tiers",
+                    HTTPStatus.FORBIDDEN
+                )
+
+            await self.conn.delete_ticket_tier(tier_id)
+            return api_response(
+                "Tier deleted successfully",
+                HTTPStatus.OK,
+            )
+        except ValueError as e:
+            return api_error(str(e), HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            app.logger.error(
+                f"Error deleting tier {tier_id}: {str(e)}", exc_info=True
+            )
+            return api_error(
+                f"Failed to delete tier: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
