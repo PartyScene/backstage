@@ -15,7 +15,7 @@ from quart import (
 )
 from payments.src.connectors import PaymentsDB
 from shared.classful import route, QuartClassful
-from shared.utils import get_client_ip, api_response, api_error
+from shared.utils import get_client_ip, api_response, api_error, generate_signed_url
 from shared.utils.paystack_client import PaystackClient
 from shared.workers.resend import ResendClient
 
@@ -87,6 +87,99 @@ class BaseView(QuartClassful):
                 app.logger.info("Webhook endpoint created successfully.")
             return webhook_endpoints
 
+    async def _send_tickets_email(
+        self,
+        to_email: str,
+        user_name: str,
+        event_id: str,
+        is_guest: bool = True,
+    ):
+        """
+        Shared helper to fetch ticket details and send the ticket email.
+        Handles both guest (by email) and authenticated (by user_id) flows.
+        Fetches event media and signs the first image for the email banner.
+        """
+        if not self.resend_client:
+            return
+        try:
+            if is_guest:
+                ticket_details = await self.conn._get_ticket_details_by_email(to_email, event_id)
+            else:
+                ticket_details = await self.conn._get_ticket_details_by_user(to_email, event_id)
+                if ticket_details and ticket_details[0].get("user", {}).get("email"):
+                    to_email = ticket_details[0]["user"]["email"]
+                else:
+                    app.logger.warning(f"No email found for user {to_email}, skipping ticket email")
+                    return
+
+            if not ticket_details:
+                app.logger.warning(f"No ticket details found for {to_email} on event {event_id}")
+                return
+
+            first_ticket = ticket_details[0]
+            event_data = first_ticket.get("event", {})
+
+            if not is_guest:
+                user_data = first_ticket.get("user", {})
+                user_name = (
+                    f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip()
+                    or to_email.split('@')[0]
+                )
+
+            event_title = event_data.get("title", "Event")
+            event_time = str(event_data.get("time", "TBA"))
+            event_location = event_data.get("location", {}).get("address", "Location TBA")
+            event_duration = event_data.get("duration", 60)
+
+            # Extract organizer name
+            organizer = first_ticket.get("organizer", {}) or {}
+            organizer_name = (
+                organizer.get("organization_name")
+                or f"{organizer.get('first_name', '')} {organizer.get('last_name', '')}".strip()
+                or None
+            )
+
+            # Extract tier info from first ticket (all tickets in one purchase share the same tier)
+            tier = first_ticket.get("tier") or {}
+            tier_name = tier.get("name") if tier else None
+            tier_price = tier.get("price") if tier else None
+            event_price = event_data.get("price", 0)
+            unit_price = tier_price if tier_price is not None else event_price
+
+            # Fetch event media and sign the first image for the email banner
+            event_image_url = None
+            try:
+                full_event = await self.conn._fetch(event_id)
+                if full_event:
+                    media_list = full_event.get("media", [])
+                    if media_list and len(media_list) > 0:
+                        filename = media_list[0].get("filename")
+                        if filename:
+                            signed_urls = await generate_signed_url([filename])
+                            event_image_url = signed_urls.get(filename)
+            except Exception as media_err:
+                app.logger.warning(f"Failed to fetch/sign event media for email: {media_err}")
+
+            await self.resend_client.send_ticket_email(
+                to_email=to_email,
+                user_name=user_name,
+                event_title=event_title,
+                event_time=event_time,
+                event_location=event_location,
+                tickets=ticket_details,
+                event_duration=event_duration,
+                organizer_name=organizer_name,
+                tier_name=tier_name,
+                unit_price=unit_price,
+                event_image_url=event_image_url,
+            )
+            app.logger.info(f"Ticket email sent to {to_email} for event {event_id}")
+        except Exception as email_err:
+            app.logger.error(
+                f"Failed to send ticket email: {str(email_err)}",
+                exc_info=True
+            )
+
     @route("/", methods=["GET"])
     async def index(self):
         return await self.healthcheck()
@@ -141,7 +234,7 @@ class BaseView(QuartClassful):
         )
 
     async def create_payment_stripe_intent(
-        self, amount: int, user_id, event_id, ticket_count: int = 1, ip_address: str = "127.0.0.1", host_stripe_account_id: str = None, coupon_code: Optional[str] = None
+        self, amount: int, user_id, event_id, ticket_count: int = 1, ip_address: str = "127.0.0.1", host_stripe_account_id: str = None, coupon_code: Optional[str] = None, tier_id: Optional[str] = None, guest_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a Stripe payment intent for the given amount and user ID."""
         if not self.stripe_client:
@@ -170,15 +263,21 @@ class BaseView(QuartClassful):
         CALCULATION = await stripe.tax.Calculation.create_async(**tax_calculation_params) # Calculate tax
 
         # Build payment intent parameters
+        metadata = {
+            "user_id": user_id,
+            "ticket_count": str(ticket_count),
+            "event_id": event_id,
+            "tax_calculation_id": CALCULATION.id,  # Store for reference
+        }
+        if tier_id:
+            metadata["tier_id"] = tier_id
+        if guest_name:
+            metadata["guest_name"] = guest_name
+
         payment_params = {
             "amount": CALCULATION.amount_total,  # Total includes tax
             "currency": "usd",
-            "metadata": {
-                "user_id": user_id,
-                "ticket_count": str(ticket_count),
-                "event_id": event_id,
-                "tax_calculation_id": CALCULATION.id,  # Store for reference
-            },
+            "metadata": metadata,
             "automatic_payment_methods": {
                 "enabled": True,
             },
@@ -217,6 +316,8 @@ class BaseView(QuartClassful):
         user_email: str,
         ticket_count: int = 1,
         host_paystack_subaccount: Optional[str] = None,
+        tier_id: Optional[str] = None,
+        guest_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create a Paystack transaction for ticket purchase.
@@ -229,6 +330,8 @@ class BaseView(QuartClassful):
             user_email: User's email address
             ticket_count: Number of tickets
             host_paystack_subaccount: Host's Paystack subaccount code for split payments
+            tier_id: Optional ticket tier ID
+            guest_name: Optional guest name
 
         Returns:
             Dict with authorization_url, access_code, reference, etc.
@@ -248,6 +351,10 @@ class BaseView(QuartClassful):
             "event_id": event_id,
             "ticket_count": ticket_count,
         }
+        if tier_id:
+            metadata["tier_id"] = tier_id
+        if guest_name:
+            metadata["guest_name"] = guest_name
 
         # Initialize transaction with Paystack
         transaction = await self.paystack_client.initialize_transaction(
@@ -296,6 +403,7 @@ class BaseView(QuartClassful):
         try:
             data: dict = await request.get_json()
             email = data.get("email", "").strip().lower()
+            guest_name = data.get("name", "").strip()
             ticket_count = data.get("ticket_count", 1)
 
             if not email:
@@ -338,54 +446,47 @@ class BaseView(QuartClassful):
             
             host_data = event.get("host", {})
             host_stripe_account_id = host_data.get("stripe_account_id", "")
+
+            # Resolve tier if provided
+            tier_id = data.get("tier_id")
+            ticket_price = event.get("price", 0)
+            if tier_id:
+                try:
+                    tier = await self.conn.check_tier_availability(tier_id, ticket_count)
+                    ticket_price = tier.get("price", ticket_price)
+                except ValueError as e:
+                    return (
+                        jsonify(message=str(e), status=HTTPStatus.BAD_REQUEST.phrase),
+                        HTTPStatus.BAD_REQUEST,
+                    )
             
-            if event.get("price", 0) > 0 and not host_stripe_account_id:
+            if ticket_price > 0 and not host_stripe_account_id:
                 app.logger.warning(
                     f"Event {event_id} is paid but host {host_data.get('id')} has no Stripe account"
                 )
 
-            # Handle free events
-            if event.get("price", 0) == 0:
+            # Handle free events / free tiers
+            if ticket_price == 0:
                 app.logger.info(f"Processing free event registration for guest {email}")
                 
                 # Create tickets
+                ticket_data = {"guest_email": email, "event": event_id}
+                if guest_name:
+                    ticket_data["guest_name"] = guest_name
+                if tier_id:
+                    ticket_data["tier"] = tier_id
                 for i in range(ticket_count):
-                    await self.conn._create_ticket({
-                        "guest_email": email,
-                        "event": event_id
-                    })
+                    await self.conn._create_ticket(ticket_data.copy())
                 
                 # Increment attendee count
                 await self.conn.increment_attendee_count(event_id, ticket_count)
                 
-                # Send email
-                if self.resend_client:
-                    try:
-                        ticket_details = await self.conn._get_ticket_details_by_email(email, event_id)
-                        
-                        if ticket_details:
-                            first_ticket = ticket_details[0]
-                            event_data = first_ticket.get("event", {})
-                            user_name = email.split('@')[0]
-                            
-                            event_title = event_data.get("title", "Event")
-                            event_time = str(event_data.get("time", "TBA"))
-                            event_location = event_data.get("location", {}).get("address", "Location TBA")
-                            
-                            await self.resend_client.send_ticket_email(
-                                to_email=email,
-                                user_name=user_name,
-                                event_title=event_title,
-                                event_time=event_time,
-                                event_location=event_location,
-                                tickets=ticket_details,
-                            )
-                            app.logger.info(f"Ticket email sent to {email} for event {event_id}")
-                    except Exception as email_err:
-                        app.logger.error(
-                            f"Failed to send ticket email: {str(email_err)}",
-                            exc_info=True
-                        )
+                await self._send_tickets_email(
+                    to_email=email,
+                    user_name=guest_name or email.split('@')[0],
+                    event_id=event_id,
+                    is_guest=True,
+                )
 
                 return (
                     jsonify(
@@ -403,13 +504,15 @@ class BaseView(QuartClassful):
                 )
 
             intent = await self.create_payment_stripe_intent(
-                amount=event.get("price", 0),
+                amount=ticket_price,
                 user_id=email,
                 event_id=event_id,
                 ticket_count=ticket_count,
                 ip_address=get_client_ip(request),
                 host_stripe_account_id=host_stripe_account_id if host_stripe_account_id else None,
-                coupon_code=data.get("coupon_code", "")
+                coupon_code=data.get("coupon_code", ""),
+                tier_id=tier_id,
+                guest_name=guest_name if guest_name else None
             )
 
             return (
@@ -482,36 +585,39 @@ class BaseView(QuartClassful):
 
             coupon_code = data.get("coupon_code", "")
 
-
-
             # Get host's Stripe Connect account ID if available
             host_data = event.get("host", {})
             host_stripe_account_id = host_data.get("stripe_account_id", "")
+
+            # Resolve tier if provided
+            tier_id = data.get("tier_id")
+            ticket_price = event.get("price", 0)
+            if tier_id:
+                try:
+                    tier = await self.conn.check_tier_availability(tier_id, ticket_count)
+                    ticket_price = tier.get("price", ticket_price)
+                except ValueError as e:
+                    return (
+                        jsonify(message=str(e), status=HTTPStatus.BAD_REQUEST.phrase),
+                        HTTPStatus.BAD_REQUEST,
+                    )
             
             # Validate host has completed Stripe onboarding for paid events
-            if event.get("price", 0) > 0 and not host_stripe_account_id:
+            if ticket_price > 0 and not host_stripe_account_id:
                 app.logger.warning(
                     f"Event {event_id} is paid but host {host_data.get('id')} has no Stripe account"
                 )
-                # Optionally enforce this as required:
-                # status_code = HTTPStatus.BAD_REQUEST
-                # return (
-                #     jsonify(
-                #         message="Event host must complete Stripe onboarding to sell tickets",
-                #         status=status_code.phrase
-                #     ),
-                #     status_code,
-                # )
             
             # Create a stripe payment intent
             intent = await self.create_payment_stripe_intent(
-                amount=event.get("price", 0),
+                amount=ticket_price,
                 user_id=user_id,
                 event_id=event_id,
                 ticket_count=ticket_count,
                 ip_address=get_client_ip(request),
                 host_stripe_account_id=host_stripe_account_id if host_stripe_account_id else None,
-                coupon_code=coupon_code
+                coupon_code=coupon_code,
+                tier_id=tier_id
             )
 
             # return the intent client secret
@@ -600,6 +706,7 @@ class BaseView(QuartClassful):
         try:
             data: dict = await request.get_json()
             email = data.get("email", "").strip().lower()
+            guest_name = data.get("name", "").strip()
             ticket_count = data.get("ticket_count", 1)
 
             if not email:
@@ -643,18 +750,69 @@ class BaseView(QuartClassful):
             host_data = event.get("host", {})
             host_paystack_subaccount = host_data.get("paystack_subaccount_id", "")
 
-            if event.get("price", 0) > 0 and not host_paystack_subaccount:
+            # Resolve tier if provided
+            tier_id = data.get("tier_id")
+            ticket_price = event.get("price", 0)
+            if tier_id:
+                try:
+                    tier = await self.conn.check_tier_availability(tier_id, ticket_count)
+                    ticket_price = tier.get("price", ticket_price)
+                except ValueError as e:
+                    return (
+                        jsonify(message=str(e), status=HTTPStatus.BAD_REQUEST.phrase),
+                        HTTPStatus.BAD_REQUEST,
+                    )
+
+            if ticket_price > 0 and not host_paystack_subaccount:
                 app.logger.warning(
                     f"Event {event_id} is paid but host {host_data.get('id')} has no Paystack subaccount"
                 )
 
+            # Handle free events / free tiers
+            if ticket_price == 0:
+                app.logger.info(f"Processing free event registration for guest {email}")
+
+                ticket_data = {"guest_email": email, "event": event_id}
+                if guest_name:
+                    ticket_data["guest_name"] = guest_name
+                if tier_id:
+                    ticket_data["tier"] = tier_id
+                for i in range(ticket_count):
+                    await self.conn._create_ticket(ticket_data.copy())
+
+                await self.conn.increment_attendee_count(event_id, ticket_count)
+
+                await self._send_tickets_email(
+                    to_email=email,
+                    user_name=guest_name or email.split('@')[0],
+                    event_id=event_id,
+                    is_guest=True,
+                )
+
+                return (
+                    jsonify(
+                        data={
+                            "free": True,
+                            "event_id": event_id,
+                            "ticket_count": ticket_count,
+                            "amount": 0,
+                            "currency": "NGN"
+                        },
+                        message="Tickets issued successfully.",
+                        status=HTTPStatus.OK.phrase,
+                    ),
+                    HTTPStatus.OK,
+                )
+
             transaction = await self.create_payment_paystack_transaction(
-                amount=event.get("price", 0),
+                amount=ticket_price,
                 user_id=email,
                 event_id=event_id,
                 user_email=email,
                 ticket_count=ticket_count,
                 host_paystack_subaccount=host_paystack_subaccount if host_paystack_subaccount else None,
+                tier_id=tier_id,
+                guest_name=guest_name if guest_name else None,
             )
 
             return (
@@ -743,19 +901,33 @@ class BaseView(QuartClassful):
             host_data = event.get("host", {})
             host_paystack_subaccount = host_data.get("paystack_subaccount_id", "")
 
-            if event.get("price", 0) > 0 and not host_paystack_subaccount:
+            # Resolve tier if provided
+            tier_id = data.get("tier_id")
+            ticket_price = event.get("price", 0)
+            if tier_id:
+                try:
+                    tier = await self.conn.check_tier_availability(tier_id, ticket_count)
+                    ticket_price = tier.get("price", ticket_price)
+                except ValueError as e:
+                    return (
+                        jsonify(message=str(e), status=HTTPStatus.BAD_REQUEST.phrase),
+                        HTTPStatus.BAD_REQUEST,
+                    )
+
+            if ticket_price > 0 and not host_paystack_subaccount:
                 app.logger.warning(
                     f"Event {event_id} is paid but host {host_data.get('id')} has no Paystack subaccount"
                 )
 
             # Create Paystack transaction
             transaction = await self.create_payment_paystack_transaction(
-                amount=event.get("price", 0),
+                amount=ticket_price,
                 user_id=user_id,
                 event_id=event_id,
                 user_email=user_email,
                 ticket_count=ticket_count,
                 host_paystack_subaccount=host_paystack_subaccount if host_paystack_subaccount else None,
+                tier_id=tier_id,
             )
 
             # Return transaction data to frontend
@@ -848,26 +1020,34 @@ class BaseView(QuartClassful):
                 ticket_count = int(metadata.get("ticket_count"))
                 user_or_email = metadata.get("user_id")
                 event_id = metadata.get("event_id")
+                tier_id = metadata.get("tier_id")
+                guest_name = metadata.get("guest_name")
                 
                 is_guest = "@" in user_or_email
                 
                 if is_guest:
                     app.logger.info(f"Processing guest purchase for email: {user_or_email}")
                     for i in range(ticket_count):
-                        await self.conn._create_ticket({
+                        ticket_data = {
                             "guest_email": user_or_email,
                             "event": event_id
-                        })
+                        }
+                        if guest_name:
+                            ticket_data["guest_name"] = guest_name
+                        if tier_id:
+                            ticket_data["tier"] = tier_id
+                        await self.conn._create_ticket(ticket_data)
                         app.logger.info(f"Guest ticket {i+1} created for {user_or_email}")
-                    
-                    ticket_email = user_or_email
                 else:
                     app.logger.info(f"Processing authenticated purchase for user: {user_or_email}")
                     for i in range(ticket_count):
-                        await self.conn._create_ticket({
+                        ticket_data = {
                             "user": user_or_email,
                             "event": event_id
-                        })
+                        }
+                        if tier_id:
+                            ticket_data["tier"] = tier_id
+                        await self.conn._create_ticket(ticket_data)
                         app.logger.info(f"Ticket {i+1} created for user {user_or_email}")
                     
                     await self.conn.create_attendance({
@@ -876,46 +1056,16 @@ class BaseView(QuartClassful):
                         "status": "paid",
                     })
                     app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
-                    
-                    ticket_email = None
 
-                if self.resend_client:
-                    try:
-                        if is_guest:
-                            ticket_details = await self.conn._get_ticket_details_by_email(user_or_email, event_id)
-                        else:
-                            ticket_details = await self.conn._get_ticket_details_by_user(user_or_email, event_id)
-                            if ticket_details and ticket_details[0].get("user", {}).get("email"):
-                                ticket_email = ticket_details[0]["user"]["email"]
-                        
-                        if ticket_email and ticket_details:
-                            first_ticket = ticket_details[0]
-                            event_data = first_ticket.get("event", {})
-                            
-                            if is_guest:
-                                user_name = ticket_email.split('@')[0]
-                            else:
-                                user_data = first_ticket.get("user", {})
-                                user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or ticket_email.split('@')[0]
-                            
-                            event_title = event_data.get("title", "Event")
-                            event_time = str(event_data.get("time", "TBA"))
-                            event_location = event_data.get("location", {}).get("address", "Location TBA")
-                            
-                            await self.resend_client.send_ticket_email(
-                                to_email=ticket_email,
-                                user_name=user_name,
-                                event_title=event_title,
-                                event_time=event_time,
-                                event_location=event_location,
-                                tickets=ticket_details,
-                            )
-                            app.logger.info(f"Ticket email sent to {ticket_email} for event {event_id}")
-                    except Exception as email_err:
-                        app.logger.error(
-                            f"Failed to send ticket email: {str(email_err)}",
-                            exc_info=True
-                        )
+                # Increment attendee count
+                await self.conn.increment_attendee_count(event_id, ticket_count)
+
+                await self._send_tickets_email(
+                    to_email=user_or_email,
+                    user_name=guest_name or user_or_email.split('@')[0],
+                    event_id=event_id,
+                    is_guest=is_guest,
+                )
 
             elif "type" in metadata and metadata["type"] == "KYC_PAYMENT":
                 user_id = metadata.get("user_id")
@@ -1031,6 +1181,8 @@ class BaseView(QuartClassful):
                 user_or_email = metadata.get("user_id")
                 event_id = metadata.get("event_id")
                 ticket_count = int(metadata.get("ticket_count", 1))
+                tier_id = metadata.get("tier_id")
+                guest_name = metadata.get("guest_name")
 
                 if not user_or_email or not event_id:
                     app.logger.error(f"Missing user_id or event_id in metadata: {metadata}")
@@ -1041,20 +1193,26 @@ class BaseView(QuartClassful):
                 if is_guest:
                     app.logger.info(f"Processing guest purchase for email: {user_or_email}")
                     for i in range(ticket_count):
-                        await self.conn._create_ticket({
+                        ticket_data = {
                             "guest_email": user_or_email,
                             "event": event_id
-                        })
+                        }
+                        if guest_name:
+                            ticket_data["guest_name"] = guest_name
+                        if tier_id:
+                            ticket_data["tier"] = tier_id
+                        await self.conn._create_ticket(ticket_data)
                         app.logger.info(f"Guest ticket {i+1} created for {user_or_email}")
-                    
-                    ticket_email = user_or_email
                 else:
                     app.logger.info(f"Processing authenticated purchase for user: {user_or_email}")
                     for i in range(ticket_count):
-                        await self.conn._create_ticket({
+                        ticket_data = {
                             "user": user_or_email,
                             "event": event_id
-                        })
+                        }
+                        if tier_id:
+                            ticket_data["tier"] = tier_id
+                        await self.conn._create_ticket(ticket_data)
                         app.logger.info(f"Ticket {i+1} created for user {user_or_email}")
                     
                     await self.conn.create_attendance({
@@ -1063,46 +1221,16 @@ class BaseView(QuartClassful):
                         "status": "paid"
                     })
                     app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
-                    
-                    ticket_email = None
 
-                if self.resend_client:
-                    try:
-                        if is_guest:
-                            ticket_details = await self.conn._get_ticket_details_by_email(user_or_email, event_id)
-                        else:
-                            ticket_details = await self.conn._get_ticket_details_by_user(user_or_email, event_id)
-                            if ticket_details and ticket_details[0].get("user", {}).get("email"):
-                                ticket_email = ticket_details[0]["user"]["email"]
-                        
-                        if ticket_email and ticket_details:
-                            first_ticket = ticket_details[0]
-                            event_data = first_ticket.get("event", {})
-                            
-                            if is_guest:
-                                user_name = ticket_email.split('@')[0]
-                            else:
-                                user_data = first_ticket.get("user", {})
-                                user_name = f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or ticket_email.split('@')[0]
-                            
-                            event_title = event_data.get("title", "Event")
-                            event_time = str(event_data.get("time", "TBA"))
-                            event_location = event_data.get("location", {}).get("address", "Location TBA")
-                            
-                            await self.resend_client.send_ticket_email(
-                                to_email=ticket_email,
-                                user_name=user_name,
-                                event_title=event_title,
-                                event_time=event_time,
-                                event_location=event_location,
-                                tickets=ticket_details,
-                            )
-                            app.logger.info(f"Ticket email sent to {ticket_email} for event {event_id}")
-                    except Exception as email_err:
-                        app.logger.error(
-                            f"Failed to send ticket email: {str(email_err)}",
-                            exc_info=True
-                        )
+                # Increment attendee count
+                await self.conn.increment_attendee_count(event_id, ticket_count)
+
+                await self._send_tickets_email(
+                    to_email=user_or_email,
+                    user_name=guest_name or user_or_email.split('@')[0],
+                    event_id=event_id,
+                    is_guest=is_guest,
+                )
 
             except Exception as e:
                 app.logger.error(

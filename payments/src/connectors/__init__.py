@@ -86,6 +86,7 @@ class PaymentsDB:
                 - event (str): Event ID (required)
                 - user (str): User ID (optional, for authenticated users)
                 - guest_email (str): Email (optional, for guest purchases)
+                - tier (str): Tier ID (optional)
 
         Returns:
             dict: The created ticket object
@@ -97,6 +98,11 @@ class PaymentsDB:
         
         data["event"] = RecordID("events", data.pop("event"))
 
+        if "tier" in data and data["tier"]:
+            data["tier"] = RecordID("ticket_tiers", data["tier"])
+        else:
+            data.pop("tier", None)
+
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("tickets", data)
@@ -104,6 +110,42 @@ class PaymentsDB:
 
         except Exception as e:
             self.logger.error(f"Failed to create ticket: {str(e)}")
+            raise
+
+    async def check_tier_availability(
+        self, tier_id: str, count: int = 1
+    ) -> Dict[str, Any]:
+        """
+        Check if a tier has enough capacity for the requested ticket count.
+
+        Args:
+            tier_id (str): The tier ID
+            count (int): Number of tickets requested
+
+        Returns:
+            Dict[str, Any]: Tier data if available
+
+        Raises:
+            ValueError: If tier not found or sold out
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                tier = await conn.select(RecordID("ticket_tiers", tier_id))
+            if not tier:
+                raise ValueError("Tier not found")
+
+            tier = record_id_to_json(tier)
+            capacity = tier.get("capacity")
+            sold = tier.get("sold_count", 0)
+
+            if capacity is not None and sold + count > capacity:
+                raise ValueError(
+                    f"Tier '{tier.get('name')}' is sold out "
+                    f"({sold}/{capacity} sold)"
+                )
+            return tier
+        except Exception as e:
+            self.logger.error(f"Failed to check tier availability: {str(e)}")
             raise
 
     async def _get_events_count(self) -> int:
@@ -215,12 +257,16 @@ class PaymentsDB:
                     SELECT 
                         ticket_number,
                         guest_email,
+                        guest_name,
+                        tier.{name, price} AS tier,
                         event.id,
                         event.title,
                         event.description,
                         event.time,
                         event.location,
                         event.duration,
+                        event.price,
+                        event.host.{organization_name, first_name, last_name} AS organizer,
                         created_at
                     FROM tickets 
                     WHERE guest_email = $email 
@@ -251,11 +297,15 @@ class PaymentsDB:
                     """
                     SELECT 
                         ticket_number,
+                        tier.{name, price} AS tier,
+                        event.id,
                         event.title,
                         event.description,
                         event.time,
                         event.location,
                         event.duration,
+                        event.price,
+                        event.host.{organization_name, first_name, last_name} AS organizer,
                         user.email,
                         user.first_name,
                         user.last_name
