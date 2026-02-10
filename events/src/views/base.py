@@ -30,6 +30,7 @@ from shared.workers.rmq import RMQBroker
 import uuid_utils as ruuid
 
 from surrealdb import RecordID, Duration
+from surrealdb.data import GeometryPoint
 
 
 class BaseView(QuartClassful):
@@ -244,6 +245,32 @@ class BaseView(QuartClassful):
         if not data:
             return api_error("Request body is required.", HTTPStatus.BAD_REQUEST)
         try:
+            # Format fields to match DB schema (same transforms as create_event)
+            if "time" in data:
+                data["time"] = datetime.fromisoformat(
+                    data["time"].replace("Z", "+00:00")
+                )
+
+            if "duration" in data:
+                data["duration"] = Duration.parse(data["duration"]).minutes
+
+            if "coordinates" in data:
+                coords = tuple(float(x) for x in data.pop("coordinates"))
+                data["location"] = {
+                    "address": data.get("location", ""),
+                    "coordinates": GeometryPoint.parse_coordinates(coords),
+                }
+            elif "location" in data:
+                data["location"] = {
+                    "address": data["location"],
+                }
+
+            if "is_private" in data and isinstance(data["is_private"], str):
+                data["is_private"] = data["is_private"] == "true"
+
+            if "is_free" in data and isinstance(data["is_free"], str):
+                data["is_free"] = data["is_free"] == "true"
+
             if event_id:
                 event_info = await self.conn.fetch(event_id)
                 if not event_info:

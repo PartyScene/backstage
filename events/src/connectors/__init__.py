@@ -680,6 +680,10 @@ class EventsDB:
                     )
                     if isinstance(media_record, dict):
                         media_ids.append(media_record["id"])
+                    else:
+                        self.logger.error(
+                            f"Media create returned unexpected result: {media_record} for {media['filename']}"
+                        )
                         
                 # Create new has_media relationships
                 for media_id in media_ids:

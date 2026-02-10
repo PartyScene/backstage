@@ -203,7 +203,7 @@ DEFINE INDEX unique_blocks ON TABLE blocks COLUMNS in, out UNIQUE;
 -- & Finally? A table for media
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
-DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "video/mp4" | "video/quicktime" | "vod";
+DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "image/heic" | "image/heif" | "image/webp" | "video/mp4" | "video/quicktime" | "vod";
 DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE status ON media TYPE string DEFAULT "pending";
@@ -328,7 +328,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         SELECT
         *,
         (time + duration::from::mins(duration)) AS end_time,
-        (->has_media->media.{creator, metadata,  filename, url}) AS media,
+        (->has_media->media[WHERE event = $parent.id].{creator, metadata,  filename, url}) AS media,
         <-attends<-users AS attendees,
         host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id}
     OMIT embeddings

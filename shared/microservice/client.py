@@ -118,7 +118,7 @@ class MicroService(Quart):
         async def log_request():
             if len(request.path) > 1:
                 logger.warning(request.headers.to_wsgi_list())
-                logger.warning(f"Request Path: {request.path}")
+                logger.warning(f"Request Overview: Method: {request.method}, Path: {request.path}")
                 logger.warning(f"Request body: {await request.data}")
                 logger.warning(f"Request args: {request.args}")
 

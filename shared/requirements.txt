@@ -20,6 +20,7 @@ ormsgpack
 obstore
 bleach
 email-validator
+pillow-heif
 python-ffmpeg
 PyJWT[crypto]>=2.10.1
 paystack-sdk

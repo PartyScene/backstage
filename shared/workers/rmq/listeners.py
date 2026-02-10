@@ -9,6 +9,8 @@ import tempfile
 import io
 
 from PIL import Image, ImageOps
+from pillow_heif import register_heif_opener
+register_heif_opener()
 
 from obstore import store
 import obstore as obs

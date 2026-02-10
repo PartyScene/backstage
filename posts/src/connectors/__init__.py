@@ -220,7 +220,7 @@ class PostsDB:
             event_info = await conn.select(data["event"])
             
             # Check if user is the event creator/host - they don't need tickets
-            is_event_host = event_info.get("host") == data["creator"]
+            is_event_host = event_info[0].get("host") == data["creator"]
             
             # Only check for ticket if user is not the event host
             if not is_event_host:
