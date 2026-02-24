@@ -284,7 +284,29 @@ DEFINE FUNCTION OVERWRITE fn::fetch_events_by_location($coordinates: Point, $dis
 };
 
 
--- 
+DEFINE FUNCTION OVERWRITE fn::fetch_all_events($page: number, $limit: number) {
+
+    LET $page =
+        IF (type::is::number($page)) THEN
+            $page;
+        ELSE
+            1;
+        END;
+
+    LET $limit =
+        IF (type::is::number($limit)) THEN
+            $limit;
+        ELSE
+            50;
+        END;
+
+    RETURN (
+        SELECT fn::fetch_event(id) AS event, created_at FROM events
+        ORDER BY created_at DESC LIMIT $limit START ($page - 1) * $limit
+    )
+};
+
+--
 DEFINE FUNCTION OVERWRITE fn::fetch_public_events($page: number, $limit: number) {
 
 
@@ -348,7 +370,9 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         *,
         (time + duration::from::mins(duration)) AS end_time,
         (->has_media->media[WHERE event = $parent.id].{creator, metadata,  filename, url}) AS media,
-        <-attends<-users AS attendees,
+        array::concat(<-attends<-users, (SELECT * FROM tickets WHERE event = $parent.id AND guest_email)) AS attendees,
+        (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at != NONE) AS scanned_tickets,
+        (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at = NONE) AS unscanned_tickets,
         host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id},
         (SELECT id, name, price, capacity, description, sold_count FROM ticket_tiers WHERE event = $parent.id ORDER BY price ASC) AS tiers
     OMIT embeddings
