@@ -315,7 +315,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_user_tickets($origin: record, $page: option<
     LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
 
     RETURN (
-        SELECT id, (SELECT * FROM out) AS event, (SELECT *, tier.{id, name, price, description} AS tier_info FROM tickets WHERE user = $parent.in AND event = $parent.out) AS tickets
+        SELECT id, out.* AS event, (SELECT *, tier.{id, name, price, description} AS tier_info FROM tickets WHERE user = $parent.in AND event = $parent.out) AS tickets
         FROM attends WHERE in = $origin
         LIMIT $limit START ($page - 1) * $limit
     )
