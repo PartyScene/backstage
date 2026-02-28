@@ -408,8 +408,6 @@ class BaseView(QuartClassful):
                 "livestream",
                 call_id,
                 data={
-                    "created_by_id": user_id,
-                    "members": [user_id],
                     "name": f"Live chat — {event_id}",
                     "event_id": event_id,
                 },
