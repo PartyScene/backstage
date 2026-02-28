@@ -143,8 +143,18 @@ class BaseView(QuartClassful):
         if not user_info:
             return api_error("User not found", HTTPStatus.NOT_FOUND)
         # Generate OTP and send it to the user
+        await self.__notification_manager.create_subscriber(
+                email=email,
+                first_name=user_info.get("organization_name") or user_info.get("username") or user_info.get("first_name"),
+                last_name=user_info.get("last_name"),
+                user_id=user_info["id"],
+            )
         otp = await self.__generate_and_send_otp(
-            user_id=user_info["id"], email=email, data=data, context="forgot-password"
+            user_id=user_info["id"],
+            email=email, 
+            data=data, 
+            ip_address=get_client_ip(request),
+            context="forgot-password"
         )
         if otp:
             # Otp has been created, return success response
@@ -388,7 +398,7 @@ class BaseView(QuartClassful):
             )
 
         if otp_result := await self.__generate_and_send_otp(
-            data["id"], data.get("email"), data, context="register"
+            data["id"], data.get("email"), data, get_client_ip(request), context="register"
         ):
             # Return the OTP only in dev/test environments for easier testing
             response_data = {}
@@ -861,10 +871,12 @@ class BaseView(QuartClassful):
         user_id: str,
         email: str,
         data: Optional[dict],
+        ip_address: str,
         context: Literal["register", "forgot-password"],
     ) -> str | bool:
         """Generate and send OTP for authentication
         If data is provided, it will be stored in Redis for later verification.
+        
         If an OTP already exists for the email, it will return False.
         Args:
             user_id (str): The ID of the user.
@@ -891,7 +903,7 @@ class BaseView(QuartClassful):
             
             await self.__notification_manager.send_otp_notification(
                 user_id=user_id,
-                ip_address=get_client_ip(request),
+                ip_address=ip_address,
                 otp=otp,
             )
 
