@@ -286,7 +286,7 @@ class PostsDB:
                 )
 
             query = """
-            RELATE $users -> posts -> $media SET content = $content, event = $event;
+            RELATE $users -> posts -> $media SET content = $content, event = $event RETURN VALUE out.id;
             """
             params = {
                 "media": media_query_result["id"],
@@ -295,6 +295,7 @@ class PostsDB:
             }
             result = await conn.query(query, params)
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
+        self.logger.info(f"Media created with ID: {result}")
         return record_id_to_json(result)
 
     async def delete_post(self, id: str):

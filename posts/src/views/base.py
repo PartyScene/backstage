@@ -349,6 +349,7 @@ class BaseView(QuartClassful):
                             "filename": data["filenames"][i],
                             "type": data["types"][i],
                             "creator": user_id,
+                            "media_id": result,
                             "post_id": data["post_id"],
                         }
                         media_publish_tasks.append(app.RMQ._publish_media(file_data, file))
