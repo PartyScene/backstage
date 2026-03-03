@@ -26,9 +26,9 @@ IMAGE_BACKGROUND_COLOR = (255, 255, 255)
 
 VIDEO_MAX_HEIGHT = 1080
 VIDEO_MAX_WIDTH = 1920
-VIDEO_CRF_QUALITY = 23
-VIDEO_MAX_BITRATE = "3.5M"  # Instagram High Quality target
-VIDEO_BUFFER_SIZE = "7M"  # 2x Max Bitrate for handling motion spikes
+VIDEO_CRF_QUALITY = 21
+VIDEO_MAX_BITRATE = "5M"  # Instagram High Quality target
+VIDEO_BUFFER_SIZE = "12M"  # 2x Max Bitrate for handling motion spikes
 VIDEO_AUDIO_BITRATE = "128k"  # Instagram standard audio
 VIDEO_SAMPLE_RATE = "44100"  # Keep this
 
@@ -178,7 +178,7 @@ class RMQBroker(RabbitBroker):
                         temp_output_path,
                         vcodec="libx264",
                         acodec="aac",
-                        preset="ultrafast",
+                        preset="slow",
                         profile="high",
                         crf=str(VIDEO_CRF_QUALITY),
                         maxrate=VIDEO_MAX_BITRATE,
@@ -187,7 +187,7 @@ class RMQBroker(RabbitBroker):
                         ar=VIDEO_SAMPLE_RATE,
                         movflags="+faststart",
                         pix_fmt="yuv420p",
-                        vf=f"scale=-2:{VIDEO_MAX_HEIGHT}",
+                        vf=f"scale=-2:{VIDEO_MAX_HEIGHT}:flags=lanczos,hqdn3d=1.5:1.5:6:6",
                         threads="0" # Use all available threads
                     )
                 )
