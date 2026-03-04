@@ -125,8 +125,8 @@ class MicroService(Quart):
         @self.after_request
         async def log_response(response):
             if response.status_code not in [200, 201, 204]:
-                logger.warning(f"Request body: {await request.data}")
-                logger.warning(f"Response sent: {response.status_code}")
+                logger.warning(f"Response body: {response.data}")
+                logger.warning(f"Response code sent: {response.status_code}")
             return response
 
         @self.before_serving
