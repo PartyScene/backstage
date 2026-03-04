@@ -296,7 +296,7 @@ class PostsDB:
             result = await conn.query(query, params)
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         self.logger.info(f"Media created with ID: {result}")
-        return record_id_to_json(result)
+        return record_id_to_json(result)[0]
 
     async def delete_post(self, id: str):
         """

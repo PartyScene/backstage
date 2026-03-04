@@ -7,6 +7,7 @@ from quart_jwt_extended import get_jwt_identity, jwt_required
 
 from posts.src.connectors import PostsDB
 from shared.classful import route, QuartClassful
+from shared.utils import record_id_to_json
 from http import HTTPStatus
 from datetime import datetime
 from aiocache import cached
@@ -350,7 +351,7 @@ class BaseView(QuartClassful):
                             "type": data["types"][i],
                             "creator": user_id,
                             "media_id": result,
-                            "post_id": data["post_id"],
+                            "post_id": record_id_to_json(data["post_id"]),
                         }
                         media_publish_tasks.append(app.RMQ._publish_media(file_data, file))
 

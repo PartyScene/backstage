@@ -15,54 +15,83 @@ class MediaDB:
         return await self.pool.execute_query("INFO FOR DB")
 
     async def fetch_media(self, data) -> dict:
-        """
-        Fetch media record from the database by its unique ID.
-        """
+        """Fetch media record from the database by its unique ID."""
         async with self.pool.acquire() as conn:
             result = await conn.select(RecordID("media", data["id"]))
         return record_id_to_json(result)
 
     async def delete_media(self, data: dict):
-        """This function deletes media data.
+        """Delete a media record by ID.
 
         Args:
-            data (__dict__): Must contain media ID.
+            data (dict): Must contain media ID.
         """
         async with self.pool.acquire() as conn:
             result = await conn.delete(RecordID("media", data["id"]))
         return result
 
     async def create_media_metadata(self, data: dict) -> dict:
-        """Uploads media metadata to the database
+        """Create initial media record in the database.
 
         Args:
-            data (dict): _description_
+            data (dict): Must contain type, filename, creator, event.
         """
-
         async with self.pool.acquire() as conn:
             query = """
-            CREATE ONLY media SET type = $type, filename = $filename, creator = type::thing('users', $creator), event = type::thing('events', $event) RETURN AFTER;
+            CREATE ONLY media SET
+                type     = $type,
+                filename = $filename,
+                creator  = type::thing('users', $creator),
+                event    = type::thing('events', $event)
+            RETURN AFTER;
             """
             result = await conn.query(query, data)
 
             if isinstance(result, dict):
                 return record_id_to_json(result)
-
             else:
-                raise Exception(
-                    f"Error creating media record: {result}"
-                )  # Handle error case
+                raise Exception(f"Error creating media record: {result}")
+
+    async def update_media_metadata(self, media_id: str, metadata: dict) -> dict:
+        """
+        Patch ffprobe/Pillow metadata onto an existing media record after compression.
+
+        Stores a nested `metadata` object on the record so ffprobe fields are
+        namespaced and don't collide with top-level media fields.
+
+        Args:
+            media_id (str): The media record ID (bare string, not a RecordID).
+            metadata (dict): Extracted media metadata from ffprobe or Pillow.
+
+        Returns:
+            dict: The updated media record.
+        """
+        async with self.pool.acquire() as conn:
+            query = """
+            UPDATE ONLY type::thing('media', $media_id)
+            SET metadata = $metadata
+            RETURN AFTER;
+            """
+            result = await conn.query(query, {
+                "media_id": media_id,
+                "metadata": metadata,
+            })
+
+            if isinstance(result, dict):
+                return record_id_to_json(result)
+            else:
+                raise Exception(f"Error updating media metadata for {media_id}: {result}")
 
 
 async def init_db(app) -> MediaDB:
     """
-    Initialize the database connection pool and return an MediaDB instance.
+    Initialize the database connection pool and return a MediaDB instance.
 
     Args:
-        app: The Quart application instance
+        app: The Quart application instance.
 
     Returns:
-        MediaDB: Initialized database connector
+        tuple[MediaDB, SurrealDBPoolManager]
     """
     SCHEMA_FILE = os.getenv("SCHEMA_FILE")
     SURREAL_URI = os.getenv("SURREAL_URI")
@@ -71,10 +100,8 @@ async def init_db(app) -> MediaDB:
     NAMESPACE = "partyscene"
     DATABASE = "partyscene"
 
-    # Create connection pool manager
     pool_manager = SurrealDBPoolManager()
 
-    # Create a connection pool for media service
     pool = await pool_manager.create_pool(
         name="media_pool",
         uri=SURREAL_URI,
@@ -82,12 +109,12 @@ async def init_db(app) -> MediaDB:
         namespace=NAMESPACE,
         database=DATABASE,
         min_connections=3,
-        max_connections=20,  # Increased from 10 to handle more concurrent requests
-        max_idle_time=60,  # Reduced - recycle idle connections faster
-        connection_timeout=10.0,  # Increased from 5s to allow slower connection establishment
-        acquisition_timeout=30.0,  # Increased from 10s to 30s to prevent premature cancellation
-        health_check_interval=10,  # Reduced - check health more frequently
-        max_usage_count=100,  # Reduced - recycle connections more aggressively
+        max_connections=20,
+        max_idle_time=60,
+        connection_timeout=10.0,
+        acquisition_timeout=30.0,
+        health_check_interval=10,
+        max_usage_count=100,
         connection_retry_attempts=3,
         connection_retry_delay=1.0,
         schema_file=SCHEMA_FILE,
@@ -95,7 +122,5 @@ async def init_db(app) -> MediaDB:
         log_queries=True,
     )
 
-    # Create MediaDB instance
     media_db = MediaDB(pool)
-
     return media_db, pool_manager
