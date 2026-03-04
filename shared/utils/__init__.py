@@ -103,7 +103,7 @@ async def generate_signed_url(filenames: Sequence[str]) -> Dict[str, str]:
         method="POST",
         headers=headers,
         params=payload,
-        timeout=5.0,
+        timeout=2,
     )
     
     data = parse_rusty_req_response(response, expected_status=(200,))
