@@ -15,8 +15,8 @@ class ObstoreHandler:
     """Thin async wrapper around obstore for temp and final GCS buckets."""
 
     def __init__(self) -> None:
-        self._temp_store = store.GCSStore(os.environ["TMP_GCS_BUCKET_NAME"])
-        self._final_store = store.GCSStore(os.environ["GCS_BUCKET_NAME"])
+        self._temp_store = store.GCSStore(os.environ.get("TMP_GCS_BUCKET_NAME", "partyscene-temp"))
+        self._final_store = store.GCSStore(os.environ.get("GCS_BUCKET_NAME", "partyscene"))
 
     # ---------- Temp bucket (staging) ----------
     async def put_temp_bytes(self, key: str, data: bytes, content_type: Optional[str] = None) -> None:
