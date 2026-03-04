@@ -1,6 +1,7 @@
 from quart import Quart
 
 import os
+import uuid
 from datetime import timedelta
 from typing import Literal, Sequence, Optional, Dict, Any
 import asyncio
@@ -18,6 +19,8 @@ from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
 import ormsgpack
 from ffmpeg.asyncio import FFmpeg
 from ffmpeg.errors import FFmpegError
+
+from shared.utils.obstore import get_obstore
 
 # Compression constants
 IMAGE_MAX_DIMENSION = 2048
@@ -59,19 +62,39 @@ class RMQBroker(RabbitBroker):
 
             @self.subscriber(self.RABBITMQ_MEDIA_QUEUE)
             async def handle_media_upload(message: RabbitMessage):
-                """Process media upload: compress, then upload in background."""
-                filename = message.headers.get("filename")
-                content_type = message.headers.get("content-type")
-                
-                if not filename or not content_type:
-                    self.logger.error(f"❌ Missing required headers: filename={filename}, content_type={content_type}")
-                    await message.nack(requeue=False)
-                    return
+                """Process media upload: fetch from temp, compress, upload to final, cleanup temp."""
+                payload = message.body
+                # After decode_message, payload is either a dict (new format) or bytes (legacy)
+                if isinstance(payload, dict):
+                    # New format: message contains source_key and metadata
+                    source_key = payload.get("source_key")
+                    content_type = payload.get("content_type")
+                    filename = payload.get("filename")
+                    if not source_key or not content_type:
+                        self.logger.error(f"❌ Missing required payload fields: source_key={source_key}, content_type={content_type}")
+                        await message.nack(requeue=False)
+                        return
+                else:
+                    # Legacy format: message body is bytes, headers have metadata
+                    self.logger.warning("⚠️ Received legacy bytes payload; consider migrating producers")
+                    filename = message.headers.get("filename")
+                    content_type = message.headers.get("content-type")
+                    if not filename or not content_type:
+                        self.logger.error(f"❌ Missing required headers: filename={filename}, content_type={content_type}")
+                        await message.nack(requeue=False)
+                        return
+                    # Legacy path: treat bytes directly (no temp staging)
+                    file_bytes = payload
+                    source_key = None
                 
                 try:
-                    # Compress image or video (GPU/CPU bound - blocking)
-                    file_bytes = message.body
+                    # Fetch bytes from temp store if source_key is present (new path)
+                    if source_key:
+                        obstore = get_obstore()
+                        file_bytes = await obstore.get_temp_bytes(source_key)
+                        self.logger.info(f"📥 Fetched from temp: {source_key}")
                     
+                    # Compress image or video (GPU/CPU bound - blocking)
                     if content_type.startswith('image/'):
                         file_bytes = await self.compress_image(file_bytes)
                         self.logger.info(f"✅ Compressed image: {filename}")
@@ -84,17 +107,31 @@ class RMQBroker(RabbitBroker):
                             content_type = 'video/mp4'
                         self.logger.info(f"✅ Compressed video: {filename}")
                     
-                    # Upload in background (network bound - non-blocking)
-                    asyncio.create_task(
-                        self._background_upload(filename, content_type, file_bytes)
-                    )
+                    # Determine final destination key
+                    if source_key:
+                        # New path: write to final bucket
+                        # Derive final key from source_key: replace tmp/ prefix with media/
+                        dest_key = filename
+                        # Ensure extension is normalized (e.g., .mp4 for videos)
+                        if not dest_key.lower().endswith('.mp4'):
+                            dest_key = os.path.splitext(dest_key)[0] + '.mp4'
+                        # Upload to final bucket in background
+                        asyncio.create_task(
+                            self._background_upload_final(dest_key, content_type, file_bytes, source_key)
+                        )
+                        self.logger.info(f"📤 Queued final upload: {dest_key}")
+                    else:
+                        # Legacy path: upload to final bucket directly (no temp cleanup)
+                        asyncio.create_task(
+                            self._background_upload_legacy(filename, content_type, file_bytes)
+                        )
+                        self.logger.info(f"📤 Queued legacy upload: {filename}")
                     
                     # Ack immediately after compression (don't wait for upload)
                     await message.ack()
-                    self.logger.info(f"📤 Queued upload: {filename}")
                     
                     # Free memory
-                    del message.body
+                    del file_bytes
                     gc.collect()
                     
                 except Exception as e:
@@ -272,19 +309,22 @@ class RMQBroker(RabbitBroker):
             self.logger.error(f"Image compression failed: {e}, returning original")
             return image_bytes
 
-    async def _background_upload(self, filename: str, content_type: str, file_bytes: bytes) -> None:
-        """Upload file to GCS in the background without blocking the queue."""
+    async def _background_upload_final(self, dest_key: str, content_type: str, file_bytes: bytes, source_key: str) -> None:
+        """Upload compressed file to final bucket and cleanup temp object."""
         try:
-            await obs.put_async(
-                self.OBS_STORE,
-                filename,
-                file_bytes,
-                attributes={"Content-Type": content_type},
-            )
-            self.logger.info(f"✅ Upload complete: {filename} ({len(file_bytes)} bytes)")
+            obstore = get_obstore()
+            await obstore.put_final_bytes(dest_key, file_bytes, content_type)
+            self.logger.info(f"✅ Final upload complete: {dest_key} ({len(file_bytes)} bytes)")
+            
+            # Cleanup temp object on success
+            try:
+                await obstore.delete_temp(source_key)
+                self.logger.info(f"🗑️ Cleaned temp: {source_key}")
+            except Exception as cleanup_err:
+                self.logger.warning(f"⚠️ Failed to cleanup temp {source_key}: {cleanup_err}")
             
         except Exception as e:
-            self.logger.error(f"❌ Upload failed for {filename} (type: {content_type}, size: {len(file_bytes)} bytes): {e}")
+            self.logger.error(f"❌ Final upload failed for {dest_key} (type: {content_type}, size: {len(file_bytes)} bytes): {e}")
             # TODO: Implement retry logic or dead letter queue
             
         finally:
@@ -292,44 +332,25 @@ class RMQBroker(RabbitBroker):
             del file_bytes
             gc.collect()
 
-    async def upload_to_bucket(self, data: Dict[str, str], file_bytes: bytes) -> None:
-        """Upload and compress media to GCS bucket."""
-        # Check if this is a MOV file that needs conversion
-        filename = data["filename"]
-        content_type = data["content-type"]
-        
-        # Compress images
-        if content_type.startswith('image/'):
-            try:
-                original_size = len(file_bytes)
-                file_bytes = await self.compress_image(file_bytes)
-                self.logger.info(f"Compressed image {filename}: {original_size} -> {len(file_bytes)} bytes")
-            except Exception as e:
-                self.logger.error(f"Failed to compress image {filename} ({len(file_bytes)} bytes): {e}")
-                # Continue with original file if compression fails
-        
-        # Compress videos (convert MOV to MP4 and optimize all videos)
-        if content_type.startswith('video/'):
-            try:
-                original_size = len(file_bytes)
-                file_bytes = await self.compress_video(file_bytes, filename)
-                # Update filename and content type to MP4
-                if not filename.lower().endswith('.mp4'):
-                    data["filename"] = os.path.splitext(filename)[0] + '.mp4'
-                    data["content-type"] = 'video/mp4'
-                    self.logger.info(f"Converted video to MP4: {filename} -> {data['filename']} ({original_size} -> {len(file_bytes)} bytes)")
-                else:
-                    self.logger.info(f"Compressed video {filename}: {original_size} -> {len(file_bytes)} bytes")
-            except Exception as e:
-                self.logger.error(f"Failed to process video {filename} ({len(file_bytes)} bytes): {e}")
-                # Continue with original file if processing fails
-        
-        await obs.put_async(
-            self.OBS_STORE,
-            data["filename"],
-            file_bytes,
-            attributes={"Content-Type": data["content-type"]},
-        )
+    async def _background_upload_legacy(self, filename: str, content_type: str, file_bytes: bytes) -> None:
+        """Legacy upload path: directly to final bucket (no temp staging)."""
+        try:
+            await obs.put_async(
+                self.OBS_STORE,
+                filename,
+                file_bytes,
+                attributes={"Content-Type": content_type},
+            )
+            self.logger.info(f"✅ Legacy upload complete: {filename} ({len(file_bytes)} bytes)")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Legacy upload failed for {filename} (type: {content_type}, size: {len(file_bytes)} bytes): {e}")
+            # TODO: Implement retry logic or dead letter queue
+            
+        finally:
+            # Free memory after upload
+            del file_bytes
+            gc.collect()
 
     async def sign_put_urls(self, filenames: Sequence[str]) -> list:
         signed_urls = await obs.sign_async(
@@ -359,13 +380,8 @@ class RMQBroker(RabbitBroker):
         """
         Publish a message to the media queue for processing.
         
-        Args:
-            data: Dictionary containing:
-                - filename: Name of the file
-                - event: Event identifier
-                - creator: Creator identifier
-                - type: Content type (MIME type)
-            file: File bytes to be published
+        New flow: upload file bytes to temp bucket, then enqueue a small message with the temp key.
+        Legacy fallback: if temp bucket is not configured, send bytes directly (old behavior).
         """
         # Snapshot values immediately to prevent race conditions
         filename = data.get("filename")
@@ -375,12 +391,50 @@ class RMQBroker(RabbitBroker):
             self.logger.error(f"Missing required data: filename={filename}, type={content_type}")
             return
         
-        file_data = await asyncio.to_thread(file.read)
-        file_bytes: bytes = await asyncio.to_thread(ormsgpack.packb, file_data)
-        await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(
-            file_bytes,
-            headers={
+        try:
+            obstore = get_obstore()
+            # Generate a temp key with tmp/ prefix
+            temp_key = f"tmp/{filename}"
+            
+            # Read file bytes and upload to temp bucket
+            file_bytes = await asyncio.to_thread(file.read)
+            await obstore.put_temp_bytes(temp_key, file_bytes, content_type)
+            self.logger.info(f"📤 Staged to temp: {temp_key} ({len(file_bytes)} bytes)")
+            
+            # Prepare message payload with reference to temp object (no bytes)
+            payload = {
+                "source_key": temp_key,
+                "content_type": content_type,
                 "filename": filename,
-                "content-type": content_type,
-            },
-        )
+                # Include any other metadata the worker might need
+                "creator": data.get("creator"),
+                "post_id": data.get("post_id"),
+                "media_id": data.get("media_id"),
+                "event_id": data.get("event_id"),
+                "context": data.get("context"),
+            }
+            # Remove None values to keep payload clean
+            payload = {k: v for k, v in payload.items() if v is not None}
+            
+            # Publish the reference message (msgpacked dict)
+            payload_bytes = await asyncio.to_thread(ormsgpack.packb, payload)
+            await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(payload_bytes)
+            self.logger.info(f"📬 Enqueued media task: {temp_key}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to stage and enqueue media {filename}: {e}")
+            # Optional: fallback to legacy bytes payload if temp staging fails
+            try:
+                self.logger.warning("⚠️ Falling back to legacy bytes payload")
+                file_bytes = await asyncio.to_thread(file.read)
+                file_bytes_packed = await asyncio.to_thread(ormsgpack.packb, file_bytes)
+                await self.publisher(self.RABBITMQ_MEDIA_QUEUE).publish(
+                    file_bytes_packed,
+                    headers={
+                        "filename": filename,
+                        "content-type": content_type,
+                    },
+                )
+                self.logger.info(f"📬 Enqueued legacy media task: {filename}")
+            except Exception as fallback_err:
+                self.logger.error(f"❌ Legacy fallback also failed for {filename}: {fallback_err}")
