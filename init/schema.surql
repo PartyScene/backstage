@@ -384,7 +384,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_post($post_id: record) {
     RETURN (
         SELECT
         *,
-        (out.{creator, filename}) AS media
+        (out.{creator, metadata, filename}) AS media
     FROM ONLY $post_id
     )
 };
