@@ -26,7 +26,8 @@ class ObstoreHandler:
 
     async def get_temp_bytes(self, key: str) -> bytes:
         """Get bytes from the temp bucket."""
-        return await obs.get_async(self._temp_store, key)
+        result = await obs.get_async(self._temp_store, key)
+        return await result.bytes_async()
 
     async def delete_temp(self, key: str) -> None:
         """Delete an object from the temp bucket."""
@@ -48,7 +49,8 @@ class ObstoreHandler:
 
     async def get_final_bytes(self, key: str) -> bytes:
         """Get bytes from the final bucket."""
-        return await obs.get_async(self._final_store, key)
+        result = await obs.get_async(self._final_store, key)
+        return await result.bytes_async()
 
     async def exists_final(self, key: str) -> bool:
         """Check if an object exists in the final bucket."""
