@@ -7,7 +7,8 @@ import uuid
 
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
-from shared.utils import recursively_sign_object_media, api_response, api_error
+from shared.utils import recursively_sign_object_media, api_response, api_error, record_id_to_json
+
 from shared.middleware.validation import ValidationMiddleware
 
 from dataclasses import dataclass
@@ -378,7 +379,7 @@ class BaseView(QuartClassful):
                 app.logger.warning(
                     f"Uploading new event media to GCP: {file_data['filename']}"
                 )
-                await app.RMQ._publish_media(file_data, file)
+                await app.RMQ._publish_media(record_id_to_json(file_data), file)
 
             app.logger.debug(f"Creating event data: {data}")
 

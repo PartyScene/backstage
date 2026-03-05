@@ -119,8 +119,6 @@ class RMQBroker(RabbitBroker):
                     # ── Upload (background) ───────────────────────────────────
                     if source_key:
                         dest_key = filename
-                        if not dest_key.lower().endswith('.mp4'):
-                            dest_key = os.path.splitext(dest_key)[0] + '.mp4'
                         asyncio.create_task(
                             self._background_upload_final(
                                 dest_key, content_type, file_bytes, source_key, media_id, metadata
