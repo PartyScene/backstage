@@ -296,6 +296,44 @@ class UsersDB:
 
     def subset(self, d, keys):
         return {k: d[k] for k in keys if k in d}
+    
+    async def recommend_friends(self, user_id: str, limit: int = 20) -> list:
+        """
+        Return ranked friend recommendations by combining three signals:
+          - Visual similarity  (40%) — HNSW KNN on ViT-768 media embeddings
+          - Co-attendance      (35%) — shared event history via attends relation
+          - Mutual friends     (25%) — degree-2 social graph
+
+        Automatically excludes existing connections, blocked users, and self.
+
+        Args:
+            user_id (str): The requesting user's raw ID (without 'users:' prefix)
+            limit   (int): Max recommendations to return (default 20)
+
+        Returns:
+            list: [
+                {
+                    "user": { id, first_name, last_name, username, avatar, organization_name },
+                    "score": float,          # 0–1, descending
+                    "signals": {
+                        "shared_events":     int,
+                        "visual_similarity": float,
+                        "mutual_friends":    int
+                    }
+                },
+                ...
+            ]
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "RETURN fn::recommend_friends($user, $limit);",
+                {
+                    "user":  RecordID("users", user_id),
+                    "limit": limit,
+                },
+            )
+        return record_id_to_json(result)
+
 
     async def update(self, data: dict) -> dict:
         """

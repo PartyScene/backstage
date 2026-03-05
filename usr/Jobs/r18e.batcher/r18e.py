@@ -5,6 +5,11 @@ import logging  # Import standard logging
 from typing import List, Dict
 from contextlib import asynccontextmanager
 
+# Force HuggingFace to use the model baked into the Docker image at build time.
+# Prevents unauthenticated network requests to HF Hub at runtime, which are
+# rate-limited and slow. Model is pre-downloaded to HF_HOME in the Dockerfile.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 from PIL import Image
 import torch
 from transformers import ViTImageProcessor, ViTModel
@@ -17,8 +22,10 @@ SURREAL_PASS = os.environ["SURREAL_PASS"]
 SURREAL_NAMESPACE = "partyscene"
 SURREAL_DATABASE = "partyscene"
 VIT_MODEL_NAME = "google/vit-base-patch16-224-in21k"
-# Pin to specific revision for security (prevent supply chain attacks)
-VIT_MODEL_REVISION = "5dca96d486dc2a9590c20b1c4b5c2b6c8b8e7e6a"
+# Revision pinned to the last known-good commit on the main branch.
+# To get the current HEAD: huggingface_hub.model_info("google/vit-base-patch16-224-in21k").sha
+# Leave as None to always pull latest (less secure but easier to update).
+VIT_MODEL_REVISION = None  # e.g. "3f23b6b..."
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # Base delay for exponential backoff
 EMBEDDING_DIM = 768  # Expected dimension for ViT-Base
@@ -127,18 +134,19 @@ async def init_globals():
     logger.info(f"Target device: {device}")
     
     # Load processor (lightweight, no optimization needed)
-    processor = ViTImageProcessor.from_pretrained(
-        VIT_MODEL_NAME, 
-        revision=VIT_MODEL_REVISION
-    )
+    proc_kwargs = {}
+    if VIT_MODEL_REVISION:
+        proc_kwargs["revision"] = VIT_MODEL_REVISION
+    processor = ViTImageProcessor.from_pretrained(VIT_MODEL_NAME, **proc_kwargs)
     logger.info("Processor loaded")
     
     # Optimized model loading
     load_kwargs = {
-        "revision": VIT_MODEL_REVISION,
         "output_hidden_states": False,
         "low_cpu_mem_usage": True,  # Reduces memory during loading
     }
+    if VIT_MODEL_REVISION:
+        load_kwargs["revision"] = VIT_MODEL_REVISION
     
     # GPU-specific optimizations
     if use_gpu and USE_FP16:
@@ -153,26 +161,30 @@ async def init_globals():
         logger.warning(f"Updating EMBEDDING_DIM from {EMBEDDING_DIM} to {actual_dim}")
         EMBEDDING_DIM = actual_dim
     
-    # Move to device if not already there
-    if not use_gpu or not USE_FP16:
-        model.to(device)
-        if use_gpu and USE_FP16:
-            model = model.half()
+    # Always move the model to the target device.
+    # When loading with torch_dtype=float16 via from_pretrained, the weights are
+    # already in FP16 but the model is still on CPU — .to(device) is still required.
+    model = model.to(device)
     
     model.eval()  # Evaluation mode
     
     # PyTorch 2.0+ optimization: torch.compile
-    if USE_TORCH_COMPILE and hasattr(torch, "compile"):
+    # GPU only — the inductor backend requires Triton (CUDA) or a C++ toolchain.
+    # Neither is present on GCP Batch CPU VMs, causing a crash during the first
+    # forward pass even though compile() itself appears to succeed.
+    if USE_TORCH_COMPILE and use_gpu and hasattr(torch, "compile"):
         try:
             logger.info("Compiling model with torch.compile()...")
             model = torch.compile(
-                model, 
+                model,
                 mode="reduce-overhead",  # Best for batch inference
-                fullgraph=False  # More compatible
+                fullgraph=False          # More compatible
             )
             logger.info("Model compiled successfully")
         except Exception as e:
             logger.warning(f"torch.compile failed, continuing without: {e}")
+    elif USE_TORCH_COMPILE and not use_gpu:
+        logger.info("Skipping torch.compile — CPU-only runtime, inductor not available")
     
     # BetterTransformer optimization (if available)
     if USE_BETTER_TRANSFORMER:
@@ -221,6 +233,7 @@ async def init_globals():
     db_connection = AsyncSurreal(SURREAL_URI)
     try:
         async with db_init_lock:
+            await db_connection.connect(SURREAL_URI)  # Explicitly open the WS connection
             await db_connection.signin(
                 {"username": SURREAL_USER, "password": SURREAL_PASS}
             )
@@ -350,7 +363,7 @@ class Job:
         """Download single image from GCS with detailed error handling."""
         try:
             logger.debug(f"Downloading: {filename}")
-            obs_result = await obs.get_async(self.OBS_STORE, filename)
+            obs_result = await self.OBS_STORE.get_async(filename)
             image_bytes = bytes(await obs_result.bytes_async())
             logger.debug(f"Downloaded {len(image_bytes)} bytes for {filename}")
             return image_bytes

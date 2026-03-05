@@ -1,5 +1,3 @@
-
-
 # --- Stage 1: Builder ---
 # Install dependencies and download the model. Depot will cache the outputs
 # of these RUN commands aggressively across builds and machines.
@@ -32,13 +30,14 @@ RUN pip install -r requirements.txt
 
 # --- Download the Hugging Face model ---
 # Depot caches this RUN layer based on the previous layers and the command itself.
-# The downloaded model files inside HF_HOME become part of this cached layer.
+# Downloads go to $HF_HOME/hub/ — the standard layout from_pretrained() reads at runtime.
+# Do NOT use cache_dir here; it bypasses hub/ and breaks HF_HUB_OFFLINE at runtime.
 RUN python -c "from transformers import ViTImageProcessor, ViTModel; import os; \
     model_id = os.environ.get('VIT_MODEL_NAME', '${VIT_MODEL_NAME}'); \
     hf_home = os.environ.get('HF_HOME'); \
-    print(f'Downloading model {model_id} to {hf_home}') ; \
-    ViTImageProcessor.from_pretrained(model_id, cache_dir=hf_home); \
-    ViTModel.from_pretrained(model_id, cache_dir=hf_home); \
+    print(f'Downloading model {model_id} to {hf_home}/hub/') ; \
+    ViTImageProcessor.from_pretrained(model_id); \
+    ViTModel.from_pretrained(model_id); \
     print('Model download complete.')"
 
 # --- Stage 2: Runtime ---

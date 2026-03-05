@@ -672,3 +672,109 @@ class BaseView(QuartClassful):
                 f"Failed to delete connection: {str(e)}",
                 status_code,
             )
+
+    
+    @route("/users/recommendations", methods=["GET"])
+    @jwt_required
+    async def get_friend_recommendations(self):
+        """
+        Returns a ranked list of people the current user might want to connect with.
+
+        Powered by fn::recommend_friends — combines:
+          - Visual similarity between posted photos (ViT-768 HNSW)
+          - Shared event attendance history
+          - Degree-2 mutual friend graph
+
+        Query params:
+            limit (int, optional):  Max results to return. Default 20, max 50.
+
+        Response 200:
+            {
+                "message": "Recommendations fetched successfully.",
+                "data": [
+                    {
+                        "user": {
+                            "id": "users:abc123",
+                            "first_name": "...",
+                            "last_name": "...",
+                            "username": "...",
+                            "avatar": "...",
+                            "organization_name": "..."
+                        },
+                        "score": 0.74,
+                        "signals": {
+                            "shared_events": 3,
+                            "visual_similarity": 0.81,
+                            "mutual_friends": 2
+                        }
+                    }
+                ]
+            }
+
+        Notes:
+            - Users with no processed media (r18e batcher pending) will still appear
+              if they have social signals; visual_similarity will be 0.0 for them.
+            - Results are cached per user for 10 minutes in Redis to avoid
+              re-running the HNSW query on every feed refresh.
+        """
+        user_id = get_jwt_identity()
+
+        # Clamp limit to a safe range — large limits increase HNSW query cost
+        try:
+            limit = min(int(request.args.get("limit", 20)), 50)
+        except (ValueError, TypeError):
+            return api_error("limit must be an integer.", HTTPStatus.BAD_REQUEST)
+
+        # Cache key is per-user. TTL of 10 minutes balances freshness vs cost.
+        # Invalidate on: new friend connection, new block, new event attendance.
+        # (Those endpoints should call self.redis.delete(cache_key) if you want
+        #  immediate invalidation — optional, stale-for-10min is acceptable here.)
+        cache_key = f"recommendations:{user_id}:{limit}"
+
+        try:
+            # Check Redis cache first
+            cached = await self.redis.get(cache_key)
+            if cached:
+                import orjson as json
+                return api_response(
+                    "Recommendations fetched successfully.",
+                    HTTPStatus.OK,
+                    data=json.loads(cached),
+                )
+
+            recommendations = await self.conn.recommend_friends(user_id, limit)
+
+            if not recommendations:
+                return api_response(
+                    "No recommendations found yet. Connect with more people or upload photos to improve suggestions.",
+                    HTTPStatus.OK,
+                    data=[],
+                )
+
+            # Sign any media URLs in the response (avatar fields etc.)
+            recommendations = await recursively_sign_object_media(recommendations)
+
+            # Cache for 10 minutes
+            import orjson as json
+            await self.redis.setex(
+                cache_key,
+                600,  # 10 minutes TTL
+                json.dumps(recommendations, default=str),
+            )
+
+            return api_response(
+                "Recommendations fetched successfully.",
+                HTTPStatus.OK,
+                data=recommendations,
+            )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching friend recommendations for user {user_id}: {str(e)}",
+                exc_info=True,
+            )
+            return api_error(
+                f"Failed to fetch recommendations: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+

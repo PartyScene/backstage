@@ -492,3 +492,219 @@ DEFINE FUNCTION OVERWRITE fn::fetch_similar_events($event: record) {
         ORDER BY distance
     )
 };
+
+
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- fn::recommend_friends  —  Social + Visual Friend Recommendations
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- PURPOSE
+--   Returns a ranked list of users $user should be introduced to, based on
+--   three independent signals combined into a weighted score:
+--
+--   Signal A  — Visual similarity   (40% weight)
+--     Averages ViT-768 embeddings from all photos $user has posted into a
+--     single "visual profile vector". Runs a cosine HNSW KNN query against
+--     every other user's photos to find the 100 closest media records, then
+--     collapses to one best-distance per candidate user.
+--
+--   Signal B  — Co-attendance       (35% weight)
+--     Counts how many of the same events $user and candidate both attended.
+--     Capped at 10 events before normalisation.
+--
+--   Signal C  — Mutual friends      (25% weight)
+--     Counts accepted friends shared between $user and candidate.
+--     Capped at 5 before normalisation.
+--
+-- FINAL SCORE  (range 0-1, higher = stronger recommendation)
+--   score = visual * 0.40 + co_attendance * 0.35 + mutual_friends * 0.25
+--
+-- EXCLUSIONS (automatically filtered)
+--   - $user themselves
+--   - Users already connected in any non-removed state
+--   - Users $user has blocked, or who have blocked $user
+--
+-- PARAMETERS
+--   $user   record<users>   The requesting user's record ID
+--   $limit  option<int>     How many recommendations to return (default 20)
+--
+-- RETURNS
+--   Array of:
+--   {
+--     user:    { id, first_name, last_name, username, avatar, organization_name }
+--     score:   float  (0-1, descending)
+--     signals: { shared_events: int, visual_similarity: float, mutual_friends: int }
+--   }
+--
+-- DEPENDENCIES
+--   - r18e batcher must have processed $user's media (status = 'completed')
+--   - hnsw_media_embeddings index must use DIST COSINE (index migration below)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+
+-- ─── INDEX MIGRATION ─────────────────────────────────────────────────────────
+-- The existing hnsw_media_embeddings index has no DIST clause (defaults to
+-- Euclidean). ViT embeddings should be compared with cosine similarity since
+-- direction matters more than magnitude for semantic content.
+-- Also switching to TYPE F32 to halve memory usage (ViT outputs float32 anyway).
+-- OVERWRITE triggers a background rebuild - reads/writes stay live during it.
+DEFINE INDEX OVERWRITE hnsw_media_embeddings
+    ON TABLE media
+    FIELDS embeddings
+    HNSW DIMENSION 768
+    DIST COSINE
+    TYPE F32
+    M 16
+    EFC 200;
+-- ─────────────────────────────────────────────────────────────────────────────
+
+
+DEFINE FUNCTION OVERWRITE fn::recommend_friends(
+    $user:  record<users>,
+    $limit: option<int>
+) {
+    LET $k = IF type::is::int($limit) THEN $limit ELSE 20 END;
+
+
+    -- ── 0. Exclusion set ─────────────────────────────────────────────────────
+    -- Covers all directions and statuses so we never surface someone the user
+    -- has already interacted with (pending, accepted, blocked, rejected).
+    -- array::flatten collapses 5 sub-arrays; array::distinct deduplicates.
+    LET $excluded = array::distinct(array::flatten([
+        SELECT VALUE out FROM friends WHERE in  = $user AND status != 'removed',
+        SELECT VALUE in  FROM friends WHERE out = $user AND status != 'removed',
+        SELECT VALUE out FROM blocks  WHERE in  = $user,
+        SELECT VALUE in  FROM blocks  WHERE out = $user,
+        [$user]
+    ]));
+
+
+    -- ── Signal A: Visual similarity (HNSW KNN) ────────────────────────────────
+    -- Fetch all 768-dim embeddings from media this user has posted.
+    -- `creator` is indexed via idx_media_creator → fast range scan.
+    LET $my_vecs = SELECT VALUE embeddings
+        FROM media
+        WHERE creator = $user
+            AND status = 'completed'
+            AND embeddings != NONE;
+
+    LET $visual = IF array::len($my_vecs) > 0 {
+
+        -- Build average embedding: element-wise sum then scale by 1/n.
+        -- This is the user's "visual fingerprint" across all their photos.
+        LET $avg_vec = vector::scale(
+            $my_vecs.reduce(|$a, $b| vector::add($a, $b)),
+            <float>1 / array::len($my_vecs)
+        );
+
+        -- HNSW ANN search: top-100 closest media records, efSearch=40.
+        -- With DIST COSINE on the index, distance is in [0.0, 1.0]:
+        --   0.0 = same direction (most similar)
+        --   1.0 = orthogonal     (least similar)
+        -- vector::distance::knn() reuses the distance already computed by the
+        -- index operator - no redundant computation.
+        LET $knn_raw = SELECT creator, vector::distance::knn() AS dist
+            FROM media
+            WHERE embeddings <|100, 40|> $avg_vec
+                AND creator NOT IN $excluded
+                AND status = 'completed';
+
+        -- Collapse to one row per candidate user.
+        -- Take best (minimum) distance as the representative score.
+        -- GROUP BY requires all non-aggregate fields to be listed (creator only).
+        SELECT creator AS candidate, math::min(dist) AS best_dist
+        FROM $knn_raw
+        WHERE creator != NONE
+        GROUP BY creator
+
+    } ELSE { [] };
+
+
+    -- ── Signal B: Co-attendance ───────────────────────────────────────────────
+    -- unique_attendance index (in, out) on attends makes the IN lookup efficient.
+    LET $my_events = SELECT VALUE out FROM attends WHERE in = $user;
+
+    LET $social = IF array::len($my_events) > 0 {
+        SELECT in AS candidate, count() AS shared_events
+        FROM attends
+        WHERE out IN $my_events
+            AND in NOT IN $excluded
+        GROUP BY in
+    } ELSE { [] };
+
+
+    -- ── Signal C: Mutual friends ──────────────────────────────────────────────
+    -- Degree-2 connections: friends of friends not already connected to $user.
+    -- $my_friends ensures we don't re-surface direct friends in the output.
+    LET $my_friends = SELECT VALUE out
+        FROM friends
+        WHERE in = $user AND status = 'accepted';
+
+    LET $mutuals = IF array::len($my_friends) > 0 {
+        SELECT out AS candidate, count() AS mutual_count
+        FROM friends
+        WHERE in IN $my_friends
+            AND status = 'accepted'
+            AND out NOT IN $excluded
+            AND out NOT IN $my_friends
+        GROUP BY out
+    } ELSE { [] };
+
+
+    -- ── Merge: union all candidate IDs ───────────────────────────────────────
+    -- A user only needs to appear in ONE signal to be a candidate.
+    LET $all_ids = array::distinct(array::flatten([
+        SELECT VALUE candidate FROM $social,
+        SELECT VALUE candidate FROM $visual,
+        SELECT VALUE candidate FROM $mutuals
+    ]));
+
+    IF array::len($all_ids) = 0 { RETURN [] };
+
+
+    -- ── Score each candidate ─────────────────────────────────────────────────
+    -- array::map with a multi-statement closure (LET blocks are supported in
+    -- closures as of SurrealDB 3.x). FOR loops cannot modify outer-scope
+    -- variables, so array::map is the correct pattern for this transformation.
+    --
+    -- `OR 0` / `OR 1.0` are NONE-safe fallbacks: in SurrealQL `NONE OR x = x`.
+    -- A candidate missing a signal simply scores 0 on that signal.
+    --
+    -- $id.field uses SurrealDB record link traversal to inline-fetch user
+    -- profile fields without a separate JOIN or FETCH clause.
+    LET $scored = $all_ids.map(|$id| {
+        LET $soc_raw = (SELECT VALUE shared_events FROM $social
+                            WHERE candidate = $id LIMIT 1)[0] OR 0;
+        LET $vis_raw = (SELECT VALUE best_dist    FROM $visual
+                            WHERE candidate = $id LIMIT 1)[0] OR 1.0;
+        LET $mut_raw = (SELECT VALUE mutual_count FROM $mutuals
+                            WHERE candidate = $id LIMIT 1)[0] OR 0;
+
+        -- Normalise each signal to [0, 1]
+        LET $vis_sim     = 1.0 - $vis_raw;
+        LET $social_norm = math::min([$soc_raw, 10]) / 10.0;
+        LET $mutual_norm = math::min([$mut_raw, 5])  / 5.0;
+
+        {
+            user: $id.{ id, first_name, last_name, username, avatar, organization_name },
+            score: ($vis_sim     * 0.40)
+                 + ($social_norm * 0.35)
+                 + ($mutual_norm * 0.25),
+            signals: {
+                shared_events:     $soc_raw,
+                visual_similarity: $vis_sim,
+                mutual_friends:    $mut_raw
+            }
+        }
+    });
+
+    -- Sort descending by score. SELECT from an array variable supports
+    -- ORDER BY and LIMIT the same as a table query.
+    RETURN (
+        SELECT * FROM $scored
+        ORDER BY score DESC
+        LIMIT $k
+    )
+};
