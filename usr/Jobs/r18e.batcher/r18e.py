@@ -56,24 +56,23 @@ db_init_lock = asyncio.Lock()  # Shared lock for database initialization
 # ----------------------
 
 
-async def extract_embeddings_batch(image_bytes_list: List[bytes]) -> List[List[float]]:
+async def extract_embeddings_batch(image_bytes_list: List[bytes]) -> tuple:
     """
-    Extract embeddings for a batch of images (optimized for performance).
-
-    Args:
-        image_bytes_list: List of raw image bytes.
+    Extract embeddings for a batch of images.
 
     Returns:
-        List of embedding vectors (one per image).
+        Tuple of (valid_indices, embeddings_list).
+        valid_indices: positions in image_bytes_list that decoded successfully.
+        embeddings_list: one 768-dim vector per valid image, same order.
 
-    Raises:
-        RuntimeError: If model resources are not initialized or inference fails.
+        IMPORTANT: callers must use valid_indices to re-align their filename list
+        before saving — PIL silently drops undecodable images so the embedding
+        list is shorter than the input list when any images fail.
     """
     if not processor or not model or not device:
         logger.critical("Model resources not initialized during embedding extraction.")
         raise RuntimeError("Model resources not initialized.")
 
-    # Load and validate all images
     images = []
     valid_indices = []
     for idx, img_bytes in enumerate(image_bytes_list):
@@ -86,19 +85,15 @@ async def extract_embeddings_batch(image_bytes_list: List[bytes]) -> List[List[f
 
     if not images:
         logger.warning("No valid images in batch")
-        return []
+        return [], []
 
-    # Batch preprocessing
     inputs = processor(images=images, return_tensors="pt")
-    
-    # Move to device with proper dtype handling for FP16
     if device.type == "cuda" and USE_FP16:
-        inputs = {k: v.to(device).half() if v.dtype == torch.float32 else v.to(device) 
+        inputs = {k: v.to(device).half() if v.dtype == torch.float32 else v.to(device)
                  for k, v in inputs.items()}
     else:
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    # Single inference call for entire batch (MUCH faster)
     async with model_lock:
         try:
             with torch.no_grad():
@@ -108,19 +103,21 @@ async def extract_embeddings_batch(image_bytes_list: List[bytes]) -> List[List[f
             logger.error("Batch model inference failed", exc_info=True)
             raise RuntimeError("Batch inference failed") from e
 
-    # Convert to list of embeddings (ensure float32 for consistency)
     embeddings_list = cls_embeddings.float().cpu().tolist()
 
-    return embeddings_list
+    if len(embeddings_list) != len(valid_indices):
+        raise RuntimeError(
+            f"Model output shape mismatch: {len(embeddings_list)} embeddings "
+            f"for {len(valid_indices)} valid images"
+        )
+
+    return valid_indices, embeddings_list
 
 
 async def extract_embeddings(image_bytes: bytes) -> List[float]:
-    """
-    Single image wrapper (for backwards compatibility).
-    For better performance, use extract_embeddings_batch().
-    """
-    result = await extract_embeddings_batch([image_bytes])
-    return result[0] if result else []
+    """Single image wrapper. For batches use extract_embeddings_batch() directly."""
+    _, embeddings = await extract_embeddings_batch([image_bytes])
+    return embeddings[0] if embeddings else []
 
 
 async def init_globals():
@@ -341,7 +338,11 @@ class Job:
         """Fetch pending media objects from database."""
         try:
             async with self.db_session() as db:
-                query = "SELECT filename, id FROM media WHERE status = 'pending' OR status = 'failed'"
+                query = """
+                    SELECT filename, id FROM media 
+                    WHERE (status = 'pending' OR status = 'failed')
+                    AND type IN ['image/jpeg','image/jpg','image/png','image/heic','image/heif','image/webp']
+                """
                 if limit:
                     query += f" LIMIT {limit}"
                 
@@ -406,14 +407,24 @@ class Job:
             logger.warning("No valid images in batch after downloads")
             return
         
-        # Extract embeddings for entire batch
+        # Extract embeddings for entire batch.
+        # valid_indices tells us which positions in valid_images decoded OK —
+        # PIL silently drops corrupt/unreadable files, so the embedding list
+        # can be shorter than valid_images. We re-align valid_filenames using
+        # those indices before saving to guarantee a 1-to-1 match.
         try:
-            embeddings_list = await extract_embeddings_batch(valid_images)
-            logger.info(f"Generated {len(embeddings_list)} embeddings")
-            
-            # Save all embeddings
-            await self.save_batch(valid_filenames, embeddings_list)
-            logger.info(f"Successfully processed batch of {len(valid_filenames)} images")
+            decoded_indices, embeddings_list = await extract_embeddings_batch(valid_images)
+            logger.info(
+                f"Generated {len(embeddings_list)} embeddings from "
+                f"{len(valid_images)} downloaded images "
+                f"({len(valid_images) - len(embeddings_list)} failed PIL decode)"
+            )
+
+            # Re-align filenames to only those whose images actually decoded.
+            aligned_filenames = [valid_filenames[i] for i in decoded_indices]
+
+            await self.save_batch(aligned_filenames, embeddings_list)
+            logger.info(f"Successfully saved {len(aligned_filenames)} embeddings")
         except Exception as e:
             logger.error(f"Batch processing failed: {e}", exc_info=True)
             raise
