@@ -354,14 +354,29 @@ class AuthDB:
                     
                     # Successfully created user
                     if isinstance(result, dict):
-                        # Update cuckoo filter
+                        # Create credentials before updating the filter. If this
+                        # fails, roll back the user so they can retry registration.
+                        try:
+                            await conn.create("credentials", {**credentials, "user": result["id"]})
+                        except Exception as cred_err:
+                            logger.error(
+                                f"SSO credentials creation failed for {email}, "
+                                f"rolling back user record: {cred_err}"
+                            )
+                            try:
+                                await conn.query(
+                                    "DELETE type::thing('users', $uid);",
+                                    {"uid": str(result["id"]).split(":")[1]},
+                                )
+                            except Exception as rollback_err:
+                                logger.error(f"SSO rollback also failed for {email}: {rollback_err}")
+                            return None
+
                         try:
                             await self.cuckoo_filter.add("email", email)
                         except Exception as filter_error:
                             logger.warning(f"Failed to add email to cuckoo filter: {filter_error}")
-                        
-                        # Create credentials
-                        await conn.create("credentials", {**credentials, "user": result["id"]})
+
                         logger.info(f"Created new SSO user: {email}")
                         return record_id_to_json(result)
                     
@@ -460,24 +475,38 @@ class AuthDB:
                 
                 result = await conn.create("users", {**form, **data})
                 if isinstance(result, dict):
-                    # Use stored values instead of form.get after popping
+                    # Create credentials immediately. If this fails we roll back
+                    # the user record — a user with no credentials can never log
+                    # in and can never re-register (email already exists in DB).
+                    try:
+                        await conn.create(
+                            "credentials", {**credentials, "user": result["id"]}
+                        )
+                    except Exception as cred_err:
+                        logger.error(
+                            f"Credentials creation failed for new user {result['id']}, "
+                            f"rolling back user record: {cred_err}"
+                        )
+                        try:
+                            await conn.query(
+                                "DELETE type::thing('users', $uid);",
+                                {"uid": str(result["id"]).split(":")[1]},
+                            )
+                        except Exception as rollback_err:
+                            logger.error(f"Rollback also failed: {rollback_err}")
+                        return None
+
                     try:
                         await self.cuckoo_filter.add("email", email)
                     except Exception as filter_error:
                         logger.warning(f"Failed to add email to cuckoo filter: {filter_error}")
-                    
+
                     try:
                         await self.cuckoo_filter.add("username", username)
                     except Exception as filter_error:
                         logger.warning(f"Failed to add username to cuckoo filter: {filter_error}")
 
-                    await conn.create(
-                        "credentials", {**credentials, "user": result["id"]}
-                    )
-
-                    logger.debug(
-                        json.dumps(result, option=json.OPT_INDENT_2, default=str)
-                    )
+                    logger.debug(json.dumps(result, option=json.OPT_INDENT_2, default=str))
                     return record_id_to_json(result)
                 else:
                     logger.warning(

@@ -776,6 +776,35 @@ class BaseView(QuartClassful):
         # Get user email
         user_email = await self.conn.decrypt_credentials(user_id)
         try:
+            # Guard against double-creation: if the user already has a Stripe
+            # account ID stored, return a fresh onboarding link for it instead
+            # of creating a second orphaned account in Stripe.
+            existing_user = await self.conn._fetch_user(user_id, "stripe_account_id") if False else None
+            # Fetch directly to check stripe_account_id
+            import orjson as _j
+            existing_check = await self.conn.pool.execute_query(
+                "SELECT stripe_account_id FROM type::thing('users', $uid);",
+                {"uid": user_id},
+            )
+            existing_account_id = (
+                existing_check[0].get("stripe_account_id")
+                if existing_check and existing_check[0]
+                else None
+            )
+            if existing_account_id:
+                logger.info(f"User {user_id} already has Stripe account {existing_account_id}, generating new link")
+                account_link = await stripe.AccountLink.create_async(
+                    account=existing_account_id,
+                    refresh_url=url_for(".reauth_stripe", account_id=existing_account_id, _external=True).replace("http://", "https://"),
+                    return_url=url_for(".stripe_return", account_id=existing_account_id, _external=True).replace("http://", "https://"),
+                    type="account_onboarding",
+                )
+                return api_response(
+                    "Stripe account link generated",
+                    HTTPStatus.OK,
+                    data={"url": account_link.url}
+                )
+
             # Create Express account
             account = await stripe.Account.create_async(
                 type="express",
@@ -874,38 +903,46 @@ class BaseView(QuartClassful):
         ip_address: str,
         context: Literal["register", "forgot-password"],
     ) -> str | bool:
-        """Generate and send OTP for authentication
-        If data is provided, it will be stored in Redis for later verification.
-        
-        If an OTP already exists for the email, it will return False.
-        Args:
-            user_id (str): The ID of the user.
-            email (str): The email address of the user.
-            data (Optional[dict]): Additional data to store for later verification.
-        Returns:
-            str | bool: The generated OTP if successful, False if an OTP already exists.
+        """Generate and send OTP for authentication.
+
+        Uses atomic SET NX so that two simultaneous requests for the same email
+        can never both succeed — only the first SET wins, the second returns False
+        without generating or sending anything.
+
+        The OTP is deleted from Redis if notification delivery fails, so the user
+        can immediately retry rather than being locked out for 10 minutes.
         """
         try:
             otp = secrets.token_hex(3)[:6].upper()
             key = f"{context}-otp:{email}"
-            # Check if an OTP already exists for this email
-            existing_otp = await self.redis.get(key)
-            if existing_otp:
+
+            # Atomic SET NX — returns True only if the key did not already exist.
+            # Eliminates the GET-then-SET TOCTOU window: two concurrent requests
+            # both calling SET NX will have exactly one winner.
+            was_set = await self.redis.set(key, otp, ex=600, nx=True)
+            if not was_set:
                 return False
-            # Store the OTP in Redis with a 10-minute expiration
-            await self.redis.set(key, otp, ex=600)  # 10 minutes expiration
 
             if data:
-                # Store user data in Redis for later verification
                 await self.redis.set(
                     f"users:pending:{email}", json.dumps(data), ex=800
-                )  # Expire a little later
-            
-            await self.__notification_manager.send_otp_notification(
-                user_id=user_id,
-                ip_address=ip_address,
-                otp=otp,
-            )
+                )
+
+            # Send notification AFTER the key is stored. If delivery fails, clean
+            # up the key so the user can request a fresh OTP immediately rather
+            # than hitting a "OTP already exists" block for 10 minutes.
+            try:
+                await self.__notification_manager.send_otp_notification(
+                    user_id=user_id,
+                    ip_address=ip_address,
+                    otp=otp,
+                )
+            except Exception as notif_err:
+                logger.error(f"OTP notification failed for {email}, rolling back key: {notif_err}")
+                await self.redis.delete(key)
+                if data:
+                    await self.redis.delete(f"users:pending:{email}")
+                raise
 
             return otp
         except Exception as e:
@@ -1024,11 +1061,11 @@ class BaseView(QuartClassful):
                 {"user_id": user_id}
             )
             
-            if not user_data or not user_data:
+            if not user_data or not user_data[0]:
                 return api_error("User not found", HTTPStatus.NOT_FOUND)
-            
+
             # Check if deletion is scheduled
-            if not user_data.get("scheduled_deletion_at"):
+            if not user_data[0].get("scheduled_deletion_at"):
                 return api_error("No scheduled deletion to cancel", HTTPStatus.BAD_REQUEST)
             
             # Cancel the scheduled deletion
@@ -1056,42 +1093,46 @@ class BaseView(QuartClassful):
         context: Literal["register", "forgot-password"],
         delete: bool = True,
     ) -> Optional[Dict] | bool:
-        """Verify and delete OTP for authentication.
-        Args:
-            email (str): The email address of the user.
-            provided_otp (str): The OTP provided by the user.
-            validate_only (Optional[bool]): If True, only validate the OTP without deleting or returning user data.
-        Returns:
-            Optional[Dict] | bool: User data if OTP is valid, False if invalid or expired.
+        """Verify OTP for authentication.
+
+        Uses GETDEL (atomic get-and-delete) when delete=True so two concurrent
+        verification requests for the same OTP can never both succeed. The first
+        request atomically claims and deletes the key; the second gets None and
+        is rejected. Without this, two simultaneous requests could both GET the
+        same valid OTP, both compare equal, and both issue tokens.
+
+        For validate_only=True / delete=False (forgot-password first step) we
+        still use a plain GET since the OTP must survive to be used in the
+        subsequent reset-password call.
         """
         try:
             key = f"{context}-otp:{email}"
-            stored_otp = await self.redis.get(key)
 
-            if stored_otp and stored_otp == provided_otp:
-                if validate_only:
-                    print("Validate only %s" % validate_only)
-                    print("Delete %s" % delete)
-                    # Delete OTP from Redis
-                    if delete:
-                        await self.redis.delete(key)
-                    return True
+            if delete:
+                # Atomic get-and-delete: exactly one concurrent caller gets the value.
+                stored_otp = await self.redis.getdel(key)
+            else:
+                stored_otp = await self.redis.get(key)
 
-                # If validate_only is True, we still need to fetch user data
-                json_data = await self.redis.get(f"users:pending:{email}")
-                if not json_data:  # Handle case where pending user data expired
-                    return False
-                json_data = json.loads(json_data)
+            if not stored_otp or stored_otp != provided_otp:
+                return False
 
-                # Use asyncio.gather for concurrent deletion
-                if delete:
-                    await asyncio.gather(
-                        self.redis.delete(key),
-                        self.redis.delete(f"users:pending:{email}"),
-                    )
-                return json_data
+            if validate_only:
+                # forgot-password first step: OTP is valid, keep it for reset call.
+                # (We already deleted it above only when delete=True, which the
+                # caller sets False for this context — so the key is still alive.)
+                return True
 
-            return False
+            # Full verification — fetch pending user data (may have expired).
+            json_data = await self.redis.get(f"users:pending:{email}")
+            if not json_data:
+                return False
+            json_data = json.loads(json_data)
+
+            # Key already deleted above via GETDEL; clean up pending data.
+            await self.redis.delete(f"users:pending:{email}")
+            return json_data
+
         except Exception as e:
             logger.error(f"OTP verification error: {e}")
-            raise  # Re-raise the exception after logging
+            raise

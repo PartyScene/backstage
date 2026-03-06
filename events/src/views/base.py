@@ -401,6 +401,74 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
+    @route("/events/<event_id>/similar", methods=["GET"])
+    @jwt_required
+    async def fetch_similar_events(self, event_id: str):
+        """
+        Returns visually similar future events based on ViT-768 image embeddings.
+
+        Query params:
+            limit (int, optional): 1-20, default 10.
+
+        Response 200:
+            { "data": [{ "event": {...preview card...}, "visual_distance": float }] }
+        """
+        try:
+            limit = min(int(request.args.get("limit", 10)), 20)
+        except (ValueError, TypeError):
+            return api_error("limit must be an integer.", HTTPStatus.BAD_REQUEST)
+
+        try:
+            event = await self.conn.fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            cache_key = f"similar_events:{event_id}:{limit}"
+            import orjson as _json
+            cached = await self.redis.get(cache_key)
+            if cached:
+                return api_response(
+                    "Similar events fetched successfully.",
+                    HTTPStatus.OK,
+                    data=_json.loads(cached),
+                )
+
+            results = await self.conn.fetch_similar_events(event_id, limit)
+
+            if not results:
+                return api_response(
+                    "No similar events found yet — more appear as media is processed.",
+                    HTTPStatus.OK,
+                    data=[],
+                )
+
+            for item in results:
+                if item.get("event") and item["event"].get("media"):
+                    item["event"]["media"] = await sign_media_object(item["event"]["media"])
+                if item.get("event") and item["event"].get("host"):
+                    item["event"]["host"] = await recursively_sign_object_media(item["event"]["host"])
+
+            # Only cache non-empty results. An empty result usually means r18e
+            # hasn't processed this event's media yet — caching it would serve
+            # stale [] for 5 minutes even after embeddings become available.
+            if results:
+                await self.redis.setex(cache_key, 300, _json.dumps(results, default=str))
+
+            return api_response(
+                "Similar events fetched successfully.",
+                HTTPStatus.OK,
+                data=results,
+            )
+
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching similar events for {event_id}: {str(e)}", exc_info=True
+            )
+            return api_error(
+                f"Failed to fetch similar events: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
     @route(
         "/events/<event_id>", methods=["DELETE"]
     )  # Changed route slightly for consistency
@@ -869,7 +937,18 @@ class BaseView(QuartClassful):
             
             # Update media in database
             result = await self.conn.update_event_media(event_id, media_data)
-            
+
+            # Invalidate all similar_events cache keys for this event.
+            # The recommendations are based on embeddings from the old media
+            # which no longer apply once media is replaced.
+            try:
+                keys = await self.redis.keys(f"similar_events:{event_id}:*")
+                if keys:
+                    await self.redis.delete(*keys)
+                    app.logger.info(f"Invalidated {len(keys)} similar_events cache key(s) for {event_id}")
+            except Exception as cache_err:
+                app.logger.warning(f"Cache invalidation failed for {event_id}: {cache_err}")
+
             return api_response(
                 "Event media updated successfully",
                 HTTPStatus.OK,

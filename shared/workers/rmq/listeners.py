@@ -116,22 +116,24 @@ class RMQBroker(RabbitBroker):
                     else:
                         metadata = None
 
-                    # ── Upload (background) ───────────────────────────────────
+                    # ── Upload (awaited before ack) ───────────────────────────
+                    # IMPORTANT: do NOT use asyncio.create_task here. Acking
+                    # before the upload and _store_metadata calls complete means
+                    # a worker crash in that window loses the message permanently
+                    # while the GCS file and DB metadata write never happened.
+                    # We await the full upload path, then ack — the message stays
+                    # in the queue and will be redelivered if we crash mid-upload.
                     if source_key:
                         dest_key = filename
-                        asyncio.create_task(
-                            self._background_upload_final(
-                                dest_key, content_type, file_bytes, source_key, media_id, metadata
-                            )
+                        await self._background_upload_final(
+                            dest_key, content_type, file_bytes, source_key, media_id, metadata
                         )
-                        self.logger.info(f"📤 Queued final upload: {dest_key}")
+                        self.logger.info(f"📤 Upload complete: {dest_key}")
                     else:
-                        asyncio.create_task(
-                            self._background_upload_legacy(
-                                filename, content_type, file_bytes, media_id, metadata
-                            )
+                        await self._background_upload_legacy(
+                            filename, content_type, file_bytes, media_id, metadata
                         )
-                        self.logger.info(f"📤 Queued legacy upload: {filename}")
+                        self.logger.info(f"📤 Legacy upload complete: {filename}")
 
                     await message.ack()
 

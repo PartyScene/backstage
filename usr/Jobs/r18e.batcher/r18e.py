@@ -335,29 +335,48 @@ class Job:
         await self.save_batch([filename], [embeddings])
 
     async def fetch_media_objects(self, limit: int = None):
-        """Fetch pending media objects from database."""
+        """
+        Atomically claim pending/failed media records by flipping their status
+        to 'processing' in a single UPDATE ... RETURN BEFORE.
+
+        This prevents two concurrent GCP Batch jobs from picking up the same
+        records and double-processing them. Only records we successfully claimed
+        (i.e. were still pending/failed at UPDATE time) are returned.
+
+        Any records left in 'processing' after a crash will stay stuck until
+        manually reset or until a future cleanup job handles them.
+        """
         try:
             async with self.db_session() as db:
+                # Build the base query — RETURN BEFORE gives us the rows as they
+                # were *before* the update, confirming we claimed them.
                 query = """
-                    SELECT filename, id FROM media 
-                    WHERE (status = 'pending' OR status = 'failed')
-                    AND type IN ['image/jpeg','image/jpg','image/png','image/heic','image/heif','image/webp']
+                    UPDATE media
+                    SET status = 'processing', claimed_at = time::now()
+                    WHERE status = 'pending' OR status = 'failed'
+                    RETURN BEFORE
                 """
                 if limit:
-                    query += f" LIMIT {limit}"
-                
+                    query = f"""
+                        UPDATE media
+                        SET status = 'processing', claimed_at = time::now()
+                        WHERE (status = 'pending' OR status = 'failed')
+                        LIMIT {limit}
+                        RETURN BEFORE
+                    """
+
                 result = await db.query(query)
-                
+
                 # Unwrap SurrealDB response
                 if result and len(result) > 0:
                     media_list = result[0] if isinstance(result[0], list) else result
-                    logger.info(f"Fetched {len(media_list)} pending media objects")
-                    return media_list
-                else:
-                    logger.info("No pending media objects found")
-                    return []
+                    if media_list:
+                        logger.info(f"Claimed {len(media_list)} media objects for processing")
+                        return media_list
+                logger.info("No pending media objects found")
+                return []
         except Exception as e:
-            logger.error(f"Database fetch failed", exc_info=True)
+            logger.error(f"Database fetch/claim failed", exc_info=True)
             raise
 
     async def download_image(self, filename: str) -> bytes:
@@ -365,7 +384,7 @@ class Job:
         try:
             logger.debug(f"Downloading: {filename}")
             obs_result = await self.OBS_STORE.get_async(filename)
-            image_bytes = await obs_result.bytes_async()
+            image_bytes = bytes(await obs_result.bytes_async())
             logger.debug(f"Downloaded {len(image_bytes)} bytes for {filename}")
             return image_bytes
         except Exception as e:
