@@ -365,7 +365,7 @@ class Job:
         try:
             logger.debug(f"Downloading: {filename}")
             obs_result = await self.OBS_STORE.get_async(filename)
-            image_bytes = bytes(await obs_result.bytes_async())
+            image_bytes = await obs_result.bytes_async()
             logger.debug(f"Downloaded {len(image_bytes)} bytes for {filename}")
             return image_bytes
         except Exception as e:
