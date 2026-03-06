@@ -56,25 +56,34 @@ class MediaDB:
         """
         Patch ffprobe/Pillow metadata onto an existing media record after compression.
 
-        Stores a nested `metadata` object on the record so ffprobe fields are
-        namespaced and don't collide with top-level media fields.
+        Stores the full dict under the `metadata` field (namespaced to avoid
+        collision with top-level fields). Additionally hoists `thumbnail` to a
+        dedicated top-level field so the signing layer can serve it independently
+        of the full metadata blob.
 
         Args:
             media_id (str): The media record ID (bare string, not a RecordID).
             metadata (dict): Extracted media metadata from ffprobe or Pillow.
+                             May include a 'thumbnail' key with the GCS path of
+                             the preview frame extracted during video processing.
 
         Returns:
             dict: The updated media record.
         """
+        # Hoist thumbnail to its own column; keep it in metadata too for reference.
+        thumbnail = metadata.get("thumbnail")
+
         async with self.pool.acquire() as conn:
             query = """
             UPDATE ONLY type::thing('media', $media_id)
-            SET metadata = $metadata
+            SET metadata   = $metadata,
+                thumbnail  = $thumbnail
             RETURN AFTER;
             """
             result = await conn.query(query, {
-                "media_id": media_id,
-                "metadata": metadata,
+                "media_id":  media_id,
+                "metadata":  metadata,
+                "thumbnail": thumbnail,   # None for images — field stays unset
             })
 
             if isinstance(result, dict):

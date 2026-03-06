@@ -285,6 +285,33 @@ class EventsDB:
             self.logger.error(f"Failed to fetch event: {str(e)}")
             raise
 
+    async def fetch_similar_events(self, event_id: str, limit: int = 10) -> list:
+        """
+        Return visually similar events using HNSW KNN on ViT-768 media embeddings.
+
+        Calls fn::fetch_similar_events which averages the source event's media
+        embeddings, runs a cosine ANN search, deduplicates by event, filters
+        to future events only, and returns lightweight fn::fetch_event_preview
+        cards ordered by visual similarity (closest first).
+
+        Args:
+            event_id (str): Raw event ID (without 'events:' prefix).
+            limit    (int): Max results (default 10).
+
+        Returns:
+            list: [{ "event": {...}, "visual_distance": float }, ...]
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.query(
+                    "RETURN fn::fetch_similar_events(type::thing('events', $event_id), $limit);",
+                    {"event_id": event_id, "limit": limit},
+                )
+            return record_id_to_json(result)
+        except Exception as e:
+            self.logger.error(f"Failed to fetch similar events for {event_id}: {str(e)}")
+            raise
+
     async def live_query(self, event_id: str):
         """
         Start a live query for an event.

@@ -223,7 +223,8 @@ DEFINE INDEX unique_blocks ON TABLE blocks COLUMNS in, out UNIQUE;
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "image/heic" | "image/heif" | "image/webp" | "video/mp4" | "video/quicktime" | "vod";
-DEFINE FIELD OVERWRITE metadata ON media FLEXIBLE TYPE option<object> DEFAULT {};
+DEFINE FIELD OVERWRITE metadata  ON media FLEXIBLE TYPE option<object> DEFAULT {};
+DEFINE FIELD OVERWRITE thumbnail ON media TYPE option<string>;  -- GCS path of video preview frame, set by RMQ pipeline
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE status ON media TYPE string DEFAULT "pending";
 DEFINE FIELD OVERWRITE updated_at ON media TYPE datetime VALUE time::now();
@@ -369,7 +370,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         SELECT
         *,
         (time + duration::from::mins(duration)) AS end_time,
-        (->has_media->media[WHERE event = $parent.id].{creator, metadata,  filename, url}) AS media,
+        (->has_media->media[WHERE event = $parent.id].{creator, metadata, filename, thumbnail, url}) AS media,
         array::concat(<-attends<-users, (SELECT * FROM tickets WHERE event = $parent.id AND guest_email)) AS attendees,
         (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at != NONE) AS scanned_tickets,
         (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at = NONE) AS unscanned_tickets,
@@ -472,239 +473,117 @@ DEFINE FUNCTION OVERWRITE fn::fetch_private_events_for_user($user: record, $page
 };
 
 
-DEFINE FUNCTION OVERWRITE fn::fetch_similar_events($event: record) {
-    -- LET $media_embeddings = (SELECT VALUE embeddings from media WHERE event = $event);
-    LET $media_embeddings = SELECT VALUE (->has_media->media.embeddings) FROM $event;
-    
-    LET $sum = $media_embeddings.reduce(
-        |$a, $b| vector::add($a, $b)
-        );
-        
-    LET $average_media_embeddings = vector::scale(
-        $sum, <float> 1 / $media_embeddings.len() 
-        );
-    
-    LET $text_emb = (SELECT VALUE embeddings.text FROM $event);
-    
+-- ─────────────────────────────────────────────────────────────────────────────
+-- fn::fetch_event_preview
+-- Lightweight event card for recommendation/discovery surfaces.
+-- Omits tickets, guestlists, and scanned/unscanned ticket lists.
+-- Use fn::fetch_event for the full detail view.
+-- ─────────────────────────────────────────────────────────────────────────────
+DEFINE FUNCTION OVERWRITE fn::fetch_event_preview($event_id: record) {
     RETURN (
-        SELECT fn::fetch_event(event), vector::distance::knn() - vector::similarity::cosine(event.embeddings.text, $text_emb[0]) AS distance 
-        FROM media WHERE embeddings <|20, 40|> $average_media_embeddings 
-        ORDER BY distance
+        SELECT
+            id,
+            title,
+            description,
+            time,
+            (time + duration::from::mins(duration)) AS end_time,
+            duration,
+            location,
+            price,
+            is_free,
+            is_private,
+            status,
+            categories,
+            created_at,
+            (->has_media->media[WHERE event = $parent.id].{creator, metadata, filename, thumbnail, url}) AS media,
+            host.{id, organization_name, first_name, last_name, avatar, filename},
+            count(<-attends<-users) AS attendee_count
+        OMIT embeddings
+        FROM ONLY $event_id
     )
 };
 
-
-
-
 -- ─────────────────────────────────────────────────────────────────────────────
--- fn::recommend_friends  —  Social + Visual Friend Recommendations
+-- fn::fetch_similar_events
+-- Finds up to $limit events visually similar to $event using HNSW KNN on
+-- ViT-768 media embeddings. Returns lightweight preview cards.
+--
+-- Algorithm:
+--   1. Collect media IDs via graph traversal, then SELECT embeddings in a
+--      separate query. Direct dot-field access on traversal results auto-flattens
+--      array fields in SurrealDB, collapsing [[vec1],[vec2]] to raw floats.
+--      The separate SELECT returns one 768-dim array per row, which is what
+--      vector::add requires.
+--   2. Average them into one representative vector.
+--   3. Run HNSW KNN search across all media records to find visually close
+--      images, excluding media belonging to the source event itself.
+--   4. Traverse each result back to its event (media.event field).
+--   5. Deduplicate — multiple media hits from the same event collapse to one.
+--   6. Filter to future events only, then return preview cards ordered by
+--      best visual distance ascending (most similar first).
 -- ─────────────────────────────────────────────────────────────────────────────
---
--- PURPOSE
---   Returns a ranked list of users $user should be introduced to, based on
---   three independent signals combined into a weighted score:
---
---   Signal A  — Visual similarity   (40% weight)
---     Averages ViT-768 embeddings from all photos $user has posted into a
---     single "visual profile vector". Runs a cosine HNSW KNN query against
---     every other user's photos to find the 100 closest media records, then
---     collapses to one best-distance per candidate user.
---
---   Signal B  — Co-attendance       (35% weight)
---     Counts how many of the same events $user and candidate both attended.
---     Capped at 10 events before normalisation.
---
---   Signal C  — Mutual friends      (25% weight)
---     Counts accepted friends shared between $user and candidate.
---     Capped at 5 before normalisation.
---
--- FINAL SCORE  (range 0-1, higher = stronger recommendation)
---   score = visual * 0.40 + co_attendance * 0.35 + mutual_friends * 0.25
---
--- EXCLUSIONS (automatically filtered)
---   - $user themselves
---   - Users already connected in any non-removed state
---   - Users $user has blocked, or who have blocked $user
---
--- PARAMETERS
---   $user   record<users>   The requesting user's record ID
---   $limit  option<int>     How many recommendations to return (default 20)
---
--- RETURNS
---   Array of:
---   {
---     user:    { id, first_name, last_name, username, avatar, organization_name }
---     score:   float  (0-1, descending)
---     signals: { shared_events: int, visual_similarity: float, mutual_friends: int }
---   }
---
--- DEPENDENCIES
---   - r18e batcher must have processed $user's media (status = 'completed')
---   - hnsw_media_embeddings index must use DIST COSINE (index migration below)
--- ─────────────────────────────────────────────────────────────────────────────
+DEFINE FUNCTION OVERWRITE fn::fetch_similar_events($event: record, $limit: option<int>) {
+    LET $k = IF type::is::int($limit) THEN $limit ELSE 10 END;
 
+    -- Collect embeddings for this event's media.
+    --
+    -- IMPORTANT: do NOT use ->has_media->media.embeddings via graph traversal.
+    -- In SurrealDB, dot-field access on a traversal result auto-flattens array
+    -- fields, turning [[f1..f768],[f1..f768]] into [f1,f2,...] — raw floats
+    -- that break vector::add. Instead: traverse for IDs, then SELECT separately
+    -- so each row contributes one 768-dim array entry.
+    LET $media_ids = (SELECT VALUE ->has_media->media FROM ONLY $event) OR [];
+    LET $raw_vecs  = SELECT VALUE embeddings FROM media
+                     WHERE id IN $media_ids AND embeddings != NONE;
 
--- ─── INDEX MIGRATION ─────────────────────────────────────────────────────────
--- The existing hnsw_media_embeddings index has no DIST clause (defaults to
--- Euclidean). ViT embeddings should be compared with cosine similarity since
--- direction matters more than magnitude for semantic content.
--- Also switching to TYPE F32 to halve memory usage (ViT outputs float32 anyway).
--- OVERWRITE triggers a background rebuild - reads/writes stay live during it.
-DEFINE INDEX OVERWRITE hnsw_media_embeddings
-    ON TABLE media
-    FIELDS embeddings
-    HNSW DIMENSION 768
-    DIST COSINE
-    TYPE F32
-    M 16
-    EFC 200;
--- ─────────────────────────────────────────────────────────────────────────────
+    IF array::len($raw_vecs) = 0 { RETURN [] };
 
+    -- Element-wise sum across all 768-dim vectors, then scale by 1/n.
+    LET $avg_vec = vector::scale(
+        $raw_vecs.reduce(|$a, $b| vector::add($a, $b)),
+        <float>1 / array::len($raw_vecs)
+    );
 
-DEFINE FUNCTION OVERWRITE fn::recommend_friends(
-    $user:  record<users>,
-    $limit: option<int>
-) {
-    LET $k = IF type::is::int($limit) THEN $limit ELSE 20 END;
-
-
-    -- ── 0. Exclusion set ─────────────────────────────────────────────────────
-    -- Covers all directions and statuses so we never surface someone the user
-    -- has already interacted with (pending, accepted, blocked, rejected).
-    -- array::flatten collapses 5 sub-arrays; array::distinct deduplicates.
-    LET $excluded = array::distinct(array::flatten([
-        SELECT VALUE out FROM friends WHERE in  = $user AND status != 'removed',
-        SELECT VALUE in  FROM friends WHERE out = $user AND status != 'removed',
-        SELECT VALUE out FROM blocks  WHERE in  = $user,
-        SELECT VALUE in  FROM blocks  WHERE out = $user,
-        [$user]
-    ]));
-
-
-    -- ── Signal A: Visual similarity (HNSW KNN) ────────────────────────────────
-    -- Fetch all 768-dim embeddings from media this user has posted.
-    -- `creator` is indexed via idx_media_creator → fast range scan.
-    LET $my_vecs = SELECT VALUE embeddings
+    -- HNSW ANN: fetch top-100 candidates by embedding similarity only.
+    -- IMPORTANT: do NOT add AND predicates (event != $event, status = ...) inside
+    -- the <|K,EF|> clause. SurrealDB evaluates extra predicates as pre-filters on
+    -- the index traversal phase; if they can't be resolved there the whole query
+    -- returns []. All filtering is done as explicit post-steps below.
+    LET $knn_raw = SELECT
+            id       AS media_id,
+            event    AS event_id,
+            status,
+            vector::distance::knn() AS dist
         FROM media
-        WHERE creator = $user
-            AND status = 'completed'
-            AND embeddings != NONE;
+        WHERE embeddings <|100, 40|> $avg_vec;
 
-    LET $visual = IF array::len($my_vecs) > 0 {
+    -- Post-filter 1: drop media with no event, wrong status, or from source event.
+    LET $candidates = $knn_raw.filter(|$r|
+        $r.event_id != NONE
+        AND $r.event_id != $event
+        AND $r.status  = 'completed'
+    );
 
-        -- Build average embedding: element-wise sum then scale by 1/n.
-        -- This is the user's "visual fingerprint" across all their photos.
-        LET $avg_vec = vector::scale(
-            $my_vecs.reduce(|$a, $b| vector::add($a, $b)),
-            <float>1 / array::len($my_vecs)
-        );
+    IF array::len($candidates) = 0 { RETURN [] };
 
-        -- HNSW ANN search: top-100 closest media records, efSearch=40.
-        -- With DIST COSINE on the index, distance is in [0.0, 1.0]:
-        --   0.0 = same direction (most similar)
-        --   1.0 = orthogonal     (least similar)
-        -- vector::distance::knn() reuses the distance already computed by the
-        -- index operator - no redundant computation.
-        LET $knn_raw = SELECT creator, vector::distance::knn() AS dist
-            FROM media
-            WHERE embeddings <|100, 40|> $avg_vec
-                AND creator NOT IN $excluded
-                AND status = 'completed';
+    -- Deduplicate: one row per event, keeping the closest media hit.
+    LET $deduped = SELECT event_id, math::min(dist) AS best_dist
+        FROM $candidates
+        GROUP BY event_id;
 
-        -- Collapse to one row per candidate user.
-        -- Take best (minimum) distance as the representative score.
-        -- GROUP BY requires all non-aggregate fields to be listed (creator only).
-        SELECT creator AS candidate, math::min(dist) AS best_dist
-        FROM $knn_raw
-        WHERE creator != NONE
-        GROUP BY creator
-
-    } ELSE { [] };
-
-
-    -- ── Signal B: Co-attendance ───────────────────────────────────────────────
-    -- unique_attendance index (in, out) on attends makes the IN lookup efficient.
-    LET $my_events = SELECT VALUE out FROM attends WHERE in = $user;
-
-    LET $social = IF array::len($my_events) > 0 {
-        SELECT in AS candidate, count() AS shared_events
-        FROM attends
-        WHERE out IN $my_events
-            AND in NOT IN $excluded
-        GROUP BY in
-    } ELSE { [] };
-
-
-    -- ── Signal C: Mutual friends ──────────────────────────────────────────────
-    -- Degree-2 connections: friends of friends not already connected to $user.
-    -- $my_friends ensures we don't re-surface direct friends in the output.
-    LET $my_friends = SELECT VALUE out
-        FROM friends
-        WHERE in = $user AND status = 'accepted';
-
-    LET $mutuals = IF array::len($my_friends) > 0 {
-        SELECT out AS candidate, count() AS mutual_count
-        FROM friends
-        WHERE in IN $my_friends
-            AND status = 'accepted'
-            AND out NOT IN $excluded
-            AND out NOT IN $my_friends
-        GROUP BY out
-    } ELSE { [] };
-
-
-    -- ── Merge: union all candidate IDs ───────────────────────────────────────
-    -- A user only needs to appear in ONE signal to be a candidate.
-    LET $all_ids = array::distinct(array::flatten([
-        SELECT VALUE candidate FROM $social,
-        SELECT VALUE candidate FROM $visual,
-        SELECT VALUE candidate FROM $mutuals
-    ]));
-
-    IF array::len($all_ids) = 0 { RETURN [] };
-
-
-    -- ── Score each candidate ─────────────────────────────────────────────────
-    -- array::map with a multi-statement closure (LET blocks are supported in
-    -- closures as of SurrealDB 3.x). FOR loops cannot modify outer-scope
-    -- variables, so array::map is the correct pattern for this transformation.
-    --
-    -- `OR 0` / `OR 1.0` are NONE-safe fallbacks: in SurrealQL `NONE OR x = x`.
-    -- A candidate missing a signal simply scores 0 on that signal.
-    --
-    -- $id.field uses SurrealDB record link traversal to inline-fetch user
-    -- profile fields without a separate JOIN or FETCH clause.
-    LET $scored = $all_ids.map(|$id| {
-        LET $soc_raw = (SELECT VALUE shared_events FROM $social
-                            WHERE candidate = $id LIMIT 1)[0] OR 0;
-        LET $vis_raw = (SELECT VALUE best_dist    FROM $visual
-                            WHERE candidate = $id LIMIT 1)[0] OR 1.0;
-        LET $mut_raw = (SELECT VALUE mutual_count FROM $mutuals
-                            WHERE candidate = $id LIMIT 1)[0] OR 0;
-
-        -- Normalise each signal to [0, 1]
-        LET $vis_sim     = 1.0 - $vis_raw;
-        LET $social_norm = math::min([$soc_raw, 10]) / 10.0;
-        LET $mutual_norm = math::min([$mut_raw, 5])  / 5.0;
-
-        {
-            user: $id.{ id, first_name, last_name, username, avatar, organization_name },
-            score: ($vis_sim     * 0.40)
-                 + ($social_norm * 0.35)
-                 + ($mutual_norm * 0.25),
-            signals: {
-                shared_events:     $soc_raw,
-                visual_similarity: $vis_sim,
-                mutual_friends:    $mut_raw
-            }
-        }
+    -- Post-filter 2: future events only (not yet ended).
+    LET $scored = $deduped.filter(|$r| {
+        LET $info = (SELECT time, duration FROM ONLY $r.event_id);
+        $info != NONE
+            AND $info.time + duration::from::mins($info.duration) > time::now()
     });
 
-    -- Sort descending by score. SELECT from an array variable supports
-    -- ORDER BY and LIMIT the same as a table query.
     RETURN (
-        SELECT * FROM $scored
-        ORDER BY score DESC
+        SELECT
+            fn::fetch_event_preview(event_id) AS event,
+            best_dist AS visual_distance
+        FROM $scored
+        ORDER BY best_dist ASC
         LIMIT $k
     )
 };

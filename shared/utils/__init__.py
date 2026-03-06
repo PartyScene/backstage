@@ -186,25 +186,39 @@ async def sign_media_object(obj: Any) -> Any:
     Object will either be a list of media objects or the media object itself
     """
     if isinstance(obj, list):
-        filenames = tuple(item["filename"] for item in obj if "filename" in item)
-        if not filenames:
-            return obj  # nothing to sign, return unchanged
-        data = await generate_signed_url(filenames)
+        # Collect both filename and thumbnail paths in one batch signing call
+        # so video media items get both their primary URL and their preview URL
+        # signed without an extra round-trip.
+        all_paths = []
+        for item in obj:
+            if "filename" in item and item["filename"]:
+                all_paths.append(item["filename"])
+            if "thumbnail" in item and item["thumbnail"]:
+                all_paths.append(item["thumbnail"])
+        if not all_paths:
+            return obj
+        data = await generate_signed_url(tuple(all_paths))
         flattened_obj = [
             {
                 **item,
-                "signed_url": data.get(item["filename"]),
-            }  # Use .get() with default None
+                "signed_url":           data.get(item.get("filename")),
+                "thumbnail_signed_url": data.get(item["thumbnail"]) if item.get("thumbnail") else None,
+            }
             for item in obj
         ]
 
     elif isinstance(obj, dict):
         if "filename" not in obj:
             return obj
-        # If the object is a dictionary, it should have a "filename" key
-        filenames = [obj["filename"]]
-        data = await generate_signed_url(filenames)
-        flattened_obj = {**obj, "signed_url": data.get(obj["filename"])}
+        paths = [obj["filename"]]
+        if obj.get("thumbnail"):
+            paths.append(obj["thumbnail"])
+        data = await generate_signed_url(tuple(paths))
+        flattened_obj = {
+            **obj,
+            "signed_url":           data.get(obj["filename"]),
+            "thumbnail_signed_url": data.get(obj["thumbnail"]) if obj.get("thumbnail") else None,
+        }
 
     elif isinstance(obj, str):
         filenames = [obj]

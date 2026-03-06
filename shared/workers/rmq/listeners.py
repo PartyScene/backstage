@@ -148,16 +148,23 @@ class RMQBroker(RabbitBroker):
 
     async def extract_video_metadata(self, video_bytes: bytes, filename: str) -> Dict[str, Any]:
         """
-        Run ffprobe on compressed video bytes using ffmpeg.asyncio and return
-        a structured metadata dict with basic + extended fields.
+        Run ffprobe on compressed video bytes, extract metadata, and generate a
+        thumbnail image at ~10% of the video duration.
+
+        The thumbnail is uploaded to GCS alongside the video as:
+            {video_path_without_ext}_thumb.jpg
+        Its GCS path is stored in metadata['thumbnail'] so the DB pipeline can
+        persist it on the media record, and the signing layer can serve it.
         """
         suffix = os.path.splitext(filename)[1] or '.mp4'
+        thumb_path = None
 
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             await asyncio.to_thread(tmp.write, video_bytes)
             tmp_path = tmp.name
 
         try:
+            # ── Probe ──────────────────────────────────────────────────────────
             ffprobe = (
                 FFmpeg(executable="ffprobe")
                 .input(
@@ -167,11 +174,52 @@ class RMQBroker(RabbitBroker):
                     show_streams=None,
                 )
             )
-
             raw_output = await ffprobe.execute()
             raw = json.loads(raw_output)
             metadata = self._parse_video_metadata(raw, filename)
             self.logger.info(f"📐 Video metadata extracted: {filename}")
+
+            # ── Thumbnail ──────────────────────────────────────────────────────
+            # Seek to 10 % of duration (min 0 s, max 5 s) so short clips still
+            # get a representative frame rather than a black leader frame.
+            try:
+                duration = metadata.get("duration_seconds") or 0
+                seek_time = max(0.0, min(duration * 0.10, 5.0))
+                thumb_gcs_path = os.path.splitext(filename)[0] + "_thumb.jpg"
+
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tf:
+                    thumb_path = tf.name
+
+                ffmpeg_thumb = (
+                    FFmpeg()
+                    .option("y")
+                    .input(tmp_path, ss=str(seek_time))
+                    .output(
+                        thumb_path,
+                        vframes="1",
+                        vf="scale='min(720,iw)':-2",  # cap at 720 px wide
+                        q_v="3",                       # JPEG quality 1-31, lower=better
+                        f="image2",
+                    )
+                )
+                await ffmpeg_thumb.execute()
+
+                thumb_bytes = await asyncio.to_thread(
+                    lambda: open(thumb_path, 'rb').read()
+                )
+
+                if len(thumb_bytes) > 0:
+                    obstore = get_obstore()
+                    await obstore.put_final_bytes(thumb_gcs_path, thumb_bytes, "image/jpeg")
+                    metadata["thumbnail"] = thumb_gcs_path
+                    self.logger.info(f"🖼️  Thumbnail uploaded: {thumb_gcs_path} ({len(thumb_bytes)} bytes)")
+                else:
+                    self.logger.warning(f"⚠️ Thumbnail extraction produced 0 bytes for {filename}")
+
+            except Exception as thumb_err:
+                # Thumbnail failure must never block the main video upload
+                self.logger.warning(f"⚠️ Thumbnail generation failed for {filename}: {thumb_err}")
+
             return metadata
 
         except Exception as e:
@@ -179,8 +227,9 @@ class RMQBroker(RabbitBroker):
             return {}
 
         finally:
-            if os.path.exists(tmp_path):
-                await asyncio.to_thread(os.unlink, tmp_path)
+            for path in [tmp_path, thumb_path]:
+                if path and os.path.exists(path):
+                    await asyncio.to_thread(os.unlink, path)
 
     def _parse_video_metadata(self, raw: Dict, filename: str) -> Dict[str, Any]:
         """Parse raw ffprobe JSON into a clean, flat metadata dict."""
