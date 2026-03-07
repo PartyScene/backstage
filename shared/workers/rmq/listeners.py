@@ -182,33 +182,42 @@ class RMQBroker(RabbitBroker):
             self.logger.info(f"📐 Video metadata extracted: {filename}")
 
             # ── Thumbnail ──────────────────────────────────────────────────────
-            # Seek to 10 % of duration (min 0 s, max 5 s) so short clips still
-            # get a representative frame rather than a black leader frame.
             try:
                 duration = metadata.get("duration_seconds") or 0
-                seek_time = max(0.0, min(duration * 0.10, 5.0))
                 thumb_gcs_path = os.path.splitext(filename)[0] + "_thumb.jpg"
 
                 with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tf:
                     thumb_path = tf.name
 
+                # Smart frame selection:
+                #
+                # trim=start — skip the first 5% (min 0.5s, max 3s) to avoid
+                #   black leader frames, fade-ins, and motion blur on camera starts.
+                #
+                # settb=AVTB — resets the timebase after trim so thumbnail and
+                #   subsequent filters see monotonically increasing timestamps.
+                #
+                # thumbnail=n=60 — analyzes 60 consecutive frames and picks the one
+                #   with the highest spatial complexity (most edges, most visual
+                #   detail, least uniform/blank areas). Far better than a fixed seek
+                #   which can land on a transition or near-black shot.
+                #
+                # scale — caps at 720px wide without upscaling.
+                #   No commas anywhere in the filter string: commas are ffmpeg
+                #   filter-chain separators and cause "Error splitting argument list"
+                #   when passed through python-ffmpeg's subprocess arg list.
+                trim_start = max(0.5, min(duration * 0.05, 3.0))
+
                 ffmpeg_thumb = (
                     FFmpeg()
                     .option("y")
-                    .input(tmp_path, ss=str(seek_time))
+                    .input(tmp_path, ss=f"{trim_start:.3f}")
                     .output(
                         thumb_path,
                         vframes="1",
-                        # force_original_aspect_ratio=decrease avoids upscaling small videos.
-                        # No commas in this filter string — commas are filter chain separators
-                        # in ffmpeg and cause "Error splitting the argument list" when passed
-                        # through python-ffmpeg's subprocess list (backslash escapes don't
-                        # survive the list-to-argv boundary reliably).
-                        vf="scale=720:-2:force_original_aspect_ratio=decrease",
-                        f="image2",
+                        vf="thumbnail=n=60,scale=720:-2:force_original_aspect_ratio=decrease",
                     )
                 )
-
                 await ffmpeg_thumb.execute()
 
                 thumb_bytes = await asyncio.to_thread(
