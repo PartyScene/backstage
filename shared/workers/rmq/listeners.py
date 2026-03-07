@@ -195,16 +195,20 @@ class RMQBroker(RabbitBroker):
                 ffmpeg_thumb = (
                     FFmpeg()
                     .option("y")
-                    .option("qscale:v", "3")           # JPEG quality 1-31, lower=better
                     .input(tmp_path, ss=str(seek_time))
                     .output(
                         thumb_path,
-                        # vframes="1",
-                        frames_v="1",
-                        vf="scale=min(720,iw):-2",
+                        vframes="1",
+                        # force_original_aspect_ratio=decrease avoids upscaling small videos.
+                        # No commas in this filter string — commas are filter chain separators
+                        # in ffmpeg and cause "Error splitting the argument list" when passed
+                        # through python-ffmpeg's subprocess list (backslash escapes don't
+                        # survive the list-to-argv boundary reliably).
+                        vf="scale=720:-2:force_original_aspect_ratio=decrease",
                         f="image2",
                     )
                 )
+
                 await ffmpeg_thumb.execute()
 
                 thumb_bytes = await asyncio.to_thread(
