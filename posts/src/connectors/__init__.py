@@ -285,15 +285,26 @@ class PostsDB:
                     )
                 )
 
-            query = """
-            RELATE $users -> posts -> $media SET content = $content, event = $event RETURN VALUE out.id;
-            """
-            params = {
-                "media": media_query_result["id"],
-                "content": data["content"],
-                "event": data["event"],
-            }
-            result = await conn.query(query, params)
+            # RELATE after media creation. If RELATE fails we delete the orphaned
+            # media record so re-submission isn't blocked by a dangling media row.
+            try:
+                query = """
+                RELATE $users -> posts -> $media SET content = $content, event = $event RETURN VALUE out.id;
+                """
+                params = {
+                    "media": media_query_result["id"],
+                    "content": data["content"],
+                    "event": data["event"],
+                }
+                result = await conn.query(query, params)
+            except Exception as relate_err:
+                if media_query_result.get("id"):
+                    try:
+                        await conn.delete(media_query_result["id"])
+                        self.logger.warning(f"Rolled back orphaned media {media_query_result['id']} after post RELATE failed")
+                    except Exception as rollback_err:
+                        self.logger.error(f"Media rollback also failed: {rollback_err}")
+                raise relate_err
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         self.logger.info(f"Media created with ID: {result}")
         return record_id_to_json(result)[0]
