@@ -134,7 +134,7 @@ class PaymentsDB:
         """
         try:
             async with self.pool.acquire() as conn:
-                tier = await conn.select(RecordID("ticket_tiers", tier_id))
+                tier = (await conn.select(RecordID("ticket_tiers", tier_id)))[0]
             if not tier:
                 raise ValueError("Tier not found")
 
