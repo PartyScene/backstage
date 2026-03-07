@@ -19,6 +19,22 @@ class EventsDB:
         self.pool = pool
         self.logger = logger
 
+    async def fetch_trending_events(self, page: int = 1, limit: int = 50):
+        """
+        Fetch public upcoming events ranked by trending score.
+
+        Score = (attendee_count × 3) + (post_count × 2), tiebroken by start time.
+        This surfaces events with momentum rather than just the most recently
+        created ones, giving the discover feed an Instagram-style feel.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "RETURN fn::fetch_trending_events($page, $limit);",
+                {"page": page, "limit": limit},
+            )
+        return record_id_to_json(result)
+
+
     async def _report_resource(self, data: dict):
         """
         Report this resource which is an event

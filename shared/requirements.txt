@@ -29,3 +29,4 @@ tenacity
 rusty-req
 getstream[webrtc]
 stream-chat
+blurhash-python  # BlurHash generation for instant image placeholders

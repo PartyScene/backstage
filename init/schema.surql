@@ -90,6 +90,7 @@ DEFINE FIELD OVERWRITE status ON TABLE events TYPE string DEFAULT 'scheduled';
 DEFINE FIELD OVERWRITE is_private ON TABLE events TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE is_free ON TABLE events TYPE option<bool> DEFAULT false;
 DEFINE FIELD OVERWRITE host ON TABLE events TYPE record<users>;
+DEFINE FIELD OVERWRITE reminder_sent ON TABLE events TYPE option<datetime> DEFAULT NONE;  -- set when 1-hour reminder has been dispatched
 DEFINE FIELD OVERWRITE updated_at ON TABLE events TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE events TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE time ON TABLE events TYPE datetime DEFAULT time::now();
@@ -223,8 +224,10 @@ DEFINE INDEX unique_blocks ON TABLE blocks COLUMNS in, out UNIQUE;
 DEFINE TABLE OVERWRITE media SCHEMALESS;
 -- Define fields with literal types
 DEFINE FIELD OVERWRITE type ON TABLE media TYPE "image/jpeg" | "image/jpg" | "image/png" | "image/heic" | "image/heif" | "image/webp" | "video/mp4" | "video/quicktime" | "vod";
-DEFINE FIELD OVERWRITE metadata  ON media FLEXIBLE TYPE option<object> DEFAULT {};
-DEFINE FIELD OVERWRITE thumbnail ON media TYPE option<string>;  -- GCS path of video preview frame, set by RMQ pipeline
+DEFINE FIELD OVERWRITE metadata   ON media FLEXIBLE TYPE option<object> DEFAULT {};
+DEFINE FIELD OVERWRITE claimed_at  ON media TYPE option<datetime>;  -- set when r18e claims a record to prevent double-processing
+DEFINE FIELD OVERWRITE thumbnail ON media TYPE option<string>;  -- GCS path of video preview frame (.webp), set by RMQ pipeline
+DEFINE FIELD OVERWRITE blurhash  ON media TYPE option<string>;  -- ~30-char BlurHash string for instant placeholder rendering
 DEFINE FIELD OVERWRITE filename ON media TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE status ON media TYPE string DEFAULT "pending";
 DEFINE FIELD OVERWRITE updated_at ON media TYPE datetime VALUE time::now();
@@ -332,6 +335,31 @@ DEFINE FUNCTION OVERWRITE fn::fetch_public_events($page: number, $limit: number)
     )
 };
 
+DEFINE FUNCTION OVERWRITE fn::fetch_trending_events($page: number, $limit: number) {
+    -- Trending score per event:
+    --   attendee_count * 3  — social proof (heaviest signal)
+    --   post_count * 2      — activity / content signal (people are posting = event is live)
+    -- Tiebreaker: soonest events first.
+    -- Only surfaces future public events that haven't ended yet.
+
+    LET $page  = IF (type::is::number($page))  THEN $page  ELSE 1  END;
+    LET $limit = IF (type::is::number($limit)) THEN $limit ELSE 50 END;
+
+    RETURN (
+        SELECT
+            fn::fetch_event(id) AS event,
+            (
+                (attendee_count * 3) +
+                (count(SELECT id FROM posts WHERE event = $parent.id) * 2)
+            ) AS score
+        FROM events
+        WHERE is_private = false
+          AND time + duration::from::mins(duration) > time::now()
+        ORDER BY score DESC, time ASC
+        LIMIT $limit START ($page - 1) * $limit
+    );
+};
+
 DEFINE FUNCTION OVERWRITE fn::fetch_user_tickets($origin: record, $page: option<number>, $limit: option<number>) {
 
     LET $page = IF (type::is::number($page)) THEN $page ELSE 1 END;
@@ -370,7 +398,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         SELECT
         *,
         (time + duration::from::mins(duration)) AS end_time,
-        (->has_media->media[WHERE event = $parent.id].{creator, metadata, filename, thumbnail, url}) AS media,
+        (->has_media->media[WHERE event = $parent.id].{creator, metadata, filename, thumbnail, blurhash, url}) AS media,
         array::concat(<-attends<-users, (SELECT * FROM tickets WHERE event = $parent.id AND guest_email)) AS attendees,
         (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at != NONE) AS scanned_tickets,
         (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at = NONE) AS unscanned_tickets,
@@ -495,7 +523,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event_preview($event_id: record) {
             status,
             categories,
             created_at,
-            (->has_media->media[WHERE event = $parent.id].{creator, metadata, filename, thumbnail, url}) AS media,
+            (->has_media->media[WHERE event = $parent.id].{creator, metadata, filename, thumbnail, blurhash, url}) AS media,
             host.{id, organization_name, first_name, last_name, avatar, filename},
             count(<-attends<-users) AS attendee_count
         OMIT embeddings

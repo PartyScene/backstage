@@ -11,6 +11,7 @@ import io
 
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
+import blurhash  # pip: blurhash-python
 register_heif_opener()
 
 from obstore import store
@@ -184,28 +185,27 @@ class RMQBroker(RabbitBroker):
             # ── Thumbnail ──────────────────────────────────────────────────────
             try:
                 duration = metadata.get("duration_seconds") or 0
-                thumb_gcs_path = os.path.splitext(filename)[0] + "_thumb.jpg"
+                # WebP is 25-35% smaller than JPEG at equivalent quality — faster
+                # to load on mobile, supported by all modern platforms.
+                thumb_gcs_path = os.path.splitext(filename)[0] + "_thumb.webp"
 
-                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tf:
+                with tempfile.NamedTemporaryFile(suffix='.webp', delete=False) as tf:
                     thumb_path = tf.name
 
-                # Smart frame selection:
+                # Smart frame selection via input-side -ss + thumbnail filter:
                 #
-                # trim=start — skip the first 5% (min 0.5s, max 3s) to avoid
-                #   black leader frames, fade-ins, and motion blur on camera starts.
+                # -ss on input  — fast-seek to skip the first 5 % (min 0.5 s,
+                #   max 3 s) of leader frames, fade-ins, and camera-start blur.
+                #   Input-side seek is faster than trim in the filter graph and
+                #   avoids the settb=AVTB workaround.
                 #
-                # settb=AVTB — resets the timebase after trim so thumbnail and
-                #   subsequent filters see monotonically increasing timestamps.
-                #
-                # thumbnail=n=60 — analyzes 60 consecutive frames and picks the one
+                # thumbnail=n=60 — analyzes 60 decoded frames and picks the one
                 #   with the highest spatial complexity (most edges, most visual
-                #   detail, least uniform/blank areas). Far better than a fixed seek
-                #   which can land on a transition or near-black shot.
+                #   detail). Consistently picks a "live" moment, not a random frame.
                 #
-                # scale — caps at 720px wide without upscaling.
-                #   No commas anywhere in the filter string: commas are ffmpeg
-                #   filter-chain separators and cause "Error splitting argument list"
-                #   when passed through python-ffmpeg's subprocess arg list.
+                # scale — caps at 720 px wide without upscaling.
+                #   No commas in this filter string; commas are ffmpeg filter-chain
+                #   separators and cause "Error splitting argument list" errors.
                 trim_start = max(0.5, min(duration * 0.05, 3.0))
 
                 ffmpeg_thumb = (
@@ -226,8 +226,20 @@ class RMQBroker(RabbitBroker):
 
                 if len(thumb_bytes) > 0:
                     obstore = get_obstore()
-                    await obstore.put_final_bytes(thumb_gcs_path, thumb_bytes, "image/jpeg")
+                    await obstore.put_final_bytes(thumb_gcs_path, thumb_bytes, "image/webp")
                     metadata["thumbnail"] = thumb_gcs_path
+
+                    # Generate blurhash from the selected thumbnail frame.
+                    # Stored alongside the thumbnail path so clients can render
+                    # an instant placeholder before the signed URL resolves.
+                    try:
+                        def _make_blurhash():
+                            img = Image.open(io.BytesIO(thumb_bytes)).convert("RGB")
+                            return blurhash.encode(img, x_components=4, y_components=3)
+                        metadata["blurhash"] = await asyncio.to_thread(_make_blurhash)
+                    except Exception as bh_err:
+                        self.logger.warning(f"⚠️ Blurhash generation failed: {bh_err}")
+
                     self.logger.info(f"🖼️  Thumbnail uploaded: {thumb_gcs_path} ({len(thumb_bytes)} bytes)")
                 else:
                     self.logger.warning(f"⚠️ Thumbnail extraction produced 0 bytes for {filename}")
@@ -318,6 +330,10 @@ class RMQBroker(RabbitBroker):
         """
         def _read():
             img = Image.open(io.BytesIO(image_bytes))
+            # Ensure RGB for blurhash (it requires 3-channel input)
+            rgb = img.convert("RGB") if img.mode != "RGB" else img
+            # 4x3 components: good balance of detail vs hash length (~30 chars)
+            blur = blurhash.encode(rgb, x_components=4, y_components=3)
             return {
                 "filename":    filename,
                 "format_name": img.format or content_type.split("/")[-1].upper(),
@@ -325,6 +341,7 @@ class RMQBroker(RabbitBroker):
                 "height":      img.height,
                 "color_space": img.mode,
                 "size_bytes":  len(image_bytes),
+                "blurhash":    blur,
             }
 
         try:

@@ -287,6 +287,45 @@ class NotificationManager:
             logger.info(f"Livestream notification error: {e}")
             raise
 
+    async def send_event_reminder(
+        self,
+        event_id: str,
+        event_name: str,
+        attendee_ids: List[str],
+        minutes_until: int = 60,
+        workflow_id: str = "event-reminder",
+    ):
+        """
+        Send a "your event starts in ~1 hour" push notification to all attendees.
+
+        Args:
+            event_id:      SurrealDB event ID (without table prefix)
+            event_name:    Human-readable event name for the notification body
+            attendee_ids:  List of subscriber IDs (user IDs) to notify
+            minutes_until: How many minutes until the event starts (for copy)
+            workflow_id:   Novu workflow identifier
+
+        Returns:
+            Novu trigger response or None on error
+        """
+        if not attendee_ids:
+            return None
+        try:
+            return await self.novu_client.trigger_async(
+                trigger_event_request_dto=TriggerEventRequestDto(
+                    workflow_id=workflow_id,
+                    to=[{"subscriber_id": uid} for uid in attendee_ids],
+                    payload={
+                        "event_id": event_id,
+                        "event_name": event_name,
+                        "minutes_until": minutes_until,
+                    },
+                )
+            )
+        except Exception as e:
+            logger.error(f"Event reminder notification error for {event_id}: {e}")
+            return None
+
     def send_post_interaction_notification(
         self,
         post_id: str,
