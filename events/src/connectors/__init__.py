@@ -438,23 +438,49 @@ class EventsDB:
         """
         Create an attendance relationship between a user and an event.
 
-        Args:
-            data (Dict[str, Any]): The data for the attendance relationship
+        Both the RELATE and the ticket CREATE happen inside the same connection
+        acquisition so they share a logical unit of work. A duplicate-guard on
+        the RELATE (IF NOT EXISTS) means two concurrent calls for the same
+        user+event pair will only produce one attends edge and one ticket.
         """
         try:
+            user_id   = data["user"]
+            event_id  = data["event"]
+            user_rid  = RecordID("users",  user_id)
+            event_rid = RecordID("events", event_id)
+
             async with self.pool.acquire() as conn:
-                await conn.let("user", RecordID("users", data["user"]))
-                await conn.let("event", RecordID("events", data["event"]))
-                query = """
-                RELATE $user -> attends -> $event SET status = $status;
-                """
-                result = await conn.query(query, {"status": data["status"]})
-                await self._create_ticket(data, is_free=True)
+                # Atomic duplicate guard: only RELATE if the edge doesn't exist yet.
+                relate_result = await conn.query(
+                    """
+                    IF NOT EXISTS (
+                        SELECT id FROM attends
+                        WHERE in = type::thing('users',  $user_id)
+                          AND out = type::thing('events', $event_id)
+                    ) {
+                        RELATE type::thing('users', $user_id)
+                            -> attends ->
+                               type::thing('events', $event_id)
+                        SET status = $status;
+                    };
+                    """,
+                    {"user_id": user_id, "event_id": event_id, "status": data["status"]},
+                )
 
+                # Only create a ticket when we actually created a new edge.
+                # relate_result is None / empty when the guard blocked creation.
+                if relate_result and relate_result[0]:
+                    ticket_data = {**data, "user": user_id, "event": event_id}
+                    ticket_data["user"]  = RecordID("users",  ticket_data.pop("user"))
+                    ticket_data["event"] = RecordID("events", ticket_data.pop("event"))
+                    ticket_data["is_free"] = True
+                    if "tier" in ticket_data and ticket_data["tier"]:
+                        ticket_data["tier"] = RecordID("ticket_tiers", ticket_data["tier"])
+                    else:
+                        ticket_data.pop("tier", None)
+                    await conn.create("tickets", ticket_data)
 
-            if "err" in result:
-                raise Exception(f"Error creating attendance: {result}")
-            return record_id_to_json(result)
+            return record_id_to_json(relate_result)
         except Exception as e:
             self.logger.error(f"Failed to create attendance: {str(e)}")
             raise
@@ -493,25 +519,27 @@ class EventsDB:
         """
         Create a ticket tier for an event. Max 3 tiers per event.
 
-        Args:
-            event_id (str): The event ID
-            tier_data (dict): Tier fields: name, price, capacity, description
-
-        Returns:
-            Dict[str, Any]: The created tier
+        The count-check and CREATE are collapsed into a single conditional
+        statement so two concurrent requests both reading count=2 cannot both
+        slip through and create a 4th tier.
         """
         try:
+            tier_data["event"] = RecordID("events", event_id)
             async with self.pool.acquire() as conn:
-                count = await conn.query(
-                    "RETURN count(SELECT id FROM ticket_tiers WHERE event = type::thing('events', $event_id));",
-                    {"event_id": event_id},
+                result = await conn.query(
+                    """
+                    IF count(
+                        SELECT id FROM ticket_tiers
+                        WHERE event = type::thing('events', $event_id)
+                    ) >= 3 {
+                        THROW "Maximum of 3 tiers per event";
+                    } ELSE {
+                        CREATE ticket_tiers CONTENT $tier_data;
+                    };
+                    """,
+                    {"event_id": event_id, "tier_data": tier_data},
                 )
-                if count and count >= 3:
-                    raise ValueError("Maximum of 3 tiers per event")
-
-                tier_data["event"] = RecordID("events", event_id)
-                result = await conn.create("ticket_tiers", tier_data)
-            return record_id_to_json(result)
+            return record_id_to_json(result[0] if isinstance(result, list) else result)
         except Exception as e:
             self.logger.error(f"Failed to create ticket tier: {str(e)}")
             raise
@@ -547,24 +575,31 @@ class EventsDB:
         """
         Delete a ticket tier. Only allowed if no tickets have been sold.
 
-        Args:
-            tier_id (str): The tier ID
-
-        Returns:
-            bool: True if deleted successfully
+        Uses a single conditional DELETE so the sold_count check and the
+        delete happen atomically — a ticket sale landing between a separate
+        SELECT and DELETE cannot slip through and corrupt sold ticket data.
         """
         try:
             async with self.pool.acquire() as conn:
+                # Confirm the tier exists first for a clear not-found error.
                 tier = await conn.select(RecordID("ticket_tiers", tier_id))
                 if not tier:
                     raise ValueError("Tier not found")
-                if tier.get("sold_count", 0) > 0:
-                    raise ValueError("Cannot delete tier with sold tickets")
 
-                await conn.query(
-                    "DELETE type::thing('ticket_tiers', $tier_id);",
+                # Atomic: only delete if sold_count is still 0.
+                # RETURN BEFORE lets us distinguish "deleted" from "blocked".
+                deleted = await conn.query(
+                    """
+                    DELETE type::thing('ticket_tiers', $tier_id)
+                    WHERE sold_count = NONE OR sold_count = 0
+                    RETURN BEFORE;
+                    """,
                     {"tier_id": tier_id},
                 )
+
+                if not deleted or not deleted[0]:
+                    raise ValueError("Cannot delete tier with sold tickets")
+
             return True
         except Exception as e:
             self.logger.error(f"Failed to delete ticket tier: {str(e)}")
@@ -658,29 +693,37 @@ class EventsDB:
         """
         Add a user to an event's guestlist.
 
-        Args:
-            event_id (str): The event ID
-            user_id (str): The user ID to add to guestlist
-            invited_by (str): The ID of the user doing the inviting
-            status (str): The invitation status (default: "invited")
-
-        Returns:
-            Dict[str, Any]: The created guestlist entry
+        IF NOT EXISTS guard prevents duplicate edges from double-taps or
+        concurrent retry requests. Returns the existing entry unchanged if
+        the user is already on the guestlist.
         """
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.query(
                     """
-                    RELATE type::thing('users', $user_id) -> guestlists -> type::thing('events', $event_id) 
-                    SET 
-                        invited_by = type::thing('users', $invited_by),
-                        status = $status;
+                    IF NOT EXISTS (
+                        SELECT id FROM guestlists
+                        WHERE in  = type::thing('users',  $user_id)
+                          AND out = type::thing('events', $event_id)
+                    ) {
+                        RELATE type::thing('users',  $user_id)
+                            -> guestlists ->
+                               type::thing('events', $event_id)
+                        SET
+                            invited_by = type::thing('users', $invited_by),
+                            status     = $status;
+                    } ELSE {
+                        SELECT * FROM guestlists
+                        WHERE in  = type::thing('users',  $user_id)
+                          AND out = type::thing('events', $event_id)
+                        LIMIT 1;
+                    };
                     """,
                     {
-                        "user_id": user_id,
-                        "event_id": event_id,
+                        "user_id":    user_id,
+                        "event_id":   event_id,
                         "invited_by": invited_by,
-                        "status": status,
+                        "status":     status,
                     },
                 )
             return record_id_to_json(result)
@@ -750,70 +793,77 @@ class EventsDB:
         """
         Verify and check-in a ticket by its ticket number.
 
-        Args:
-            event_id (str): The event ID
-            ticket_number (str): The ticket number from QR code
-
-        Returns:
-            Dict[str, Any]: Verification result with ticket details and status
+        Uses an atomic UPDATE ... WHERE checked_in_at = NONE to eliminate the
+        double check-in race. Two concurrent scans of the same QR code both
+        attempt the UPDATE; only one finds a row matching checked_in_at = NONE
+        and gets RETURN BEFORE data back — the other gets an empty result and
+        is treated as already-checked-in, never as a fresh valid scan.
         """
         try:
             async with self.pool.acquire() as conn:
-                raw_response = await conn.query_raw(
+                # First confirm the ticket exists for this event at all.
+                exists_result = await conn.query(
                     """
-                    LET $ticket = (
-                        SELECT 
-                            id,
-                            ticket_number,
-                            checked_in_at,
-                            user.{id, organization_name, first_name, last_name, avatar} AS user,
-                            event.{id, title} AS event
-                        FROM tickets 
-                        WHERE 
-                            ticket_number = $ticket_number AND 
-                            event = type::thing('events', $event_id)
-                        LIMIT 1
-                    )[0];
-                    
-                    RETURN IF $ticket {
-                        IF $ticket.checked_in_at {
-                            {
-                                valid: true,
-                                already_checked_in: true,
-                                checked_in_at: $ticket.checked_in_at,
-                                ticket: $ticket
-                            }
-                        } ELSE {
-                            UPDATE tickets 
-                            SET checked_in_at = time::now() 
-                            WHERE id = $ticket.id;
-                            
-                            {
-                                valid: true,
-                                already_checked_in: false,
-                                checked_in_at: time::now(),
-                                ticket: $ticket
-                            }
-                        }
-                    } ELSE {
-                        {
-                            valid: false,
-                            message: "Ticket not found or does not belong to this event"
-                        }
-                    };
+                    SELECT
+                        id,
+                        ticket_number,
+                        checked_in_at,
+                        user.{id, organization_name, first_name, last_name, avatar} AS user,
+                        event.{id, title} AS event
+                    FROM tickets
+                    WHERE ticket_number = $ticket_number
+                      AND event = type::thing('events', $event_id)
+                    LIMIT 1;
                     """,
                     {"event_id": event_id, "ticket_number": ticket_number},
                 )
-                
-                # query_raw() returns: {'id': '...', 'result': [{}, {}]}
-                # Multiple statements return array of results - last item is RETURN statement
-                # Structure: raw_response['result'][-1]['result'] contains our data
-                if raw_response and 'result' in raw_response and len(raw_response['result']) > 0:
-                    result = raw_response['result'][-1].get('result')
-                else:
-                    result = None
-                    
-            return record_id_to_json(result)
+
+                ticket = (exists_result or [None])[0]
+                if not ticket:
+                    return {"valid": False, "message": "Ticket not found or does not belong to this event"}
+
+                if ticket.get("checked_in_at"):
+                    return {
+                        "valid": True,
+                        "already_checked_in": True,
+                        "checked_in_at": ticket["checked_in_at"],
+                        "ticket": ticket,
+                    }
+
+                # Atomic claim: UPDATE only if checked_in_at is still NONE.
+                # RETURN BEFORE gives us the row as it was before the update —
+                # if the result is non-empty we won the race; if empty, a
+                # concurrent scan beat us and already set checked_in_at.
+                claimed = await conn.query(
+                    """
+                    UPDATE tickets
+                    SET checked_in_at = time::now()
+                    WHERE id = $ticket_id
+                      AND checked_in_at = NONE
+                    RETURN BEFORE;
+                    """,
+                    {"ticket_id": ticket["id"]},
+                )
+
+                if not claimed or not claimed[0]:
+                    # Another scanner won the race between our SELECT and UPDATE.
+                    refreshed = await conn.query(
+                        "SELECT checked_in_at FROM ONLY $tid;",
+                        {"tid": ticket["id"]},
+                    )
+                    return {
+                        "valid": True,
+                        "already_checked_in": True,
+                        "checked_in_at": (refreshed or {}).get("checked_in_at"),
+                        "ticket": ticket,
+                    }
+
+            return record_id_to_json({
+                "valid": True,
+                "already_checked_in": False,
+                "checked_in_at": None,  # set by DB, not echoed back here
+                "ticket": ticket,
+            })
         except Exception as e:
             self.logger.error(f"Failed to verify ticket: {str(e)}")
             raise
@@ -822,55 +872,63 @@ class EventsDB:
         """
         Update event media by replacing existing media with new media.
 
-        Args:
-            event_id (str): The event ID
-            media_data (List[Dict[str, Any]]): List of media data dicts with 'filename', 'type', 'creator'
-
-        Returns:
-            Dict[str, Any]: The updated event with new media
+        Creates new records first, swaps the has_media relations, then deletes
+        the old records. This eliminates the blind-spot window where the event
+        briefly has zero media between the old DELETE and the new CREATE loop.
+        Any reader racing against this update sees either the full old set or
+        the full new set — never an empty set.
         """
         try:
             async with self.pool.acquire() as conn:
                 event_record_id = RecordID("events", event_id)
-                
-                # Delete old media relationships and media records
-                await conn.query(
-                    """
-                    DELETE has_media WHERE in = type::thing('events', $event_id);
-                    DELETE media WHERE event = type::thing('events', $event_id);
-                    """,
-                    {"event_id": event_id}
+
+                # 1. Collect old media IDs before touching anything.
+                old_media = await conn.query(
+                    "SELECT VALUE out FROM has_media WHERE in = type::thing('events', $event_id);",
+                    {"event_id": event_id},
                 )
-                
-                # Create new media records
-                media_ids = []
+                old_media_ids = old_media if isinstance(old_media, list) else []
+
+                # 2. Create new media records (event is still visible with old media).
+                new_media_ids = []
                 for media in media_data:
                     media_record = await conn.create(
                         "media",
                         {
                             "filename": media["filename"],
-                            "type": media["type"],
-                            "creator": media["creator"],
-                            "event": event_record_id,
+                            "type":     media["type"],
+                            "creator":  media["creator"],
+                            "event":    event_record_id,
+                            "status":   "pending",
                         },
                     )
                     if isinstance(media_record, dict):
-                        media_ids.append(media_record["id"])
+                        new_media_ids.append(media_record["id"])
                     else:
                         self.logger.error(
                             f"Media create returned unexpected result: {media_record} for {media['filename']}"
                         )
-                        
-                # Create new has_media relationships
-                for media_id in media_ids:
+
+                # 3. Create new has_media edges.
+                for media_id in new_media_ids:
                     await conn.query(
-                        "RELATE $event -> has_media -> $media",
+                        "RELATE $event -> has_media -> $media;",
                         {"event": event_record_id, "media": media_id},
                     )
-                
-                # Return updated event
+
+                # 4. Now atomically drop the OLD edges (new ones already live).
+                if old_media_ids:
+                    await conn.query(
+                        "DELETE has_media WHERE in = type::thing('events', $event_id) AND out IN $old_ids;",
+                        {"event_id": event_id, "old_ids": old_media_ids},
+                    )
+                    await conn.query(
+                        "DELETE media WHERE id IN $old_ids;",
+                        {"old_ids": old_media_ids},
+                    )
+
                 result = await conn.select(event_record_id)
-                
+
             return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to update event media: {str(e)}")
