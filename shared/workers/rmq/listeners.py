@@ -199,8 +199,9 @@ class RMQBroker(RabbitBroker):
                     .input(tmp_path, ss=str(seek_time))
                     .output(
                         thumb_path,
-                        vframes="1",
-                        vf="scale=min(720\\,iw):-2",   # comma escaped — unescaped comma is parsed as filter separator
+                        # vframes="1",
+                        frames_v="1",
+                        vf="scale=min(720,iw):-2",
                         f="image2",
                     )
                 )
