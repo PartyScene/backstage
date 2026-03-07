@@ -348,6 +348,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_trending_events($page: number, $limit: numbe
     RETURN (
         SELECT
             fn::fetch_event(id) AS event,
+            time AS event_time, created_at,
             (
                 (attendee_count * 3) +
                 (count(SELECT id FROM posts WHERE event = $parent.id) * 2)
@@ -355,7 +356,7 @@ DEFINE FUNCTION OVERWRITE fn::fetch_trending_events($page: number, $limit: numbe
         FROM events
         WHERE is_private = false
           AND time + duration::from::mins(duration) > time::now()
-        ORDER BY score DESC, time ASC
+        ORDER BY score DESC, event_time ASC
         LIMIT $limit START ($page - 1) * $limit
     );
 };
