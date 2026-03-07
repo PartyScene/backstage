@@ -468,8 +468,20 @@ class BaseView(QuartClassful):
             # Handle free events / free tiers
             if ticket_price == 0:
                 app.logger.info(f"Processing free event registration for guest {email}")
-                
-                # Create tickets
+
+                # Idempotency guard for free registrations — prevents duplicate
+                # tickets from double-taps or retried requests.
+                free_key = f"free_reg:{event_id}:{email}"
+                if not await self.redis.set(free_key, "1", nx=True, ex=3600):
+                    return (
+                        jsonify(
+                            data={"free": True, "event_id": event_id},
+                            message="Registration already processed.",
+                            status=HTTPStatus.OK.phrase,
+                        ),
+                        HTTPStatus.OK,
+                    )
+
                 ticket_data = {"guest_email": email, "event": event_id}
                 if guest_name:
                     ticket_data["guest_name"] = guest_name
@@ -477,10 +489,11 @@ class BaseView(QuartClassful):
                     ticket_data["tier"] = tier_id
                 for i in range(ticket_count):
                     await self.conn._create_ticket(ticket_data.copy())
-                
-                # Increment attendee count
+
+                if tier_id:
+                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
                 await self.conn.increment_attendee_count(event_id, ticket_count)
-                
+
                 await self._send_tickets_email(
                     to_email=email,
                     user_name=guest_name or email.split('@')[0],
@@ -772,6 +785,17 @@ class BaseView(QuartClassful):
             if ticket_price == 0:
                 app.logger.info(f"Processing free event registration for guest {email}")
 
+                free_key = f"free_reg:{event_id}:{email}"
+                if not await self.redis.set(free_key, "1", nx=True, ex=3600):
+                    return (
+                        jsonify(
+                            data={"free": True, "event_id": event_id},
+                            message="Registration already processed.",
+                            status=HTTPStatus.OK.phrase,
+                        ),
+                        HTTPStatus.OK,
+                    )
+
                 ticket_data = {"guest_email": email, "event": event_id}
                 if guest_name:
                     ticket_data["guest_name"] = guest_name
@@ -780,6 +804,8 @@ class BaseView(QuartClassful):
                 for i in range(ticket_count):
                     await self.conn._create_ticket(ticket_data.copy())
 
+                if tier_id:
+                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
                 await self.conn.increment_attendee_count(event_id, ticket_count)
 
                 await self._send_tickets_email(
@@ -1010,10 +1036,19 @@ class BaseView(QuartClassful):
         # Handle the event
         if event["type"] == "payment_intent.succeeded":
             payment_intent = event.data.object
-            app.logger.info(f"PaymentIntent was successful: {payment_intent['id']}")
+            payment_intent_id = payment_intent["id"]
+            app.logger.info(f"PaymentIntent was successful: {payment_intent_id}")
 
-            # Extract ticket_id from payment_intent metadata
-            # This metadata was set when creating the PaymentIntent in /create-payment-intent
+            # ── Idempotency guard ─────────────────────────────────────────────
+            # Stripe guarantees at-least-once delivery and retries on any
+            # non-2xx or timeout. Without this guard a retry creates a full
+            # duplicate set of tickets for real money already charged.
+            # TTL 24 h covers all realistic retry windows.
+            idempotency_key = f"stripe_webhook:{payment_intent_id}"
+            if not await self.redis.set(idempotency_key, "1", nx=True, ex=86400):
+                app.logger.info(f"Duplicate Stripe webhook ignored: {payment_intent_id}")
+                return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
+
             metadata = payment_intent.get("metadata")
 
             if "ticket_count" in metadata:
@@ -1022,9 +1057,9 @@ class BaseView(QuartClassful):
                 event_id = metadata.get("event_id")
                 tier_id = metadata.get("tier_id")
                 guest_name = metadata.get("guest_name")
-                
+
                 is_guest = "@" in user_or_email
-                
+
                 if is_guest:
                     app.logger.info(f"Processing guest purchase for email: {user_or_email}")
                     for i in range(ticket_count):
@@ -1049,7 +1084,7 @@ class BaseView(QuartClassful):
                             ticket_data["tier"] = tier_id
                         await self.conn._create_ticket(ticket_data)
                         app.logger.info(f"Ticket {i+1} created for user {user_or_email}")
-                    
+
                     await self.conn.create_attendance({
                         "user": user_or_email,
                         "event": event_id,
@@ -1057,7 +1092,10 @@ class BaseView(QuartClassful):
                     })
                     app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
 
-                # Increment attendee count
+                # Increment tier sold_count so capacity enforcement is accurate.
+                if tier_id:
+                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
+
                 await self.conn.increment_attendee_count(event_id, ticket_count)
 
                 await self._send_tickets_email(
@@ -1165,11 +1203,21 @@ class BaseView(QuartClassful):
 
                 app.logger.info(f"Processing successful charge: {reference}")
 
+                # ── Idempotency guard ─────────────────────────────────────────
+                # Paystack retries webhooks on any non-2xx or timeout.
+                # SET NX ensures only the first delivery processes tickets.
+                idempotency_key = f"paystack_webhook:{reference}"
+                if not await self.redis.set(idempotency_key, "1", nx=True, ex=86400):
+                    app.logger.info(f"Duplicate Paystack webhook ignored: {reference}")
+                    return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
+
                 # Verify transaction via API to confirm status
                 verification = await self.paystack_client.verify_transaction(reference)
 
                 if not verification.get("status"):
                     app.logger.error(f"Transaction verification failed: {verification}")
+                    # Roll back the idempotency key so a later retry can try again
+                    await self.redis.delete(idempotency_key)
                     return api_error("Verification failed", HTTPStatus.BAD_REQUEST)
 
                 verified_data = verification.get("data", {})
@@ -1214,7 +1262,7 @@ class BaseView(QuartClassful):
                             ticket_data["tier"] = tier_id
                         await self.conn._create_ticket(ticket_data)
                         app.logger.info(f"Ticket {i+1} created for user {user_or_email}")
-                    
+
                     await self.conn.create_attendance({
                         "user": user_or_email,
                         "event": event_id,
@@ -1222,7 +1270,10 @@ class BaseView(QuartClassful):
                     })
                     app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
 
-                # Increment attendee count
+                # Increment tier sold_count so capacity enforcement is accurate.
+                if tier_id:
+                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
+
                 await self.conn.increment_attendee_count(event_id, ticket_count)
 
                 await self._send_tickets_email(

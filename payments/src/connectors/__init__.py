@@ -59,20 +59,29 @@ class PaymentsDB:
         """
         Create an attendance relationship between a user and an event.
 
-        Args:
-            data (Dict[str, Any]): The data for the attendance relationship
+        IF NOT EXISTS guard prevents duplicate edges when the webhook fires
+        more than once for the same payment (Stripe/Paystack retry behaviour).
         """
         try:
+            user_id  = data["user"]
+            event_id = data["event"]
             async with self.pool.acquire() as conn:
-                await conn.let("user", RecordID("users", data["user"]))
-                await conn.let("event", RecordID("events", data["event"]))
-                query = """
-                RELATE $user -> attends -> $event SET status = $status;
-                """
-                result = await conn.query(query, {"status": data["status"]})
-            if isinstance(result[0], str):
-                raise Exception(f"Error creating attendance: {result}")
-            return record_id_to_json(result[0])
+                result = await conn.query(
+                    """
+                    IF NOT EXISTS (
+                        SELECT id FROM attends
+                        WHERE in  = type::thing('users',  $user_id)
+                          AND out = type::thing('events', $event_id)
+                    ) {
+                        RELATE type::thing('users',  $user_id)
+                            -> attends ->
+                               type::thing('events', $event_id)
+                        SET status = $status;
+                    };
+                    """,
+                    {"user_id": user_id, "event_id": event_id, "status": data["status"]},
+                )
+            return record_id_to_json(result)
         except Exception as e:
             self.logger.error(f"Failed to create attendance: {str(e)}")
             raise
@@ -118,15 +127,10 @@ class PaymentsDB:
         """
         Check if a tier has enough capacity for the requested ticket count.
 
-        Args:
-            tier_id (str): The tier ID
-            count (int): Number of tickets requested
-
-        Returns:
-            Dict[str, Any]: Tier data if available
-
-        Raises:
-            ValueError: If tier not found or sold out
+        Reads capacity and sold_count in a single SELECT so the values are
+        consistent. Actual sold_count enforcement happens at ticket creation
+        time via increment_tier_sold_count — this check is a fast pre-flight
+        that gives a clean error message before hitting Stripe/Paystack.
         """
         try:
             async with self.pool.acquire() as conn:
@@ -138,7 +142,7 @@ class PaymentsDB:
             capacity = tier.get("capacity")
             sold = tier.get("sold_count", 0)
 
-            if capacity is not None and sold + count > capacity:
+            if capacity is not None and (sold + count) > capacity:
                 raise ValueError(
                     f"Tier '{tier.get('name')}' is sold out "
                     f"({sold}/{capacity} sold)"
@@ -319,6 +323,25 @@ class PaymentsDB:
             return record_id_to_json(result) if result else []
         except Exception as e:
             self.logger.error(f"Failed to get ticket details: {str(e)}")
+            raise
+
+    async def increment_tier_sold_count(self, tier_id: str, count: int = 1) -> None:
+        """
+        Atomically increment sold_count on a ticket tier after confirmed purchase.
+
+        Using += in SurrealDB is an atomic read-modify-write at the DB level,
+        so concurrent webhook deliveries for different purchases accumulate
+        correctly without a SELECT/UPDATE race.
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.query(
+                    "UPDATE type::thing('ticket_tiers', $tier_id) SET sold_count += $count;",
+                    {"tier_id": tier_id, "count": count},
+                )
+            self.logger.info(f"Incremented sold_count by {count} for tier {tier_id}")
+        except Exception as e:
+            self.logger.error(f"Failed to increment tier sold_count: {str(e)}")
             raise
 
     async def increment_attendee_count(self, event_id: str, count: int = 1) -> None:

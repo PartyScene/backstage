@@ -923,7 +923,7 @@ class BaseView(QuartClassful):
                     "filename": filenames[i],
                     "type": file.content_type,
                     "host": user_id,
-                    "event_id": RecordID("events", event_id),
+                    "event_id": event_id,
                     "creator": user_id,
                 }
                 app.logger.info(f"Uploading updated event media to GCP: {file_upload_data['filename']}")
