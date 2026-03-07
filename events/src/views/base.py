@@ -31,6 +31,13 @@ from shared.workers.rmq import RMQBroker
 import uuid_utils as ruuid
 
 from surrealdb import RecordID, Duration
+
+# Stream Video client — for granting/revoking the attendee streaming role
+from getstream import Stream as _Stream
+from getstream.models import MemberRequest as _MemberRequest
+_STREAM_API_KEY    = os.environ.get("STREAM_API_KEY", "")
+_STREAM_API_SECRET = os.environ.get("STREAM_API_SECRET", "")
+_stream_video      = _Stream(api_key=_STREAM_API_KEY, api_secret=_STREAM_API_SECRET, timeout=10.0)
 from surrealdb.data import GeometryPoint
 
 
@@ -221,7 +228,10 @@ class BaseView(QuartClassful):
                     data=result,
                 )
 
-            result = await self.conn.fetch_all(page, limit)
+            # Use trending-ranked results for the public discover feed.
+            # fn::fetch_trending_events scores by (attendee_count × 3 + post_count × 2)
+            # so events with momentum surface first instead of newest-created.
+            result = await self.conn.fetch_trending_events(page, limit)
             result = await recursively_sign_object_media(result)
             for event in result:
                 event["event"]["host"] = await recursively_sign_object_media(event['event']['host'])
@@ -923,7 +933,7 @@ class BaseView(QuartClassful):
                     "filename": filenames[i],
                     "type": file.content_type,
                     "host": user_id,
-                    "event_id": event_id,
+                    "event_id": RecordID("events", event_id),
                     "creator": user_id,
                 }
                 app.logger.info(f"Uploading updated event media to GCP: {file_upload_data['filename']}")
@@ -1016,6 +1026,24 @@ class BaseView(QuartClassful):
                     data=result,
                 )
             else:
+                # Fresh check-in — grant the attendee streaming role on the Stream call.
+                # This gives the user permission to go live during the event.
+                # Role is geofenced: POST /scenes/<event_id>/attendee-location revokes it
+                # if the user leaves the party radius.
+                # Non-fatal: a Stream error must never block a successful ticket scan.
+                try:
+                    checked_in_user_id = (result.get("ticket") or {}).get("user", {}).get("id")
+                    if checked_in_user_id:
+                        call_id = f"partyscene-{event_id}"
+                        call    = _stream_video.video.call("livestream", call_id)
+                        await asyncio.to_thread(
+                            call.update_call_members,
+                            update_members=[_MemberRequest(user_id=checked_in_user_id, role="attendee")],
+                        )
+                        app.logger.info(f"✅ Granted attendee streaming role: user={checked_in_user_id} call={call_id}")
+                except Exception as stream_err:
+                    app.logger.warning(f"⚠️ Failed to grant attendee role for {event_id}: {stream_err}")
+
                 return api_response(
                     "Ticket verified and checked in successfully",
                     HTTPStatus.OK,

@@ -1,0 +1,3 @@
+surrealdb>=0.3.0
+novu-py
+ipinfo  # required by NotificationManager.__init__ even though get_ip_location is never called here

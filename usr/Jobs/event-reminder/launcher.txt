@@ -1,0 +1,16 @@
+gcloud builds submit --tag us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/event-reminder usr/Jobs/event-reminder/
+
+
+gcloud run jobs create event-reminder --image us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/event-reminder --region us-central1 --set-secrets SURREAL_URI=SURREAL_URI:latest --set-secrets SURREAL_USER=SURREAL_USER:latest --set-secrets SURREAL_PASS=SURREAL_PASS:latest --set-secrets NOVU_SECRET_KEY=NOVU_SECRET_KEY:latest --project=partyscene-441317
+
+gcloud scheduler jobs create http event-reminder-scheduler \
+  --schedule="*/15 * * * *" \
+  --uri="https://us-central1-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/partyscene-441317/jobs/event-reminder:run" \
+  --http-method=POST \
+  --oauth-service-account-email=YOUR_SERVICE_ACCOUNT@partyscene-441317.iam.gserviceaccount.com \
+  --location=us-central1
+
+gcloud scheduler jobs create http event-reminder-scheduler --project=partyscene-441317 --location=us-central1 --schedule="*/15 * * * *" --uri="https://us-central1-run.googleapis.com/apis/run.app/v1/namespaces/partyscene-441317/jobs/event-reminder:run" --http-method=POST --oauth-service-account-email="288617366843-compute@developer.gserviceaccount.com" --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" --description="Triggers the event-reminder Cloud Run Job every 15 minutes"
+
+gcloud run jobs add-iam-policy-binding event-reminder --member="serviceAccount:288617366843-compute@developer.gserviceaccount.com" --role="roles/run.invoker" --region=us-central1 --project=partyscene-441317
+gcloud run jobs add-iam-policy-binding event-reminder --member="serviceAccount:288617366843-compute@developer.gserviceaccount.com" --role="roles/run.invoker" --region=us-central1 --project=partyscene-441317

@@ -1,0 +1,12 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - -f
+      - usr/Jobs/event-reminder/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/event-reminder
+      - .   # build context = repo root, so COPY can reach shared/
+
+images:
+  - us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/event-reminder

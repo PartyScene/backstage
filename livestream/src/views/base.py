@@ -636,6 +636,98 @@ class BaseView(QuartClassful):
             return api_error("Token generation failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     # ------------------------------------------------------------------
+    # POST /scenes/<event_id>/attendee-location
+    # Called by the RN app periodically (e.g. every 60 s) and on foreground.
+    # Checks whether the user is still within the party radius.
+    # If outside → revoke attendee streaming role (demote to viewer).
+    # If inside  → re-grant (handles the case they briefly stepped out).
+    # ------------------------------------------------------------------
+
+    @route("/scenes/<event_id>/attendee-location", methods=["POST"])
+    @jwt_required
+    async def attendee_location_check(self, event_id: str):
+        """
+        Geofence check for the attendee streaming role.
+
+        Body: { "coordinates": [lng, lat] }
+
+        The RN app should call this:
+          - Once per minute while the user is in the stream view
+          - On app foreground resume
+          - On GPS location update if > 100 m change
+
+        Role management:
+          - Inside radius (≤ 1000 m): user is/stays an "attendee" member on the call
+          - Outside radius (> 1000 m): demoted to "viewer" — can still watch,
+            cannot publish video
+        """
+        if not self._validate_event_id(event_id):
+            return api_error("Invalid event ID format", HTTPStatus.BAD_REQUEST)
+
+        user_id = get_jwt_identity()
+        data = await request.get_json()
+
+        if not data or "coordinates" not in data:
+            return api_error("coordinates required", HTTPStatus.BAD_REQUEST)
+
+        user_coords = coordinates_to_geometry_point(data["coordinates"])
+        if not user_coords:
+            return api_error("Invalid coordinates format", HTTPStatus.BAD_REQUEST)
+
+        try:
+            async with self.conn.pool.acquire() as conn:
+                event_info = await conn.query(
+                    "SELECT location, time, host FROM ONLY type::thing('events', $eid);",
+                    {"eid": event_id},
+                )
+
+            if not event_info:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            event_coords = (event_info.get("location") or {}).get("coordinates")
+            if not event_coords:
+                # No location set on event — can't enforce geofence, keep role as-is
+                return api_response("No event location set — geofence skipped", HTTPStatus.OK,
+                                    data={"inside": True})
+
+            async with self.conn.pool.acquire() as conn:
+                distance_result = await conn.query(
+                    "RETURN geo::distance($user_location, $event_location);",
+                    {"user_location": user_coords, "event_location": event_coords},
+                )
+
+            distance_m = float(distance_result) if distance_result else float("inf")
+            inside = distance_m <= 1000
+
+            call_id = _call_id_for_event(event_id)
+            call    = _stream_video_client.video.call("livestream", call_id)
+
+            if inside:
+                # (Re-)grant attendee role — idempotent on Stream's side
+                await _run_sync(
+                    call.update_call_members,
+                    update_members=[MemberRequest(user_id=user_id, role="attendee")],
+                )
+                app.logger.info(f"✅ Attendee role active: user={user_id} dist={distance_m:.0f}m event={event_id}")
+            else:
+                # Demote to viewer — can watch, cannot publish
+                await _run_sync(
+                    call.update_call_members,
+                    update_members=[MemberRequest(user_id=user_id, role="viewer")],
+                )
+                app.logger.info(f"⚠️ Attendee role revoked: user={user_id} dist={distance_m:.0f}m event={event_id}")
+
+            return api_response(
+                "Location checked",
+                HTTPStatus.OK,
+                data={"inside": inside, "distance_m": round(distance_m)},
+            )
+
+        except Exception as exc:
+            app.logger.exception(f"attendee_location_check failed for {event_id}/{user_id}")
+            return api_error("Location check failed", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    # ------------------------------------------------------------------
     # POST /scenes/<event_id>/report/<scene_id>
     # Report a stream — unchanged from original, still uses your SurrealDB.
     # ------------------------------------------------------------------
