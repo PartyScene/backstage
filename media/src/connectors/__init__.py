@@ -70,20 +70,25 @@ class MediaDB:
         Returns:
             dict: The updated media record.
         """
-        # Hoist thumbnail to its own column; keep it in metadata too for reference.
+        # Hoist thumbnail and blurhash to dedicated top-level columns so the
+        # signing layer and client queries can access them without unpacking
+        # the full metadata blob.
         thumbnail = metadata.get("thumbnail")
+        blur      = metadata.get("blurhash")
 
         async with self.pool.acquire() as conn:
             query = """
             UPDATE ONLY type::thing('media', $media_id)
             SET metadata   = $metadata,
-                thumbnail  = $thumbnail
+                thumbnail  = $thumbnail,
+                blurhash   = $blurhash
             RETURN AFTER;
             """
             result = await conn.query(query, {
                 "media_id":  media_id,
                 "metadata":  metadata,
-                "thumbnail": thumbnail,   # None for images — field stays unset
+                "thumbnail": thumbnail,   # None for images without thumbnail
+                "blurhash":  blur,        # None if generation failed
             })
 
             if isinstance(result, dict):
