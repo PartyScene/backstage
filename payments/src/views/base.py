@@ -246,7 +246,7 @@ class BaseView(QuartClassful):
 
         if coupon_code:
             COUPON = await stripe.Coupon.retrieve_async(coupon_code)
-            total_amount = total_amount * (COUPON.percent_off / 100)
+            total_amount = total_amount * (1 - COUPON.percent_off / 100)
 
         tax_calculation_params = {
             "currency": "usd",
