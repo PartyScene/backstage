@@ -328,6 +328,54 @@ class BaseView(QuartClassful):
         else:
             return api_error("Invalid OTP", HTTPStatus.UNAUTHORIZED)
 
+    @route("/auth/resend-otp", methods=["POST"])
+    async def resend_otp(self):
+        """Resend OTP for an email during registration or password reset.
+        
+        This endpoint is called when a user taps "Resend OTP" and only requires
+        the email address. It does NOT trigger full registration.
+        """
+        data = await request.get_json()
+        email = data.get("email")
+        context = data.get("context", "register")  # "register" or "forgot-password"
+        
+        if not email:
+            return api_error("Email is required", HTTPStatus.BAD_REQUEST)
+        
+        try:
+            # Check if there's an existing Novu subscriber for this email
+            existing_subscriber = await self.__notification_manager.get_subscriber_by_email(email)
+            if existing_subscriber:
+                user_id = existing_subscriber.subscriber_id
+            else:
+                # For resend, use a temporary ID if no subscriber exists yet
+                user_id = str(ruuid.uuid4()).split("-")[-1]
+            
+            # Generate and send OTP without full registration
+            if otp_result := await self.__generate_and_send_otp(
+                user_id, email, None, get_client_ip(request), context=context
+            ):
+                response_data = {}
+                if os.getenv("ENVIRONMENT") in ["dev", "test"]:
+                    response_data["otp"] = otp_result
+                
+                return api_response(
+                    "OTP resent successfully",
+                    HTTPStatus.OK,
+                    data=response_data
+                )
+            else:
+                return api_error(
+                    "OTP already sent. Please wait before requesting another.",
+                    HTTPStatus.CONFLICT
+                )
+        except Exception as e:
+            logger.error(f"Resend OTP error: {e}")
+            return api_error(
+                "Failed to resend OTP",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
     @route("/auth/register", methods=["POST"])
     async def register_user(self):
         """Register a user account into the SurrealDB."""
@@ -351,11 +399,8 @@ class BaseView(QuartClassful):
             # Fast cuckoo filter check first for email existence
             email_exists = await self.conn._check_exists(data["email"], "email")
             
-            # Check if username is taken (separate check) — only if username is provided
-            # (username is optional for resend OTP requests)
-            username_exists = False
-            if data.get("username"):
-                username_exists = await self.conn._check_exists(data["username"], "username")
+            # Check if username is taken (separate check)
+            username_exists = await self.conn._check_exists(data.get("username", ""), "username")
             
             if email_exists:
                 # Only fetch full user data if cuckoo filter indicates existence
