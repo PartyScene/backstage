@@ -20,11 +20,11 @@ import orjson as json
 
 from auth.src.connectors import AuthDB
 from shared.classful import route, QuartClassful
+from shared.middleware import rate_limit, GlobalRateLimits
 from shared.workers.brevo import Brevo
 from shared.utils import veriff, get_client_ip, api_response, api_error
 from shared.utils.apple_auth import AppleAuthClient
 from shared.workers.novu import NotificationManager
-from shared.middleware.rate_limiter import GlobalRateLimits
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import stripe
@@ -129,7 +129,7 @@ class BaseView(QuartClassful):
         )
 
     @route("/auth/forgot-password", methods=["POST"])
-    @app.rate_limiter.rate_limit(**GlobalRateLimits.OTP_LIMITS)
+    @rate_limit(**GlobalRateLimits.OTP_LIMITS)
     async def forgot_password(self):
         """Request a password reset for a user."""
         data = await request.get_json()
@@ -287,7 +287,7 @@ class BaseView(QuartClassful):
             return api_response("Available.", HTTPStatus.OK)
 
     @route("/auth/verify", methods=["POST"])
-    @app.rate_limiter.rate_limit(**GlobalRateLimits.AUTH_LIMITS)
+    @rate_limit(**GlobalRateLimits.AUTH_LIMITS)
     async def verify(self):
         """Verify a provided OTP and generate an access token."""
         data = await request.get_json()
@@ -332,7 +332,7 @@ class BaseView(QuartClassful):
             return api_error("Invalid OTP", HTTPStatus.UNAUTHORIZED)
 
     @route("/auth/resend-otp", methods=["POST"])
-    @app.rate_limiter.rate_limit(**GlobalRateLimits.OTP_LIMITS)
+    @rate_limit(**GlobalRateLimits.OTP_LIMITS)
     async def resend_otp(self):
         """Resend OTP for an email during registration or password reset.
         
@@ -381,7 +381,7 @@ class BaseView(QuartClassful):
             )
 
     @route("/auth/register", methods=["POST"])
-    @app.rate_limiter.rate_limit(**GlobalRateLimits.AUTH_LIMITS)
+    @rate_limit(**GlobalRateLimits.AUTH_LIMITS)
     async def register_user(self):
         """Register a user account into the SurrealDB."""
         data = await request.get_json()
@@ -504,7 +504,7 @@ class BaseView(QuartClassful):
         )
 
     @route("/auth/login", methods=["POST"])
-    @app.rate_limiter.rate_limit(**GlobalRateLimits.AUTH_LIMITS)
+    @rate_limit(**GlobalRateLimits.AUTH_LIMITS)
     async def login_user(self):
         """Verify user credentials and generate an access token."""
         data = await request.get_json()
