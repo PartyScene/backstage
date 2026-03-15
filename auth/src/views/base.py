@@ -351,8 +351,11 @@ class BaseView(QuartClassful):
             # Fast cuckoo filter check first for email existence
             email_exists = await self.conn._check_exists(data["email"], "email")
             
-            # Check if username is taken (separate check)
-            username_exists = await self.conn._check_exists(data["username"], "username")
+            # Check if username is taken (separate check) — only if username is provided
+            # (username is optional for resend OTP requests)
+            username_exists = False
+            if data.get("username"):
+                username_exists = await self.conn._check_exists(data["username"], "username")
             
             if email_exists:
                 # Only fetch full user data if cuckoo filter indicates existence
