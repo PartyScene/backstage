@@ -19,7 +19,7 @@ import logging
 import os
 
 from surrealdb import AsyncSurreal
-from shared.workers.novu.notifications import NotificationManager
+from shared.workers.novu import NotificationManager
 
 # ---------------------------------------------------------------------------
 # Config

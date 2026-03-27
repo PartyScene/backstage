@@ -18,6 +18,7 @@ from shared.classful import route, QuartClassful
 from shared.utils import get_client_ip, api_response, api_error, generate_signed_url
 from shared.utils.paystack_client import PaystackClient
 from shared.workers.resend import ResendClient
+from shared.workers.novu import NotificationManager
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
@@ -59,6 +60,7 @@ class BaseView(QuartClassful):
             self.resend_client = ResendClient()
         except ValueError as e:
             app.logger.warning(f"ResendClient not initialized: {e}")
+        self._notification_manager = NotificationManager()
         self.check_and_assign_webhook()
 
     def check_and_assign_webhook(self):
@@ -1105,6 +1107,27 @@ class BaseView(QuartClassful):
                     is_guest=is_guest,
                 )
 
+                # Notify the event host about the ticket purchase (non-critical)
+                try:
+                    event_data = await self.conn._fetch(event_id)
+                    if event_data:
+                        host = event_data.get("host", {})
+                        host_id = host.get("id", "") if isinstance(host, dict) else ""
+                        if host_id:
+                            host_id = str(host_id).split(":")[-1]
+                            buyer_display = guest_name or user_or_email.split('@')[0]
+                            await self._notification_manager.send_ticket_purchase_host_notification(
+                                host_subscriber_id=host_id,
+                                buyer_name=buyer_display,
+                                event_name=event_data.get("title", "your event"),
+                                event_id=event_id,
+                                ticket_count=ticket_count,
+                                total_amount=payment_intent.get("amount", 0) / 100,
+                                currency=payment_intent.get("currency", "usd").upper(),
+                            )
+                except Exception as host_notify_err:
+                    app.logger.error(f"Host notification failed (non-blocking): {host_notify_err}")
+
             elif "type" in metadata and metadata["type"] == "KYC_PAYMENT":
                 user_id = metadata.get("user_id")
                 app.logger.info(f"KYC payment successful for user {user_id}.")
@@ -1266,7 +1289,7 @@ class BaseView(QuartClassful):
                     await self.conn.create_attendance({
                         "user": user_or_email,
                         "event": event_id,
-                        "status": "paid"
+                        "status": "paid",
                     })
                     app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
 
@@ -1283,13 +1306,33 @@ class BaseView(QuartClassful):
                     is_guest=is_guest,
                 )
 
+                # Notify the event host about the ticket purchase (non-critical)
+                try:
+                    ps_event_data = await self.conn._fetch(event_id)
+                    if ps_event_data:
+                        host = ps_event_data.get("host", {})
+                        host_id = host.get("id", "") if isinstance(host, dict) else ""
+                        if host_id:
+                            host_id = str(host_id).split(":")[-1]
+                            buyer_display = guest_name or user_or_email.split('@')[0]
+                            await self._notification_manager.send_ticket_purchase_host_notification(
+                                host_subscriber_id=host_id,
+                                buyer_name=buyer_display,
+                                event_name=ps_event_data.get("title", "your event"),
+                                event_id=event_id,
+                                ticket_count=ticket_count,
+                                total_amount=verified_data.get("amount", 0) / 100,
+                                currency=verified_data.get("currency", "NGN").upper(),
+                            )
+                except Exception as host_notify_err:
+                    app.logger.error(f"Host notification failed (non-blocking): {host_notify_err}")
+
             except Exception as e:
                 app.logger.error(
                     f"Error processing Paystack webhook: {str(e)}",
-                    exc_info=True
+                    exc_info=True,
                 )
                 # Return 200 to prevent Paystack from retrying
-                # Log error for manual investigation
                 return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
 
         else:

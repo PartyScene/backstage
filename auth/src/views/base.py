@@ -323,6 +323,22 @@ class BaseView(QuartClassful):
             if isinstance(result, dict):
                 await self.conn._store_after_verify(result)
                 access_token = self.generate_jwt_secret(result["id"])
+
+                # Send welcome email on first registration (non-critical)
+                if context == "register":
+                    try:
+                        await self.__notification_manager.send_welcome_notification(
+                            user_id=result["id"],
+                            first_name=(
+                                result.get("organization_name")
+                                or result.get("username")
+                                or result.get("first_name")
+                                or "there"
+                            ),
+                        )
+                    except Exception as e:
+                        logger.error("Welcome notification failed (non-blocking): %s", e)
+
                 return api_response(
                     "OTP verified successfully.",
                     HTTPStatus.OK,
