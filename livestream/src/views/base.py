@@ -374,7 +374,7 @@ class BaseView(QuartClassful):
                                 "event_location": event_coords,
                             },
                         )
-                        distance_m = float(distance_result) if distance_result else float("inf")
+                        distance_m = float(distance_result) if distance_result is not None else float("inf")
 
                         if distance_m > 1000:
                             return api_error(
@@ -696,7 +696,7 @@ class BaseView(QuartClassful):
                     {"user_location": user_coords, "event_location": event_coords},
                 )
 
-            distance_m = float(distance_result) if distance_result else float("inf")
+            distance_m = float(distance_result) if distance_result is not None else float("inf")
             inside = distance_m <= 1000
 
             call_id = _call_id_for_event(event_id)
