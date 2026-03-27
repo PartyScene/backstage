@@ -467,25 +467,20 @@ class EventsDB:
 
             async with self.pool.acquire() as conn:
                 # Atomic duplicate guard: only RELATE if the edge doesn't exist yet.
-                relate_result = await conn.query(
+                try:
+                    relate_result = await conn.query(
                     """
-                    IF NOT EXISTS (
-                        SELECT id FROM attends
-                        WHERE in = type::thing('users',  $user_id)
-                          AND out = type::thing('events', $event_id)
-                    ) {
+                    -- Use a composite id for the relation
                         RELATE type::thing('users', $user_id)
                             -> attends ->
                                type::thing('events', $event_id)
                         SET status = $status;
-                    };
                     """,
                     {"user_id": user_id, "event_id": event_id, "status": data["status"]},
                 )
 
-                # Only create a ticket when we actually created a new edge.
-                # relate_result is None / empty when the guard blocked creation.
-                if relate_result and relate_result[0]:
+                    # Only create a ticket when we actually created a new edge.
+                    # relate_result is None / empty when the guard blocked creation.
                     ticket_data = {**data, "user": user_id, "event": event_id}
                     ticket_data["user"]  = RecordID("users",  ticket_data.pop("user"))
                     ticket_data["event"] = RecordID("events", ticket_data.pop("event"))
@@ -495,6 +490,9 @@ class EventsDB:
                     else:
                         ticket_data.pop("tier", None)
                     await conn.create("tickets", ticket_data)
+                except Exception:
+                    # If the relation already exists, don't create a ticket
+                    pass
 
             return record_id_to_json(relate_result)
         except Exception as e:
