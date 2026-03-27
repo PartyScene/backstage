@@ -467,32 +467,25 @@ class EventsDB:
 
             async with self.pool.acquire() as conn:
                 # Atomic duplicate guard: only RELATE if the edge doesn't exist yet.
-                try:
-                    relate_result = await conn.query(
+                
+                relate_result = await conn.query(
                     """
-                    -- Use a composite id for the relation
-                        RELATE type::thing('users', $user_id)
-                            -> attends ->
-                               type::thing('events', $event_id)
-                        SET status = $status;
+                    RELATE $user_id->attends->$event_id SET status = $status;
                     """,
-                    {"user_id": user_id, "event_id": event_id, "status": data["status"]},
+                    {"user_id": RecordID("users", user_id), "event_id": RecordID("events", event_id), "status": data["status"]},
                 )
 
-                    # Only create a ticket when we actually created a new edge.
-                    # relate_result is None / empty when the guard blocked creation.
-                    ticket_data = {**data, "user": user_id, "event": event_id}
-                    ticket_data["user"]  = RecordID("users",  ticket_data.pop("user"))
-                    ticket_data["event"] = RecordID("events", ticket_data.pop("event"))
-                    ticket_data["is_free"] = True
-                    if "tier" in ticket_data and ticket_data["tier"]:
-                        ticket_data["tier"] = RecordID("ticket_tiers", ticket_data["tier"])
-                    else:
-                        ticket_data.pop("tier", None)
-                    await conn.create("tickets", ticket_data)
-                except Exception:
-                    # If the relation already exists, don't create a ticket
-                    pass
+                # Only create a ticket when we actually created a new edge.
+                # relate_result is None / empty when the guard blocked creation.
+                ticket_data = {**data, "user": user_id, "event": event_id}
+                ticket_data["user"]  = RecordID("users",  ticket_data.pop("user"))
+                ticket_data["event"] = RecordID("events", ticket_data.pop("event"))
+                ticket_data["is_free"] = True
+                if "tier" in ticket_data and ticket_data["tier"]:
+                    ticket_data["tier"] = RecordID("ticket_tiers", ticket_data["tier"])
+                else:
+                    ticket_data.pop("tier", None)
+                await conn.create("tickets", ticket_data)
 
             return record_id_to_json(relate_result)
         except Exception as e:
