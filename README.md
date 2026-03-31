@@ -1,58 +1,60 @@
 # PartyScene Backend
 
-**Production-ready microservices platform for real-time social event discovery and management.**
+**Production-grade microservices platform for real-time social event discovery, ticketing, and live streaming.**
 
-[![Production Status](https://img.shields.io/badge/status-production--ready-green.svg)]()
-[![Test Coverage](https://img.shields.io/badge/coverage-70%25-yellow.svg)]()
-[![Uptime](https://img.shields.io/badge/uptime-99.5%25-brightgreen.svg)]()
-[![Microservices](https://img.shields.io/badge/services-8-blue.svg)]()
-[![API Response](https://img.shields.io/badge/API%20p95-<500ms-green.svg)]()
+[![Production Status](https://img.shields.io/badge/status-production-green.svg)]()
+[![Python](https://img.shields.io/badge/python-3.13-blue.svg)]()
+[![Microservices](https://img.shields.io/badge/services-7%20deployed-blue.svg)]()
+[![Tests](https://img.shields.io/badge/tests-200+-yellow.svg)]()
 
-Location-based social platform combining event management, live streaming, AI recommendations, and secure payments—built on async Python with cloud-native architecture.
+Location-based social platform combining event management, live streaming, AI-powered recommendations, and dual-provider payments — built on async Python (Quart) with a Rust-based ASGI server, deployed to GKE.
 
 ---
 
 ## System Architecture
 
 ### Overview
-Cloud-native microservices platform built on async Python (Quart), deployed on Kubernetes (GKE) with 99.5% uptime. Handles 500+ concurrent users with sub-500ms API response times.
+
+Cloud-native microservices platform built on Quart (async Python) served by Granian (Rust ASGI server with uvloop). All services share a common `MicroService` base class that initializes SurrealDB connection pools (via purreal), Redis, JWT, RabbitMQ, Prometheus metrics, and a KPI aggregator. Deployed to Google Kubernetes Engine (us-central1) via Cloud Build.
 
 ### Core Capabilities
-- **Real-time Synchronization**: WebSocket live event updates, sub-200ms latency
-- **Geospatial Intelligence**: SurrealDB-powered spatial queries, sub-second performance
-- **AI Recommendations**: Vector embeddings with ML similarity algorithms
-- **Asynchronous Processing**: RabbitMQ message queue for media uploads, background task execution
-- **Media Optimization**: NVENC hardware acceleration, Instagram-quality video compression (H.264 CQ 23)
-- **Horizontal Scalability**: Kubernetes auto-scaling, tested to 1000+ concurrent users
 
-### Microservices Ecosystem
+- **Geospatial Discovery**: SurrealDB `geo::distance` queries with indexed coordinates, radius-based event search with pagination
+- **Graph Social Layer**: SurrealDB relation tables (`friends`, `blocks`, `attends`, `guestlists`) with multi-degree traversal (`fn::exists_in_degree` up to 5 hops) for private event access control
+- **AI Recommendations**: SurrealDB native HNSW vector indexes (768-dim ViT embeddings) for visual similarity search across event media, with cosine + KNN distance scoring
+- **Async Media Pipeline**: RabbitMQ (via FastStream) for image compression (Pillow, 2048px max, JPEG Q90), video transcoding (FFmpeg, H.264 CRF 21, 1080p, 5M bitrate), thumbnail extraction, and BlurHash generation
+- **Dual-Provider Payments**: Stripe (international) + Paystack (Africa) with webhook-driven ticket creation, tier capacity tracking, and host notification
+- **Live Streaming**: GetStream.io Video + Chat SDKs with backstage → go-live flow, geofenced attendee role management (1km radius), and per-event chat channels
+- **Real-time KPIs**: Prometheus counters across all services + SurrealDB aggregate queries (DAU/WAU/MAU, retention cohorts, churn, ARPU, conversion), served at `GET /auth/kpis` for Grafana Infinity
+
+### Microservices
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Kong API Gateway                          │
-│              (Rate Limiting, Load Balancing)                │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-        ┌───────────────┼───────────────┐
-        │               │               │
-   ┌────▼────┐    ┌────▼────┐    ┌────▼────┐
-   │  Auth   │    │  Users  │    │ Events  │
-   │ Service │    │ Service │    │ Service │
-   └────┬────┘    └────┬────┘    └────┬────┘
-        │               │               │
-   ┌────▼────┐    ┌────▼────┐    ┌────▼────┐
-   │  Posts  │    │  Media  │    │Payments │
-   │ Service │    │ Service │    │ Service │
-   └────┬────┘    └────┬────┘    └────┬────┘
-        │               │               │
-        └───────────────┼───────────────┘
-                        │
-        ┌───────────────▼───────────────┐
-        │      Infrastructure Layer      │
-        │  SurrealDB │ Redis │ RabbitMQ │
-        │  GCS Storage │ Secret Manager │
-        └───────────────────────────────┘
+              ┌──────────────────────────────────────────────────┐
+              │              GKE Ingress / Load Balancer          │
+              └────────────────────┬─────────────────────────────┘
+                                   │
+         ┌─────────┬───────────┬───┴───┬───────────┬─────────────┐
+         │         │           │       │           │             │
+    ┌────▼───┐ ┌───▼───┐ ┌────▼──┐ ┌──▼───┐ ┌────▼────┐ ┌─────▼────┐
+    │  Auth  │ │ Users │ │Events │ │Posts │ │Payments │ │Livestream│
+    │  :5510 │ │ :5510 │ │ :5510 │ │:5510 │ │  :5510  │ │  :5510   │
+    └────┬───┘ └───┬───┘ └───┬───┘ └──┬───┘ └────┬────┘ └─────┬────┘
+         │         │         │        │           │            │
+         └─────────┴─────┬───┴────┬───┴───────────┘            │
+                         │        │                            │
+                    ┌────▼───┐ ┌──▼────┐               ┌──────▼──────┐
+                    │ Media  │ │ R18E  │               │ GetStream   │
+                    │ :5510  │ │ :5510 │               │ Video+Chat  │
+                    └────┬───┘ └───┬───┘               └─────────────┘
+                         │        │
+    ┌────────────────────┴────────┴──────────────────────┐
+    │              Infrastructure Layer                    │
+    │  SurrealDB │ Redis │ RabbitMQ │ GCS │ Secret Mgr   │
+    └─────────────────────────────────────────────────────┘
 ```
+
+**7 services deployed** to production (auth, events, posts, users, media, payments, livestream). R18E (recommendation engine) has a Dockerfile and test suite but is not yet in the Cloud Build pipeline.
 
 ---
 
@@ -60,319 +62,304 @@ Cloud-native microservices platform built on async Python (Quart), deployed on K
 
 ### Service Specifications
 
-#### **1. Auth Service**
-- **Tech**: Quart async, Redis session storage, JWT with refresh tokens
-- **Features**: OAuth 2.0 SSO, rate limiting (Cuckoo filters), encrypted credentials (Google Secret Manager)
-- **Performance**: <50ms auth check, 10K tokens/sec validation capacity
-- **Security**: RBAC, per-user rate limits, session invalidation
+#### 1. Auth Service
+- **Runtime**: Granian (Rust ASGI, uvloop, multi-threaded, dynamic workers via `$(nproc)`)
+- **Auth flows**: Email/password (Argon2 hashing in SurrealDB), Google SSO (`google-auth`), Apple SSO (JWT verification)
+- **JWT**: Shared secret distributed via Redis; auth service generates, others read
+- **Credential storage**: AES-CBC envelope encryption — data encrypted with random DEK, DEK encrypted with KEK from Google Secret Manager
+- **Rate limiting**: Redis + atomic Lua script, 3-window (per-minute/hour/day), by IP (SHA-256 of IP+User-Agent) or JWT user ID
+- **KPI endpoint**: `GET /auth/kpis` — public, serves Prometheus + SurrealDB aggregate metrics for Grafana
+- **GDPR**: Scheduled account deletion via K8s CronJob (daily at 02:00 UTC)
 
-#### **2. Users Service**  
-- **Tech**: Quart async, SurrealDB graph relationships
-- **Features**: User profiles, social graph (follow/friend), privacy controls, GDPR compliance
-- **Performance**: <100ms profile queries, real-time relationship updates
-- **Scale**: Supports 100K+ user relationships per user
+#### 2. Users Service
+- **Social graph**: SurrealDB `friends` relation table with status enum (`pending | accepted | blocked | removed | rejected`)
+- **Graph traversal**: `fn::find_relationships` up to 5 degrees of separation; `fn::exists_in_degree` for private event access
+- **Blocking**: Separate `blocks` relation table
+- **Notifications**: Novu integration (modular registry pattern) — friend request notifications on relationship creation
 
-#### **3. Events Service**
-- **Tech**: Quart async, SurrealDB geospatial indexing, WebSocket
-- **Features**: Event CRUD, distance-based search, live attendee tracking, real-time updates
-- **Performance**: <200ms geospatial queries, sub-second radius search
-- **Capacity**: 10K+ concurrent event searches/sec
+#### 3. Events Service
+- **Geospatial**: `location.coordinates` stored as SurrealDB `Point` type; `fn::fetch_events_by_location` uses `geo::distance` filtering + pagination
+- **Discovery feeds**: `fn::fetch_public_events`, `fn::fetch_trending_events` (score = attendees×3 + posts×2), `fn::fetch_private_events_for_user` (graph-gated)
+- **Ticketing**: Multi-tier tickets (`ticket_tiers` table, capacity tracking, sold_count auto-incremented via SurrealDB `CREATE` event), unique ticket numbers (`TKT-XXXX-XXXX`)
+- **Guestlists**: `guestlists` relation table for event invitations with invited-by tracking
+- **WebSocket**: Real-time event updates (events service only)
 
-#### **4. Posts Service**
-- **Tech**: Quart async, ML content ranking, Redis caching
-- **Features**: Social feed, engagement metrics, content moderation, community interactions
-- **Performance**: <150ms feed generation, ML-ranked results
-- **Scale**: Handles 50K+ posts, real-time feed updates
+#### 4. Posts Service
+- **Data model**: `posts` is a SurrealDB relation table (`users → media`) with content, event association, and visibility flag
+- **Comments**: `comments` relation table (`users → posts`)
+- **Media**: File uploads validated then published to RabbitMQ for async processing by the media service
+- **Content reporting**: Generic `_report_resource` for posts and comments, stored in `reports` table with status tracking
 
-#### **5. Media Service** (Ultra-Fast Optimizations ✨)
-- **Tech**: Quart async, RabbitMQ, FFmpeg (NVENC/libx264), GCS
-- **Features**: 
-  - Video compression: H.264 CRF 27, 720p mobile-optimized, 2.5s GOP keyframes
-  - Hardware acceleration: NVENC p1 (fastest) with ultrafast software fallback
-  - Background uploads: Non-blocking GCS uploads after compression
-  - Memory management: Explicit GC after processing (50% less RAM)
-- **Performance**: 
-  - Encoding: 5-8s (hardware), 10-15s (software) - 75% faster than before
-  - Throughput: 240-360 videos/hour per pod (up from 156/hour)
-  - Memory: 1-2GB per pod (down from 2-3GB)
-- **Scale**: Auto-scaling 2-7 pods (CPU-based), 480-2520 videos/hour total
-- **Quality**: 720p perfect for mobile, instant seeking, progressive download
+#### 5. Media Service
+- **Pipeline**: RabbitMQ consumer (FastStream) → fetch from GCS temp → compress → extract metadata → upload final → update DB
+- **Image processing**: Pillow + pillow-heif (HEIC/HEIF support), max 2048px, JPEG Q90, EXIF orientation correction, BlurHash generation for instant placeholders
+- **Video processing**: FFmpeg async wrapper, H.264 CRF 21, 1080p max (1920×1080), 5Mbps bitrate cap, 12M buffer, 128k AAC audio, 44.1kHz sample rate; MOV→MP4 conversion
+- **Thumbnails**: Auto-extracted at ~10% of video duration, uploaded as WebP alongside video
+- **Storage**: Google Cloud Storage via obstore (Rust-based), with signed URL generation
+- **Serialization**: ormsgpack (MessagePack) for RabbitMQ message encoding
+- **Workers**: Granian with 1 worker (I/O-bound on FFmpeg), explicit `gc.collect()` after each processed file
 
-#### **6. Payments Service**
-- **Tech**: Quart async, Stripe API, transaction logging
-- **Features**: Ticket sales, refunds, webhooks, automated reconciliation
-- **Performance**: <300ms payment processing, 99.99% transaction reliability
-- **Security**: PCI DSS Level 1 compliant (Stripe), encrypted financial data
+#### 6. Payments Service
+- **Providers**: Stripe (international markets) + Paystack (African markets)
+- **Flows**: Payment intent → webhook verification → ticket creation → tier sold count increment → host notification (Novu) → buyer email
+- **Webhook security**: Stripe signature verification, Paystack webhook validation
+- **Split payments**: Paystack subaccount support for marketplace host payouts
+- **PCI**: Level 1 compliant via Stripe tokenization
 
-#### **7. Livestream Service**
-- **Tech**: Cloudflare Stream, VideoSDK integration
-- **Features**: Multi-platform streaming, VOD storage, live chat
-- **Performance**: <2s stream latency, global CDN delivery
-- **Scale**: Supports 10K+ concurrent viewers per stream
+#### 7. Livestream Service
+- **Provider**: GetStream.io (migrated from Cloudflare Stream)
+- **Video SDK**: `getstream` Python SDK (sync, wrapped with `asyncio.to_thread` for non-blocking Quart)
+- **Chat SDK**: `stream-chat` async SDK — one `livestream` channel per event, created alongside the video call
+- **Flow**: Create call (backstage) → go-live (broadcast) → end-live (back to backstage) → end call (permanent)
+- **Geofencing**: 1km radius check on `POST /scenes/<event_id>/attendee-location`, auto-promotes/demotes attendee ↔ viewer based on GPS
+- **Tokens**: Unified Stream token covers both Video and Chat SDKs
 
-#### **8. R18E Service** (AI/ML)
-- **Tech**: PyTorch, vector embeddings, content similarity algorithms
-- **Features**: Event recommendations, user preference learning, content moderation
-- **Performance**: <100ms recommendation generation, GPU-accelerated inference
-- **Scale**: Processes 100K+ embeddings/sec
+#### 8. R18E Service (Recommendation Engine)
+- **Status**: Developed and tested, **not yet deployed to production** (excluded from `cloudbuild.yaml`)
+- **Approach**: SurrealDB native HNSW vector search — no external ML runtime (PyTorch deps are commented out in `requirements.txt`)
+- **Algorithm**: Average ViT-768 media embeddings per event → HNSW KNN (top-100, EF=40) → cosine reranking → deduplication → future-event filter → preview cards
+- **Stored functions**: `fn::fetch_similar_events` (full pipeline in SurrealQL), `fn::fetch_event_preview` (lightweight cards)
+- **Workers**: Granian with 4 workers
+
+### Shared Library (`shared/`)
+
+| Module | Purpose |
+|--------|---------|
+| `microservice/client.py` | `MicroService` base class — SurrealDB pool, Redis, JWT, RabbitMQ, Prometheus, KPI aggregator |
+| `microservice/enum.py` | `Microservice` StrEnum with `needs_rmq()` (media, posts, users, events) |
+| `middleware/security.py` | CORS, HSTS, X-Frame-Options, CSP, content-type validation, request size limits (100MB) |
+| `middleware/rate_limiter.py` | Redis + atomic Lua script, 3-window rate limiting (60/min, 1000/hr, 10000/day) |
+| `middleware/validation.py` | File upload validation, input sanitization |
+| `middleware/error_handler.py` | Centralized error handling with structured JSON responses |
+| `kpi/` | `BusinessMetrics` (Prometheus), `KPIAggregator` (SurrealDB + Redis cache, 60s TTL), views |
+| `workers/rmq/` | `RMQBroker` — FastStream RabbitMQ consumer, image/video compression, GCS upload, metadata extraction |
+| `workers/novu/` | `NotificationManager` — modular registry pattern, typed notifications (OTP, welcome, friend request, event reminder, ticket purchase host, livestream, post interaction) |
+| `workers/brevo/` | Brevo email client |
+| `workers/resend/` | Resend email client |
+| `workers/cloudflare_stream/` | Legacy Cloudflare livestream client (superseded by GetStream) |
+| `workers/lsv1/` | Legacy livestream v1 client |
+| `utils/crypto.py` | `EnvelopeCipher` — AES-CBC envelope encryption with Google Secret Manager KEK |
+| `utils/paystack_client.py` | Paystack API wrapper (transactions, subaccounts, split payments) |
+| `utils/veriff.py` | Veriff KYC/identity verification client |
+| `utils/obstore.py` | GCS storage via obstore (Rust-based) |
+| `utils/signer.py` | GCS signed URL generation for media delivery |
+| `utils/apple_auth.py` | Apple SSO JWT token verification |
+| `classful/` | `QuartClassful` — class-based views with route decorator |
 
 ### Technology Stack
 
-**AI/ML & Real-time**
-- **Vector Embeddings**: Custom ML models for event similarity and user preference matching
-- **Real-time Engine**: WebSocket connections for live updates and synchronization
-- **Geospatial Processing**: Advanced spatial algorithms for location-based discovery
-
-**Backend**
-- **Framework**: Quart (async Python) - High-performance ASGI server handling 1000+ concurrent connections
-- **Database**: SurrealDB v2.0 - Multi-model graph database with native vector search and geospatial indexing
-- **Cache**: Redis - Session storage, real-time pub/sub, and Cuckoo filters for performance optimization
-- **Message Queue**: RabbitMQ - Asynchronous task processing for media uploads and AI processing
-- **Storage**: Google Cloud Storage - Global CDN distribution with automatic optimization
-
-**Infrastructure**
-- **Orchestration**: Kubernetes (Google GKE) - Auto-scaling, self-healing with 99.9% uptime SLA
-- **CI/CD**: Google Cloud Build + GitHub Actions with comprehensive testing gates
-- **Monitoring**: Cloud Logging with Prometheus metrics and automated alerting
-- **Security**: Google Secret Manager, encrypted credential storage, and network policies
-
-**Performance & Testing**
-- **Load Testing**: Locust framework with 5 test scenarios (smoke → spike)
-- **Test Coverage**: 70% overall (414 tests), 85% in critical payment flows
-- **API Performance**: p95 latency <500ms under 500 concurrent users
+| Layer | Technology | Details |
+|-------|-----------|---------|
+| **Language** | Python 3.13 | Async throughout (Quart ASGI) |
+| **ASGI Server** | Granian | Rust-based, uvloop event loop, Rust task implementation, multi-threaded runtime |
+| **Database** | SurrealDB v2 | Multi-model: graph relations, HNSW vector indexes (768-dim), geospatial `Point` + `geo::distance`, schemaless + schemafull tables, 17 stored functions, Argon2 hashing |
+| **Connection Pool** | purreal | SurrealDB async pool manager (min/max connections, health checks, retry, max usage count) |
+| **Cache** | Redis | JWT secret sharing, rate limiting (Lua scripts), KPI cache (60s TTL), aiocache decorator |
+| **Message Queue** | RabbitMQ | Via FastStream library, ormsgpack serialization, media + r18e queues |
+| **Object Storage** | Google Cloud Storage | Via obstore (Rust), signed URLs, temp → final upload pattern |
+| **Payments** | Stripe + Paystack | Dual provider, webhook-driven, split payments |
+| **Livestreaming** | GetStream.io | Video SDK (sync→async wrapped) + Chat SDK (native async) |
+| **Notifications** | Novu | Modular typed notification system with auto-registry |
+| **Email** | Brevo, Resend | Transactional email providers |
+| **KYC** | Veriff | Identity verification sessions |
+| **HTTP Client** | rusty-req, httpx | Rust-based async HTTP + Python httpx |
+| **Serialization** | orjson, ormsgpack | Fast JSON (Rust) + MessagePack |
+| **Monitoring** | Prometheus | Request count/latency/in-progress, DB/Redis latency histograms, business KPI counters/gauges |
+| **Image Processing** | Pillow, pillow-heif, blurhash-python | Compression, HEIC/HEIF support, instant placeholders |
+| **Video Processing** | FFmpeg (python-ffmpeg) | Async wrapper, H.264 CRF 21, 1080p, thumbnail extraction |
+| **Security** | cryptography, PyJWT, bleach | AES-CBC envelope encryption, JWT, HTML sanitization |
+| **Orchestration** | GKE (us-central1) | Docker multi-stage builds, non-root containers, port 5510 |
+| **CI/CD** | Cloud Build + GitHub Actions | 9-stage pipeline, blue-green deploys, auto-rollback, Slack alerts |
+| **Secrets** | Google Secret Manager | KEK storage for envelope encryption |
 
 ---
 
-## Performance Metrics
+## Database Schema
 
-### System-Wide Metrics
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **API Uptime** | 99.5% | Last 90 days |
-| **p50 Response Time** | <200ms | Median API latency |
-| **p95 Response Time** | <500ms | 95th percentile |
-| **p99 Response Time** | <2000ms | 99th percentile |
-| **Concurrent Users** | 500+ | Tested capacity |
-| **Peak Load Tested** | 1000 users | Spike scenario |
-| **Database Ops** | 10K+/hour | Query capacity |
-| **Container Uptime** | 99.7% | Kubernetes reliability |
+SurrealDB schema (`init/schema.surql`) — 619 lines defining the full data model:
 
-### Service-Specific Metrics
-| Service | Response Time | Throughput | Scale Factor |
-|---------|--------------|------------|--------------|
-| **Auth** | <50ms | 10K auth/sec | 5x |
-| **Users** | <100ms | 5K queries/sec | 3x |
-| **Events** | <200ms | 10K searches/sec | 4x |
-| **Posts** | <150ms | 8K feed loads/sec | 3x |
-| **Media** | 10-15s encode | 240-360/hour | 2-7 pods (auto) |
-| **Payments** | <300ms | 1K transactions/sec | 2x |
+### Tables
 
-### Media Service Performance (Ultra-Fast Optimizations)
-| Metric | Before (Nov 1) | After (Nov 2) | Improvement |
-|--------|----------------|---------------|-------------|
-| **Resolution** | 1080p | 720p mobile-optimized | 44% fewer pixels |
-| **Video Quality** | CQ 23, 1080p | CRF 27, 720p | Optimized for mobile |
-| **GOP Size** | 48 frames (2s) | 60 frames (2.5s) | Faster encoding |
-| **Processing Time (HW)** | 20-30s | 5-8s | 75% faster |
-| **Processing Time (SW)** | 40-60s | 10-15s | 75% faster |
-| **Memory per Pod** | 1-2GB | 1-2GB | Stable |
-| **Throughput (1 pod)** | 156 videos/hour | 240-360/hour | 130% increase |
-| **Throughput (2-7 pods)** | 312-1092/hour | 480-2520/hour | Auto-scales with load |
-| **File Size** | ~15MB per video | ~8MB per video | 47% reduction |
+| Table | Type | Key Fields |
+|-------|------|-----------|
+| `users` | Schemaless | first/last name, email, avatar, auth_provider (password/google/apple), stripe/paystack IDs, KYC status, `last_active`, `scheduled_deletion_at` |
+| `credentials` | Schemafull | Envelope-encrypted data (encrypted_data, encrypted_decryption_key, IVs) linked to user |
+| `leads` | Schemafull | Encrypted lead capture data |
+| `events` | Schemaless | Title, description, price, location (`Point`), categories, host (record), attendee_count, duration, degree_of_freedom, HNSW text embeddings |
+| `ticket_tiers` | Schemafull | Event-linked, name, price, capacity, `sold_count` (auto-incremented on ticket creation) |
+| `tickets` | Schemafull | User or guest (email/name), event, tier, `ticket_number` (auto-generated `TKT-XXXX-XXXX`), `checked_in_at` |
+| `scenes` | Schemafull | Livestream metadata (SRT, RTMP, WebRTC endpoints), event + user links |
+| `posts` | Relation (users→media) | Content, event association, visibility, HNSW content embeddings |
+| `comments` | Relation (users→posts) | Content |
+| `friends` | Relation (users→users) | Status: `pending \| accepted \| blocked \| removed \| rejected` |
+| `blocks` | Relation (users→users) | Unidirectional blocking |
+| `attends` | Relation (users→events) | Unique per user-event, triggers `attendee_count` increment |
+| `guestlists` | Relation (users→events) | Invitation tracking with `invited_by` and status |
+| `has_media` | Relation (events→media) | Event media association |
+| `media` | Schemaless | Content type (literal union), filename, status, metadata, thumbnail, blurhash, creator, HNSW 768-dim embeddings |
+| `reports` | Schemaless | Reporter, reason, status, linked resource |
 
-### Infrastructure Metrics
-- **Kubernetes Nodes**: Auto-scaling (2-10 nodes cluster-wide)
-- **Media Service Pods**: Auto-scaling 2-7 pods (CPU threshold: 70%)
-- **Pod Density**: 15-20 pods per node
-- **Memory Utilization**: 60-70% average
-- **CPU Utilization**: 40-60% average (70% target triggers scale-up)
-- **Storage**: Unlimited (GCS), global CDN caching
-- **Network Egress**: <10GB/day current
+### SurrealDB Stored Functions (17 total)
+
+Event discovery (`fetch_public_events`, `fetch_trending_events`, `fetch_events_by_location`, `fetch_private_events_for_user`), event detail (`fetch_event`, `fetch_event_preview`), ticketing (`fetch_user_tickets`), social graph (`create_relationship`, `get_friends`, `find_relationships`, `exists_in_degree`), guestlists (`fetch_event_guestlist`), posts (`fetch_post`), AI similarity (`fetch_similar_events`) — all computed server-side in SurrealQL.
 
 ---
 
 ## Infrastructure & Operations
 
 ### Deployment Architecture
-- **Cloud Provider**: Google Cloud Platform (GKE Autopilot)
-- **Regions**: Multi-region support (us-central1 primary)
-- **Containerization**: Docker multi-stage builds (test + production)
-- **Load Balancing**: Kong API Gateway with rate limiting
-- **SSL/TLS**: Automated certificate management
 
-### Scalability Metrics
-- **Current Capacity**: 500 concurrent users per service
-- **Tested Limit**: 1000 user spike scenarios
-- **Database**: Horizontal scaling via SurrealDB clustering
-- **Auto-scaling**: CPU-based (70% threshold)
-  - Media Service: 2-7 pods (most intensive workload)
-  - Other Services: Manual or future auto-scaling
-- **Storage**: Unlimited via GCS with CDN caching
-
-### Security Posture
-- ✅ **Authentication**: JWT with refresh tokens, OAuth 2.0 ready
-- ✅ **Authorization**: Role-based access control (RBAC)
-- ✅ **Data Protection**: Encryption at rest and in transit
-- ✅ **Input Validation**: Comprehensive sanitization, SQL injection prevention
-- ✅ **Rate Limiting**: Per-user and per-IP throttling
-- ✅ **Compliance**: GDPR-ready, PCI DSS Level 1 (Stripe)
-
----
-
-## Development & Quality Assurance
-
-### Testing Framework
-- **Unit Tests**: 414 tests across all services
-- **Integration Tests**: Cross-service workflow validation
-- **Load Tests**: Automated performance benchmarking
-- **Security Tests**: OWASP Top 10 vulnerability scanning
-- **Smoke Tests**: Post-deployment health checks
+- **Cloud Provider**: Google Cloud Platform
+- **Compute**: GKE cluster (`backstage-cluster`, us-central1)
+- **Registry**: Artifact Registry (`us-central1-docker.pkg.dev/.../scenes-backstage/`)
+- **Build**: Cloud Build (E2_HIGHCPU_8 machine), parallel image builds for all 7 services, then rolling restart
+- **Containers**: Docker multi-stage builds (test → prod), non-root user, port 5510
+- **CronJob**: `scheduled-deletion-cleanup` — runs daily at 02:00 UTC for GDPR account deletion (512Mi–1Gi memory, 250m–500m CPU)
 
 ### CI/CD Pipeline
+
+**Primary deploy** (production): `gcloud builds submit .` → Cloud Build (`cloudbuild.yaml`)
+
+**Full GitHub Actions pipeline** (9 stages, `ci-test-deploy.yaml`):
+
 ```
-Code Push → Lint → Unit Tests → Integration Tests → Build → Deploy → Smoke Tests
-   ↓ fail      ↓ fail     ↓ fail          ↓ fail        ✓      ✓         ↓ fail
-  STOP        STOP       STOP            STOP          GKE    Health    ROLLBACK
+Code Quality ──→ Unit Tests (matrix: 7 services) ──→ Integration Tests ──┐
+                                                                          ├──→ Build Images ──→ Deploy Staging ──→ Smoke Tests + k6 ──→ Deploy Production (Blue-Green) ──→ Rollback (on failure)
+                                                     Contract Tests ──────┘
 ```
 
-### Code Quality
-- **Linting**: flake8, PEP8 compliance
-- **Type Hints**: mypy static type checking
-- **Documentation**: Comprehensive docstrings, API documentation
-- **Code Review**: Required PR approvals, automated checks
+| Stage | Tools | Details |
+|-------|-------|---------|
+| Code Quality | flake8, black, mypy | Syntax errors, formatting check, type checking (non-blocking) |
+| Unit Tests | pytest (Docker matrix) | Per-service with SurrealDB + Redis + RabbitMQ in Docker, Codecov upload |
+| Integration Tests | pytest + httpx | Full stack, all services running |
+| Contract Tests | Postman CLI | API collection validation |
+| Build | Docker Buildx | Multi-stage, layer caching, Artifact Registry push |
+| Deploy Staging | kubectl set image | Namespace-isolated, rollout status wait (5m timeout) |
+| Smoke Tests | pytest + k6 | HTTP endpoint validation + basic load test |
+| Deploy Production | kubectl (blue-green) | Green deploy → canary health check → traffic swap → 5-min monitor |
+| Rollback | kubectl patch | Auto-triggered on failure, Slack notification via webhook |
+
+### Security
+
+| Layer | Implementation |
+|-------|---------------|
+| **Authentication** | JWT (shared secret via Redis), Google SSO, Apple SSO |
+| **Password Storage** | Argon2 (SurrealDB `crypto::argon2::generate`, hashed on CREATE/UPDATE events) |
+| **Credential Encryption** | AES-CBC envelope encryption (random DEK per record, KEK from Secret Manager) |
+| **Rate Limiting** | Redis + atomic Lua script, 3 windows (60/min, 1000/hr, 10000/day), per-IP or per-user |
+| **Security Headers** | HSTS, X-Frame-Options DENY, X-XSS-Protection, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy |
+| **CORS** | Configurable per environment (`partyscene.app`, `api.partyscene.app` in prod) |
+| **Input Validation** | Content-Type enforcement, request size limits (100MB), bleach HTML sanitization |
+| **Payment Security** | Stripe webhook signature verification, Paystack webhook validation, PCI DSS Level 1 (via Stripe) |
+| **GDPR** | Scheduled account deletion CronJob, `scheduled_deletion_at` field on users |
+| **KYC** | Veriff identity verification integration |
 
 ---
 
-## API & Integration
+## Testing
+
+### Test Suite
+
+~200 test functions across 37 test files, covering all 8 services:
+
+| Service | Test Files | Coverage |
+|---------|-----------|----------|
+| Auth | 6 (authentication, Apple SSO, rate limiting, security, token lifecycle, base) | Registration, login flows, SSO, token refresh/revocation |
+| Events | 7 (creation, queries, updates, base, geospatial, live, pagination) | CRUD, geo search, trending, filtering |
+| Users | 5 (base, management, relationships, blocking, privacy) | Social graph, friend requests, block enforcement |
+| Posts | 2 (base, operations) | CRUD, comments, reporting |
+| Media | 3 (base, operations, RabbitMQ consumer) | Upload pipeline, compression, metadata |
+| Payments | 5 (base, operations, edge cases, idempotency, webhook security) | Stripe/Paystack flows, webhook verification |
+| Livestream | 2 (base, management) | Stream lifecycle, permissions |
+| R18E | 2 (base, operations) | Vector search, recommendations |
+| Integration | 2 (auth-user flow, event creation flow) | Cross-service workflows |
+| Security | 1 (SQL injection) | Injection prevention |
+| Smoke | 1 (API endpoints) | Post-deploy health |
+
+**Test infrastructure**: `docker-compose.test.yml` with SurrealDB (in-memory), Redis 7, RabbitMQ 3 — all with health checks.
+
+**Load testing**: Locust framework (`tests/load_testing/locustfile.py`).
+
+### Code Quality
+
+- **Linting**: flake8 (syntax/logic errors), black (formatting)
+- **Type checking**: mypy (configured via `pyproject.toml`, non-blocking in CI)
+- **Input sanitization**: bleach for HTML, content-type enforcement, size limits
+
+---
+
+## KPI & Analytics
+
+Built-in funding-grade metrics system — no external analytics dependencies:
+
+### Real-time Counters (Prometheus)
+
+Incremented at event success points across services:
+
+| Metric | Service | Trigger |
+|--------|---------|---------|
+| `partyscene_signups_total` | Auth | OTP verification (register) |
+| `partyscene_logins_total` | Auth | Password / Google / Apple login |
+| `partyscene_events_created_total` | Events | Event creation |
+| `partyscene_event_attendances_total` | Events | Attendance marking |
+| `partyscene_ticket_purchases_total` | Payments | Stripe/Paystack webhook success |
+| `partyscene_ticket_checkins_total` | Events | Ticket check-in |
+| `partyscene_livestream_starts_total` | Livestream | Go-live |
+| `partyscene_livestreams_active` (gauge) | Livestream | Inc on go-live, dec on end-live |
+| `partyscene_posts_created_total` | Posts | Post creation |
+| `partyscene_friend_requests_total` | Users | Friend request creation |
+
+### Aggregate Metrics (SurrealDB → Redis cache, 60s TTL)
+
+DAU/WAU/MAU (via `last_active` field), D1/D7/D30 retention cohorts, churn rate, signup growth (WoW/MoM), GMV, ARPU, ticket conversion rate, stickiness (DAU/MAU), plus time-windowed counts (24h/7d/30d signups, events, tickets, posts).
+
+### Grafana Integration
+
+`GET /auth/kpis` returns a flat JSON structure parseable by Grafana Infinity datasource with JSONata. `POST /auth/kpis/refresh` forces immediate recalculation. Setup guide: `docs/GRAFANA_KPI_SETUP.md`.
+
+---
+
+## API
 
 ### REST API
 - **Documentation**: [Postman Workspace](https://scenes-dev.postman.co/workspace/Scenes-Dev-Space~3e844513-40dc-4bc3-812b-829c5d5e37a3)
-- **Authentication**: JWT Bearer tokens, OAuth 2.0 ready
-- **Rate Limiting**: 1000 requests/hour per user (adjustable)
-- **Versioning**: URL-based (v1, v2)
-- **Response Format**: JSON with consistent error codes
+- **Authentication**: JWT Bearer tokens
+- **Rate Limiting**: 60/min, 1000/hr, 10000/day (configurable per-endpoint)
+- **Response Format**: JSON via `api_response()` / `api_error()` helpers with consistent status codes
 
-### WebSocket API
-- **Live Updates**: Real-time event synchronization
-- **Latency**: <200ms for event changes
-- **Connection Management**: Automatic reconnection, heartbeat
-- **Scale**: 1000+ concurrent WebSocket connections per pod
-
----
-
-## Development & Quality
-
-### Testing Framework
-- **Unit Tests**: 414 tests across all services
-- **Integration Tests**: Cross-service workflow validation
-- **Load Tests**: Locust framework (smoke → stress → spike scenarios)
-- **Coverage**: 70% overall, 85% in payment flows
-- **CI/CD**: Automated testing gates on every commit
-
-### Code Quality
-- **Style**: PEP8 compliance, flake8 linting
-- **Type Safety**: mypy static type checking throughout
-- **Documentation**: Comprehensive docstrings, API docs
-- **Review Process**: Required PR approvals, automated checks
-
-### CI/CD Pipeline
-```
-Git Push → Lint → Unit Tests → Integration Tests → Build Docker → Deploy GKE → Smoke Tests
-   ↓          ↓        ↓              ↓                  ↓            ↓           ↓
- [PASS]    [PASS]   [PASS]         [PASS]            [PASS]      [PASS]      [PASS]
-                                                                              ✓ Live
-   ↓          ↓        ↓              ↓                  ↓            ↓           ↓
- [FAIL]    [FAIL]   [FAIL]         [FAIL]            [FAIL]      [FAIL]      [FAIL]
-   STOP      STOP     STOP           STOP              STOP        STOP      ROLLBACK
-```
-
-**Build Time**: ~10 minutes (test + build + deploy)
-
----
-
-## Production Status
-
-### Service Health
-- ✅ **All 8 Microservices**: Operational and stable
-- ✅ **Infrastructure**: GKE cluster auto-scaling
-- ✅ **Database**: SurrealDB cluster with replication
-- ✅ **Message Queue**: RabbitMQ with dead-letter queues
-- ✅ **Security**: Secret Manager, encrypted at rest/transit
-- ✅ **Monitoring**: Cloud Logging + Prometheus metrics
-
-### Recent Optimizations (Nov 2025)
-- ✅ **Ultra-Fast Processing**: 10-15s encoding (75% faster) via ultrafast preset
-- ✅ **Mobile-Optimized**: 720p resolution perfect for mobile screens (44% fewer pixels)
-- ✅ **Aggressive Compression**: CRF 27, 64k audio, 1.5M bitrate (47% smaller files)
-- ✅ **Background Uploads**: Non-blocking GCS uploads after compression
-- ✅ **Memory Management**: 50% reduction in pod memory usage
-- ✅ **Comprehensive Timing**: Detailed performance metrics in logs
-- ✅ **Horizontal Scaling**: Auto-scales 2-7 pods (480-2520 videos/hour)
-
----
-
-## Roadmap
-
-### Phase 1: MVP Launch (October 2025) ✅
-- ✅ User registration and authentication
-- ✅ Event creation and geospatial discovery
-- ✅ Mobile apps (iOS & Android) released
-- ✅ Payment processing and ticketing
-- ✅ Media uploads and live streaming
-- ✅ AI-powered event recommendations
-
-### Phase 2: User Growth & Social Features (Q4 2025)
-- 🔄 Enhanced social feed with ML content ranking
-- 🔄 Push notifications via Novu integration
-- 🔄 Advanced user profiles and relationships
-- 🔄 Event analytics dashboard for organizers
-- **Target**: 5,000 MAU, $5K MRR
-
-### Phase 3: Monetization Expansion (Q1 2026)
-- 📅 Premium organizer subscriptions ($29/month)
-- 📅 Business accounts for venues ($99/month)
-- 📅 Promotional features and sponsored listings
-- 📅 Advanced analytics and reporting
-- **Target**: 25,000 MAU, $25K MRR
-
-### Phase 4: Enterprise Features (Q2 2026)
-- 📅 API integrations for third-party platforms
-- 📅 Advanced live streaming features (multi-camera, RTMP)
-- 📅 Enterprise security and compliance tools
-- 📅 AI-powered event matching and discovery
-- **Target**: 100K+ MAU, $100K+ MRR
+### WebSocket
+- Events service only — real-time event updates via Quart WebSocket routes
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.13
 - Docker & Docker Compose
-- kubectl (for production deployments)
-- Google Cloud SDK (for GKE)
+- Google Cloud SDK (for production)
 
 ### Local Development
 ```bash
 # Clone repository
-git clone https://github.com/scenes/backstage.git
+git clone https://github.com/PartyScene/backstage.git
 cd backstage
 
-# Start infrastructure services
+# Copy environment config
+cp .env.example .env
+# Fill in: SURREAL_URI, REDIS_URI, RABBITMQ_URI, GCS_BUCKET_NAME, etc.
+
+# Start infrastructure + services
+docker network create cloudbuild
 docker-compose up -d
 
-# Install dependencies (per service)
-cd auth && pip install -r requirements.txt
+# Run tests (per service)
+docker-compose -f docker-compose.test.yml up -d rabbitmq surrealdb redis
+docker-compose -f docker-compose.test.yml run --rm microservices.auth
 
-# Run service
-python run.py
-
-# Run tests
-pytest tests/ -v --cov
-
-# Access services
-# API Gateway: http://localhost:8002
-# SurrealDB UI: http://localhost:8000
+# Access
+# SurrealDB: http://localhost:8000
 # RabbitMQ Management: http://localhost:15672
 ```
 
@@ -382,37 +369,69 @@ pytest tests/ -v --cov
 gcloud container clusters get-credentials backstage-cluster \
   --zone us-central1 --project partyscene-441317
 
-# Build and deploy all services
+# Build and deploy all services (Cloud Build)
 gcloud builds submit .
-
-# Media service auto-scaling (configured)
-kubectl autoscale deployment media --min=2 --max=7 --cpu-percent=70
-
-# Manual scale if needed
-kubectl scale deployment media --replicas=3
 
 # Check status
 kubectl get pods
-kubectl get hpa media
-kubectl logs -l app=media --tail=100
+kubectl logs -l app=auth --tail=100
 ```
 
 ### Developer Documentation
 - [Installation Guide](./docs/INSTALLATION.md)
-- [Testing Guide](./docs/QUICK-START-TESTING.md)
-- [CI/CD Guide](./docs/CI-CD-IMPLEMENTATION-GUIDE.md)
+- [Quick Start Testing](./docs/QUICK-START-TESTING.md)
+- [CI/CD Implementation Guide](./docs/CI-CD-IMPLEMENTATION-GUIDE.md)
+- [Cloud Build Guide](./docs/CLOUDBUILD.md)
+- [Windows Testing Guide](./docs/RUN-TESTS-WINDOWS.md)
+- [Grafana KPI Setup](./docs/GRAFANA_KPI_SETUP.md)
 - [API Documentation](https://scenes-dev.postman.co/workspace/Scenes-Dev-Space~3e844513-40dc-4bc3-812b-829c5d5e37a3)
+
+---
+
+## Roadmap
+
+### Phase 1: MVP Launch (October 2025) ✅
+- ✅ User registration and authentication (email/password, Google SSO, Apple SSO)
+- ✅ Event creation with geospatial discovery and trending algorithm
+- ✅ Multi-tier ticketing with Stripe + Paystack payments
+- ✅ Media pipeline (image/video compression, thumbnails, BlurHash)
+- ✅ Live streaming with GetStream.io (Video + Chat)
+- ✅ Social features (friends, blocks, posts, comments, guestlists)
+- ✅ Notification system (Novu — OTP, welcome, friend requests, event reminders, ticket purchases)
+- ✅ KPI tracking system with Grafana integration
+- ✅ Mobile apps (iOS & Android) released
+
+### Phase 2: Growth & Optimization (Q4 2025)
+- 🔄 Deploy R18E recommendation engine to production
+- 🔄 Push notifications via Novu mobile channels
+- 🔄 Event analytics dashboard for organizers
+- 🔄 Enhanced content discovery feeds
+- **Target**: 5,000 MAU, $5K MRR
+
+### Phase 3: Monetization Expansion (Q1 2026)
+- 📅 Premium organizer subscriptions ($29/month)
+- 📅 Business accounts for venues ($99/month)
+- 📅 Promotional features and sponsored listings
+- 📅 Advanced analytics and reporting
+- **Target**: 25,000 MAU, $25K MRR
+
+### Phase 4: Scale (Q2 2026)
+- 📅 API integrations for third-party platforms
+- 📅 Advanced streaming (multi-camera, RTMP ingest)
+- 📅 Enterprise security and compliance tooling
+- 📅 ML-powered content moderation (r18e expansion)
+- **Target**: 100K+ MAU, $100K+ MRR
 
 ---
 
 ## Business & Market
 
 ### Revenue Streams
-1. **Transaction Fees**: 3-5% on paid event tickets
-2. **Premium Subscriptions**: 
+1. **Transaction Fees**: 3-5% on paid event tickets (Stripe + Paystack, dual-market coverage)
+2. **Premium Subscriptions**:
    - Organizer Pro: $29/month (enhanced analytics, promotion)
    - Business: $99/month (multi-venue management, API access)
-3. **Promotional Features**: 
+3. **Promotional Features**:
    - Featured event listings: $50-200
    - Targeted advertising: CPM-based
 4. **Data Services**: Anonymized event trend reports for businesses
@@ -427,15 +446,16 @@ kubectl logs -l app=media --tail=100
 
 | Feature | PartyScene | Eventbrite | Meetup | Facebook Events |
 |---------|-----------|-----------|--------|----------------|
-| Real-time Updates | ✅ WebSocket live sync | ❌ Batch updates | ❌ Limited | ⚠️ Partial |
-| Geospatial Discovery | ✅ Sub-second queries | ❌ | ⚠️ Basic | ❌ |
-| AI Recommendations | ✅ Vector embeddings ML | ❌ | ❌ | ⚠️ Basic |
-| Integrated Streaming | ✅ Cloudflare + VideoSDK | ❌ | ❌ | ⚠️ Facebook Live |
-| Social Feed | ✅ ML-powered ranking | ❌ | ⚠️ Basic | ✅ Native |
-| Payment Processing | ✅ Stripe PCI-compliant | ✅ | ⚠️ Limited | ❌ |
-| Live Attendee Tracking | ✅ Real-time counts | ❌ | ❌ | ❌ |
+| Geospatial Discovery | ✅ SurrealDB geo queries | ❌ | ⚠️ Basic | ❌ |
+| AI Recommendations | ✅ HNSW vector similarity | ❌ | ❌ | ⚠️ Basic |
+| Integrated Livestreaming | ✅ GetStream Video + Chat | ❌ | ❌ | ⚠️ Facebook Live |
+| Social Graph | ✅ 5-degree traversal | ❌ | ⚠️ Basic | ✅ Native |
+| Multi-Tier Ticketing | ✅ Capacity tracking | ✅ | ⚠️ Limited | ❌ |
+| Dual Payment Providers | ✅ Stripe + Paystack | ✅ Stripe only | ⚠️ Limited | ❌ |
+| Real-time KPI Dashboard | ✅ Prometheus + Grafana | ❌ | ❌ | ❌ |
+| Geofenced Livestream Roles | ✅ GPS-based auto-promote | ❌ | ❌ | ❌ |
 
-**Key Advantage**: Only platform combining AI-powered recommendations, real-time geospatial discovery, and enterprise-grade live streaming in a single social events ecosystem.
+**Key Advantage**: Only platform combining HNSW vector recommendations, geospatial event discovery, integrated livestreaming with geofenced roles, and dual-market payments (Stripe + Paystack) in a single social events ecosystem.
 
 ### Traction
 - **Launch**: October 17, 2025 (iOS & Android)
@@ -451,13 +471,13 @@ kubectl logs -l app=media --tail=100
 **Seed Round**: Seeking $1-2M to accelerate product development and market entry
 
 ### Use of Funds
-- **Product Development** (40%): Enhanced features, UX improvements
-- **Marketing & Growth** (35%): User acquisition, partnerships
-- **Infrastructure** (15%): Scaling, monitoring, security
+- **Product Development** (40%): R18E deployment, enhanced features, UX improvements
+- **Marketing & Growth** (35%): User acquisition, partnerships, Africa market expansion
+- **Infrastructure** (15%): Scaling, monitoring, security hardening
 - **Team Expansion** (10%): Frontend developers, product manager
 
 ### 18-Month Milestones
-- **Month 6**: 10K users, 1K events created
+- **Month 6**: 10K users, 1K events created, R18E recommendations live
 - **Month 12**: 50K users, $50K MRR
 - **Month 18**: 150K users, $200K MRR, break-even trajectory
 
@@ -466,26 +486,23 @@ kubectl logs -l app=media --tail=100
 ## Technical Leadership
 
 ### Development Philosophy
-- **Minimalist Design**: Linus Torvalds-inspired, performance-first, no over-engineering
-- **Test-Driven**: 70% coverage before production deployment
-- **Scalability-Focused**: Built to handle 10x current capacity
-- **Security-Conscious**: Defense in depth, regular audits
+- **Performance-first**: Rust-based ASGI server (Granian), Rust JSON (orjson), Rust HTTP (rusty-req), Rust storage (obstore) — zero-overhead Python where it matters
+- **Database as application layer**: 17 SurrealDB stored functions replace thousands of lines of application ORM code — graph traversal, trending scores, geo queries, vector similarity, and ticket management all computed server-side
+- **Security in depth**: Envelope encryption for PII, Argon2 at the database level, atomic Lua-based rate limiting, webhook signature verification, GDPR deletion automation
+- **Observable from day one**: Prometheus counters wired at every business event, SurrealDB aggregate KPIs, Grafana-ready endpoint — investor metrics without third-party analytics
 
 ### Expertise
-- Backend Engineering: 5+ years Python, microservices architecture
-- Cloud Infrastructure: GCP, Kubernetes, Docker production experience
-- Databases: SurrealDB, Redis, graph databases
-- DevOps: CI/CD, monitoring, automated deployment
+- Backend Engineering: Python microservices, async architecture, Rust toolchain integration
+- Cloud Infrastructure: GCP, Kubernetes, Docker, Cloud Build production pipelines
+- Databases: SurrealDB (graph, vector, geo), Redis, connection pooling
+- DevOps: 9-stage CI/CD, blue-green deploys, automated rollback
+- Payments: Dual-provider integration (Stripe + Paystack), webhook-driven architecture
 
 ---
 
 ## Repository & Contact
 
-**Repository**: [GitHub - backstage](https://github.com/scenes/backstage)  
-**API Docs**: [Postman Workspace](https://scenes-dev.postman.co/workspace/Scenes-Dev-Space~3e844513-40dc-4bc3-812b-829c5d5e37a3)  
-**Status**: Production-ready, actively deployed  
+**Repository**: [GitHub - PartyScene/backstage](https://github.com/PartyScene/backstage)
+**API Docs**: [Postman Workspace](https://scenes-dev.postman.co/workspace/Scenes-Dev-Space~3e844513-40dc-4bc3-812b-829c5d5e37a3)
+**Status**: Production, actively deployed on GKE
 **License**: Proprietary software. All rights reserved.
-
----
-
-*Built with precision. Scaled for growth. Engineered for performance.*
