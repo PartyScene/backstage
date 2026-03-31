@@ -21,7 +21,7 @@ Cloud-native microservices platform built on Quart (async Python) served by Gran
 
 - **Geospatial Discovery**: SurrealDB `geo::distance` queries with indexed coordinates, radius-based event search with pagination
 - **Graph Social Layer**: SurrealDB relation tables (`friends`, `blocks`, `attends`, `guestlists`) with multi-degree traversal (`fn::exists_in_degree` up to 5 hops) for private event access control
-- **AI Recommendations**: SurrealDB native HNSW vector indexes (768-dim ViT embeddings) for visual similarity search across event media, with cosine + KNN distance scoring
+- **AI Recommendations**: `GET /events/<id>/similar` — SurrealDB native HNSW vector indexes (768-dim ViT embeddings) for visual similarity search, cosine + KNN scoring, Redis-cached (5min TTL)
 - **Async Media Pipeline**: RabbitMQ (via FastStream) for image compression (Pillow, 2048px max, JPEG Q90), video transcoding (FFmpeg, H.264 CRF 21, 1080p, 5M bitrate), thumbnail extraction, and BlurHash generation
 - **Dual-Provider Payments**: Stripe (international) + Paystack (Africa) with webhook-driven ticket creation, tier capacity tracking, and host notification
 - **Live Streaming**: GetStream.io Video + Chat SDKs with backstage → go-live flow, geofenced attendee role management (1km radius), and per-event chat channels
@@ -54,7 +54,7 @@ Cloud-native microservices platform built on Quart (async Python) served by Gran
     └─────────────────────────────────────────────────────┘
 ```
 
-**7 services deployed** to production (auth, events, posts, users, media, payments, livestream). R18E (recommendation engine) has a Dockerfile and test suite but is not yet in the Cloud Build pipeline.
+**7 services deployed** to production (auth, events, posts, users, media, payments, livestream). AI recommendations are served by the Events service via `GET /events/<id>/similar`. R18E exists as a standalone service but is not separately deployed.
 
 ---
 
@@ -80,6 +80,7 @@ Cloud-native microservices platform built on Quart (async Python) served by Gran
 #### 3. Events Service
 - **Geospatial**: `location.coordinates` stored as SurrealDB `Point` type; `fn::fetch_events_by_location` uses `geo::distance` filtering + pagination
 - **Discovery feeds**: `fn::fetch_public_events`, `fn::fetch_trending_events` (score = attendees×3 + posts×2), `fn::fetch_private_events_for_user` (graph-gated)
+- **AI Similar Events**: `GET /events/<id>/similar` — calls `fn::fetch_similar_events` (HNSW KNN on ViT-768 media embeddings, deduplicated, future-only, preview cards), Redis-cached 5min, replaces standalone R18E service
 - **Ticketing**: Multi-tier tickets (`ticket_tiers` table, capacity tracking, sold_count auto-incremented via SurrealDB `CREATE` event), unique ticket numbers (`TKT-XXXX-XXXX`)
 - **Guestlists**: `guestlists` relation table for event invitations with invited-by tracking
 - **WebSocket**: Real-time event updates (events service only)
@@ -115,11 +116,9 @@ Cloud-native microservices platform built on Quart (async Python) served by Gran
 - **Tokens**: Unified Stream token covers both Video and Chat SDKs
 
 #### 8. R18E Service (Recommendation Engine)
-- **Status**: Developed and tested, **not yet deployed to production** (excluded from `cloudbuild.yaml`)
-- **Approach**: SurrealDB native HNSW vector search — no external ML runtime (PyTorch deps are commented out in `requirements.txt`)
-- **Algorithm**: Average ViT-768 media embeddings per event → HNSW KNN (top-100, EF=40) → cosine reranking → deduplication → future-event filter → preview cards
-- **Stored functions**: `fn::fetch_similar_events` (full pipeline in SurrealQL), `fn::fetch_event_preview` (lightweight cards)
-- **Workers**: Granian with 4 workers
+- **Status**: Superseded by `GET /events/<id>/similar` in the Events service for now. R18E has its own Dockerfile and test suite but is not deployed separately.
+- **Events service handles recommendations**: `fn::fetch_similar_events` runs the full HNSW pipeline in SurrealQL (average ViT-768 embeddings → KNN top-100, EF=40 → cosine reranking → dedup → future-event filter → preview cards)
+- **Future**: R18E may be deployed for advanced use cases (content moderation, user preference learning) — PyTorch deps are commented out in `requirements.txt`
 
 ### Shared Library (`shared/`)
 
@@ -402,7 +401,7 @@ kubectl logs -l app=auth --tail=100
 - ✅ Mobile apps (iOS & Android) released
 
 ### Phase 2: Growth & Optimization (Q4 2025)
-- 🔄 Deploy R18E recommendation engine to production
+- 🔄 Expand AI recommendations (R18E content moderation, user preference learning)
 - 🔄 Push notifications via Novu mobile channels
 - 🔄 Event analytics dashboard for organizers
 - 🔄 Enhanced content discovery feeds
