@@ -25,6 +25,7 @@ from shared.workers.brevo import Brevo
 from shared.utils import veriff, get_client_ip, api_response, api_error
 from shared.utils.apple_auth import AppleAuthClient
 from shared.workers.novu import NotificationManager
+from shared.kpi import BusinessMetrics
 from google.oauth2 import id_token
 from google.auth.transport import requests as grequests
 import stripe
@@ -324,6 +325,10 @@ class BaseView(QuartClassful):
                 await self.conn._store_after_verify(result)
                 access_token = self.generate_jwt_secret(result["id"])
 
+                # Track signup KPI
+                if context == "register":
+                    BusinessMetrics.SIGNUPS.inc()
+
                 # Send welcome email on first registration (non-critical)
                 if context == "register":
                     try:
@@ -537,6 +542,11 @@ class BaseView(QuartClassful):
         # Handle successful password login
         if result and isinstance(result, dict):
             access_token = self.generate_jwt_secret(result["id"])
+            BusinessMetrics.LOGINS.labels(auth_provider="password").inc()
+            await self.conn.pool.execute_query(
+                "UPDATE type::thing('users', $uid) SET last_active = time::now();",
+                {"uid": result["id"]}
+            )
             await self.__notification_manager.recent_login_notification(
                 user_id=result["id"],
                 ip_address=get_client_ip(request),
@@ -631,6 +641,7 @@ class BaseView(QuartClassful):
                     user_data=created_or_existing_user,
                     user_id=created_or_existing_user["id"]
                 )
+                BusinessMetrics.SIGNUPS.inc()
                 message = "User registered successfully, proceed to update username."
                 status_code = HTTPStatus.CREATED
             else:
@@ -644,6 +655,11 @@ class BaseView(QuartClassful):
         
         # Generate JWT token
         access_token = self.generate_jwt_secret(created_or_existing_user["id"])
+        BusinessMetrics.LOGINS.labels(auth_provider="google").inc()
+        await self.conn.pool.execute_query(
+            "UPDATE type::thing('users', $uid) SET last_active = time::now();",
+            {"uid": created_or_existing_user["id"]}
+        )
         
         # Send recent login notification for all SSO logins (new and existing users)
         try:
@@ -772,6 +788,7 @@ class BaseView(QuartClassful):
                         user_data=created_or_existing_user,
                         user_id=created_or_existing_user["id"]
                     )
+                    BusinessMetrics.SIGNUPS.inc()
                     message = "User registered successfully, proceed to update username."
                     status_code = HTTPStatus.CREATED
                 else:
@@ -785,6 +802,11 @@ class BaseView(QuartClassful):
             
             # Generate JWT token
             access_token = self.generate_jwt_secret(created_or_existing_user["id"])
+            BusinessMetrics.LOGINS.labels(auth_provider="apple").inc()
+            await self.conn.pool.execute_query(
+                "UPDATE type::thing('users', $uid) SET last_active = time::now();",
+                {"uid": created_or_existing_user["id"]}
+            )
             
             # Send recent login notification for all SSO logins (new and existing users)
             try:

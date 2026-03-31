@@ -23,6 +23,7 @@ from quart import (
 )
 from events.src.connectors import EventsDB
 from shared.classful import route, QuartClassful
+from shared.kpi import BusinessMetrics
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
@@ -132,6 +133,7 @@ class BaseView(QuartClassful):
 
             # Assuming you have a method to create the relationship in your database
             result = await self.conn.create_attendance(attendance_data)
+            BusinessMetrics.EVENT_ATTENDANCES.inc()
 
             return api_response(
                 "Ticket purchased successfully",
@@ -396,6 +398,7 @@ class BaseView(QuartClassful):
             if result := await self.conn.create_event(
                 data
             ):  # Pass the raw data to the database method
+                BusinessMetrics.EVENTS_CREATED.inc()
                 return api_response(
                     "Event created successfully.",
                     HTTPStatus.CREATED,
@@ -1044,6 +1047,7 @@ class BaseView(QuartClassful):
                 except Exception as stream_err:
                     app.logger.warning(f"⚠️ Failed to grant attendee role for {event_id}: {stream_err}")
 
+                BusinessMetrics.TICKET_CHECKINS.inc()
                 return api_response(
                     "Ticket verified and checked in successfully",
                     HTTPStatus.OK,

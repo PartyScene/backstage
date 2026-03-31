@@ -161,6 +161,10 @@ class MicroService(Quart):
             """Cleanup resources after app is being stopped."""
             logger.warning("Cleaning up resources...")
             
+            # Stop KPI background refresh loop
+            if hasattr(self, '_kpi_aggregator'):
+                self._kpi_aggregator.stop()
+            
             # Stop StreamMonitor for LIVESTREAM microservice
             if self.microservice_instance == Microservice.LIVESTREAM:
                 if hasattr(self, 'stream_monitor'):
@@ -342,6 +346,28 @@ class MicroService(Quart):
                     200,
                     {"Content-Type": CONTENT_TYPE_LATEST},
                 )
+
+        @self.before_serving
+        async def register_kpi_endpoints():
+            from shared.kpi.aggregator import KPIAggregator
+            from shared.kpi.views import kpis_handler, kpis_refresh_handler
+
+            aggregator = KPIAggregator(
+                pool=self.conn.pool,
+                redis=self.redis,
+                logger=self.logger,
+                ttl=60,
+            )
+            self._kpi_aggregator = aggregator
+
+            # Start background refresh loop (every 60s)
+            await aggregator.start_background_loop(interval=60)
+
+            # Register KPI endpoints
+            prefix = self.microservice_instance.lower()
+            self.add_url_rule(f"/{prefix}/kpis", "kpis", kpis_handler, methods=["GET"])
+            self.add_url_rule(f"/{prefix}/kpis/refresh", "kpis_refresh", kpis_refresh_handler, methods=["POST"])
+            logger.info(f"KPI endpoints registered at /{prefix}/kpis")
 
         @self.before_request
         async def before_request():

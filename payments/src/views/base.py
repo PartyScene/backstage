@@ -19,6 +19,7 @@ from shared.utils import get_client_ip, api_response, api_error, generate_signed
 from shared.utils.paystack_client import PaystackClient
 from shared.workers.resend import ResendClient
 from shared.workers.novu import NotificationManager
+from shared.kpi import BusinessMetrics
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
@@ -495,6 +496,7 @@ class BaseView(QuartClassful):
                 if tier_id:
                     await self.conn.increment_tier_sold_count(tier_id, ticket_count)
                 await self.conn.increment_attendee_count(event_id, ticket_count)
+                BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="stripe").inc(ticket_count)
 
                 await self._send_tickets_email(
                     to_email=email,
@@ -809,6 +811,7 @@ class BaseView(QuartClassful):
                 if tier_id:
                     await self.conn.increment_tier_sold_count(tier_id, ticket_count)
                 await self.conn.increment_attendee_count(event_id, ticket_count)
+                BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="paystack").inc(ticket_count)
 
                 await self._send_tickets_email(
                     to_email=email,
@@ -1099,6 +1102,7 @@ class BaseView(QuartClassful):
                     await self.conn.increment_tier_sold_count(tier_id, ticket_count)
 
                 await self.conn.increment_attendee_count(event_id, ticket_count)
+                BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="stripe").inc(ticket_count)
 
                 await self._send_tickets_email(
                     to_email=user_or_email,
@@ -1298,6 +1302,7 @@ class BaseView(QuartClassful):
                     await self.conn.increment_tier_sold_count(tier_id, ticket_count)
 
                 await self.conn.increment_attendee_count(event_id, ticket_count)
+                BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="paystack").inc(ticket_count)
 
                 await self._send_tickets_email(
                     to_email=user_or_email,

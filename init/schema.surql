@@ -20,6 +20,7 @@ DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAUL
 DEFINE FIELD OVERWRITE paystack_subaccount_id ON TABLE users TYPE string DEFAULT "";
 
 DEFINE FIELD OVERWRITE scheduled_deletion_at ON TABLE users TYPE option<datetime>;
+DEFINE FIELD OVERWRITE last_active ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE users TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE users TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE email ON TABLE users TYPE option<string>;
@@ -33,7 +34,7 @@ DEFINE INDEX OVERWRITE idx_google_sub ON TABLE users COLUMNS google_sub;
 DEFINE INDEX OVERWRITE idx_apple_sub ON TABLE users COLUMNS apple_sub;
 DEFINE INDEX OVERWRITE idx_username ON TABLE users COLUMNS username;
 DEFINE INDEX OVERWRITE idx_stripe_account ON TABLE users COLUMNS stripe_account_id;
-
+DEFINE INDEX OVERWRITE idx_last_active ON TABLE users COLUMNS last_active;
 
 DEFINE TABLE OVERWRITE credentials SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE credentials TYPE record<users>;
