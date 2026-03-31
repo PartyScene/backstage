@@ -1132,6 +1132,21 @@ class BaseView(QuartClassful):
                 except Exception as host_notify_err:
                     app.logger.error(f"Host notification failed (non-blocking): {host_notify_err}")
 
+                # Push-notify the buyer (authenticated users only)
+                if not is_guest:
+                    try:
+                        evt_title = event_data.get("title", "your event")
+                        await self._notification_manager.send_ticket_purchase_buyer_notification(
+                            buyer_subscriber_id=user_or_email,
+                            event_name=evt_title,
+                            event_id=event_id,
+                            ticket_count=ticket_count,
+                            total_amount=payment_intent.get("amount", 0) / 100,
+                            currency=payment_intent.get("currency", "usd").upper(),
+                        )
+                    except Exception as buyer_err:
+                        app.logger.error(f"Buyer notification failed (non-blocking): {buyer_err}")
+
             elif "type" in metadata and metadata["type"] == "KYC_PAYMENT":
                 user_id = metadata.get("user_id")
                 app.logger.info(f"KYC payment successful for user {user_id}.")
@@ -1331,6 +1346,21 @@ class BaseView(QuartClassful):
                             )
                 except Exception as host_notify_err:
                     app.logger.error(f"Host notification failed (non-blocking): {host_notify_err}")
+
+                # Push-notify the buyer (authenticated users only)
+                if not is_guest:
+                    try:
+                        ps_evt_title = ps_event_data.get("title", "your event") if ps_event_data else "your event"
+                        await self._notification_manager.send_ticket_purchase_buyer_notification(
+                            buyer_subscriber_id=user_or_email,
+                            event_name=ps_evt_title,
+                            event_id=event_id,
+                            ticket_count=ticket_count,
+                            total_amount=verified_data.get("amount", 0) / 100,
+                            currency=verified_data.get("currency", "NGN").upper(),
+                        )
+                    except Exception as buyer_err:
+                        app.logger.error(f"Buyer notification failed (non-blocking): {buyer_err}")
 
             except Exception as e:
                 app.logger.error(

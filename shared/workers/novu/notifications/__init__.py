@@ -18,6 +18,8 @@ from .event_reminder import EventReminderNotification
 from .livestream import LivestreamNotification
 from .post_interaction import PostInteractionNotification
 from .ticket_purchase_host import TicketPurchaseHostNotification
+from .ticket_purchase_buyer import TicketPurchaseBuyerNotification
+from .password_reset_confirmation import PasswordResetConfirmation
 
 __all__ = [
     "OTPNotification",
@@ -29,4 +31,6 @@ __all__ = [
     "LivestreamNotification",
     "PostInteractionNotification",
     "TicketPurchaseHostNotification",
+    "TicketPurchaseBuyerNotification",
+    "PasswordResetConfirmation",
 ]

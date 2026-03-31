@@ -16,8 +16,9 @@ This also makes each piece independently testable and mockable.
 import logging
 import uuid
 
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
+import novu_py
 from novu_py import Novu, SubscriberResponseDto
 
 logger = logging.getLogger(__name__)
@@ -96,4 +97,84 @@ class SubscriberService:
             return True
         except Exception as e:
             logger.error("Subscriber deletion error: %s", e)
+            return False
+
+    # ── Push notification device token management ────────────────
+
+    async def append_device_token(
+        self,
+        subscriber_id: str,
+        device_token: str,
+        provider: str = "fcm",
+    ) -> bool:
+        """
+        Append a push device token (FCM or APNs) to a subscriber.
+
+        Uses Novu's ``credentials.append`` so existing tokens are preserved
+        and the new one is added.  Safe to call repeatedly with the same
+        token — Novu deduplicates internally.
+
+        Args:
+            subscriber_id: Novu subscriber ID (matches our user ID).
+            device_token:  FCM registration token or APNs device token.
+            provider:      ``"fcm"`` (default) or ``"apns"``.
+        """
+        provider_enum = (
+            novu_py.ChatOrPushProviderEnum.FCM
+            if provider == "fcm"
+            else novu_py.ChatOrPushProviderEnum.APNS
+        )
+        try:
+            await self._client.subscribers.credentials.append_async(
+                subscriber_id=subscriber_id,
+                update_subscriber_channel_request_dto={
+                    "provider_id": provider_enum,
+                    "credentials": {
+                        "device_tokens": [device_token],
+                    },
+                },
+            )
+            logger.info(
+                "Appended %s device token for subscriber %s",
+                provider, subscriber_id,
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "Failed to append %s device token for %s: %s",
+                provider, subscriber_id, e,
+            )
+            return False
+
+    async def remove_device_tokens(
+        self,
+        subscriber_id: str,
+        provider: str = "fcm",
+    ) -> bool:
+        """
+        Remove all push credentials for the given provider.
+
+        Called on logout so the device stops receiving push notifications
+        for this account.
+        """
+        provider_enum = (
+            novu_py.ChatOrPushProviderEnum.FCM
+            if provider == "fcm"
+            else novu_py.ChatOrPushProviderEnum.APNS
+        )
+        try:
+            await self._client.subscribers.credentials.delete_async(
+                subscriber_id=subscriber_id,
+                provider_id=str(provider_enum.value),
+            )
+            logger.info(
+                "Removed %s credentials for subscriber %s",
+                provider, subscriber_id,
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "Failed to remove %s credentials for %s: %s",
+                provider, subscriber_id, e,
+            )
             return False

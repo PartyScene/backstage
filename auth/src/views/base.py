@@ -201,6 +201,15 @@ class BaseView(QuartClassful):
             return api_error("Invalid or expired OTP", HTTPStatus.UNAUTHORIZED)
 
         if await self.conn._reset_password(email, new_password):
+            # Send password-reset confirmation (email + push, non-critical)
+            try:
+                await self.__notification_manager.send_password_reset_confirmation(
+                    subscriber_id=email,
+                    email=email,
+                )
+            except Exception as notif_err:
+                logger.error(f"Password reset confirmation notification failed: {notif_err}")
+
             return api_response(
                 "Password reset successfully",
                 HTTPStatus.OK
@@ -1169,14 +1178,100 @@ class BaseView(QuartClassful):
             logger.info(f"Cancelled scheduled deletion for user {user_id}")
             
             return api_response("Account deletion cancelled successfully", HTTPStatus.OK)
-        
         except Exception as e:
             logger.error(f"Cancellation error for user {user_id}: {e}")
             return api_error(
                 "An error occurred while cancelling deletion",
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
-    
+
+    @route("/auth/device-token", methods=["POST"])
+    @jwt_required
+    async def register_device_token(self):
+        """
+        Register a push notification device token (FCM or APNs).
+
+        Called by the mobile app on login / app launch to ensure the
+        device receives push notifications via Novu.
+
+        Body:
+            device_token (str): FCM registration token or APNs device token.
+            provider (str, optional): "fcm" (default) or "apns".
+        """
+        user_id = get_jwt_identity()
+        data = await request.get_json()
+        device_token = data.get("device_token", "").strip()
+        provider = data.get("provider", "fcm").strip().lower()
+
+        if not device_token:
+            return api_error("device_token is required", HTTPStatus.BAD_REQUEST)
+        if provider not in ("fcm", "apns"):
+            return api_error(
+                "provider must be 'fcm' or 'apns'", HTTPStatus.BAD_REQUEST
+            )
+
+        try:
+            success = await self.__notification_manager.register_device_token(
+                user_id=user_id,
+                device_token=device_token,
+                provider=provider,
+            )
+            if success:
+                return api_response(
+                    "Device token registered", HTTPStatus.OK
+                )
+            return api_error(
+                "Failed to register device token",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            logger.error(f"Device token registration error for {user_id}: {e}")
+            return api_error(
+                "Failed to register device token",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @route("/auth/device-token", methods=["DELETE"])
+    @jwt_required
+    async def unregister_device_token(self):
+        """
+        Remove push notification credentials on logout.
+
+        Called by the mobile app on explicit logout so the device
+        stops receiving push notifications for this account.
+
+        Body:
+            provider (str, optional): "fcm" (default) or "apns".
+        """
+        user_id = get_jwt_identity()
+        data = await request.get_json() or {}
+        provider = data.get("provider", "fcm").strip().lower()
+
+        if provider not in ("fcm", "apns"):
+            return api_error(
+                "provider must be 'fcm' or 'apns'", HTTPStatus.BAD_REQUEST
+            )
+
+        try:
+            success = await self.__notification_manager.unregister_device_tokens(
+                user_id=user_id,
+                provider=provider,
+            )
+            if success:
+                return api_response(
+                    "Device token removed", HTTPStatus.OK
+                )
+            return api_error(
+                "Failed to remove device token",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            logger.error(f"Device token removal error for {user_id}: {e}")
+            return api_error(
+                "Failed to remove device token",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
     async def verify_otp(
         self,
         email: str,

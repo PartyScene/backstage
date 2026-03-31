@@ -148,15 +148,38 @@ class KPIAggregator:
     """
 
     async def _fetch_db_aggregates(self) -> dict:
-        """Execute the aggregate query and return a flat dict of results."""
+        """Execute the aggregate query and return a flat dict of results.
+
+        Uses query_raw() because the query contains many LET statements
+        followed by a single RETURN.  query() only returns the first
+        statement's result (a LET → None), so the RETURN dict is lost.
+        query_raw() returns every statement's result, and we grab the last.
+        """
         try:
             async with self.pool.acquire() as conn:
-                result = await conn.query(self._AGGREGATE_QUERY)
+                raw = await conn.query_raw(self._AGGREGATE_QUERY)
 
-            if isinstance(result, dict):
-                return self._sanitize(result)
-            if isinstance(result, list) and result:
-                return self._sanitize(result[-1] if isinstance(result[-1], dict) else {})
+            # raw is {"result": [<per-statement>, ...], ...}
+            statements = raw.get("result") if isinstance(raw, dict) else raw
+            if not isinstance(statements, list) or not statements:
+                self.logger.warning(f"KPI query returned unexpected shape: {type(raw)}")
+                return {}
+
+            last = statements[-1]
+
+            # Each statement entry is {"status": "OK", "result": <value>}
+            if isinstance(last, dict) and "result" in last:
+                if last.get("status") == "ERR":
+                    self.logger.error(f"KPI RETURN statement error: {last['result']}")
+                    return {}
+                data = last["result"]
+            else:
+                data = last
+
+            if isinstance(data, dict):
+                return self._sanitize(data)
+            if isinstance(data, list) and data:
+                return self._sanitize(data[0] if isinstance(data[0], dict) else {})
             return {}
 
         except Exception as exc:

@@ -30,6 +30,8 @@ class WorkflowID:
     LIVESTREAM = "livestream-notification"
     POST_INTERACTION = "post-interaction"
     TICKET_PURCHASE_HOST = "ticket-purchase-host-notification"
+    TICKET_PURCHASE_BUYER = "ticket-purchase-buyer-receipt"
+    PASSWORD_RESET_CONFIRMATION = "password-reset-confirmation"
 
 
 APP_NAME = "Scenes"

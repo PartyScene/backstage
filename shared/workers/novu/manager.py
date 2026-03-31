@@ -46,6 +46,8 @@ from shared.workers.novu.notifications import (  # noqa: F401
     LivestreamNotification,
     PostInteractionNotification,
     TicketPurchaseHostNotification,
+    TicketPurchaseBuyerNotification,
+    PasswordResetConfirmation,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,6 +142,34 @@ class NotificationManager:
 
     async def delete_subscriber(self, user_id: str) -> bool:
         return await self._subscribers.delete(user_id)
+
+    # ──────────────────────────────────────────────────────────────────
+    # Push notification device token management
+    # ──────────────────────────────────────────────────────────────────
+
+    async def register_device_token(
+        self,
+        user_id: str,
+        device_token: str,
+        provider: str = "fcm",
+    ) -> bool:
+        """Register a push device token (FCM or APNs) for a user."""
+        return await self._subscribers.append_device_token(
+            subscriber_id=user_id,
+            device_token=device_token,
+            provider=provider,
+        )
+
+    async def unregister_device_tokens(
+        self,
+        user_id: str,
+        provider: str = "fcm",
+    ) -> bool:
+        """Remove all push credentials for a provider on logout."""
+        return await self._subscribers.remove_device_tokens(
+            subscriber_id=user_id,
+            provider=provider,
+        )
 
     # ──────────────────────────────────────────────────────────────────
     # Backward-compatible convenience methods
@@ -282,5 +312,37 @@ class NotificationManager:
             ticket_count=ticket_count,
             total_amount=total_amount,
             currency=currency,
+        )
+        return await self._dispatch(notification)
+
+    async def send_ticket_purchase_buyer_notification(
+        self,
+        buyer_subscriber_id: str,
+        event_name: str,
+        event_id: str,
+        ticket_count: int,
+        total_amount: float = 0.0,
+        currency: str = "USD",
+    ):
+        """Push-notify the buyer that their ticket purchase is confirmed."""
+        notification = TicketPurchaseBuyerNotification(
+            buyer_subscriber_id=buyer_subscriber_id,
+            event_name=event_name,
+            event_id=event_id,
+            ticket_count=ticket_count,
+            total_amount=total_amount,
+            currency=currency,
+        )
+        return await self._dispatch(notification)
+
+    async def send_password_reset_confirmation(
+        self,
+        subscriber_id: str,
+        email: str,
+    ):
+        """Notify user that their password was successfully reset."""
+        notification = PasswordResetConfirmation(
+            subscriber_id=subscriber_id,
+            email=email,
         )
         return await self._dispatch(notification)
