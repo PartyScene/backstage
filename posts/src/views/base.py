@@ -15,6 +15,7 @@ from aiocache import cached
 from shared.workers.rmq import RMQBroker
 from shared.utils import recursively_sign_object_media, api_response, api_error
 from shared.middleware.validation import ValidationMiddleware
+from shared.kpi import BusinessMetrics
 import uuid_utils as ruuid
 
 from surrealdb import RecordID
@@ -341,6 +342,7 @@ class BaseView(QuartClassful):
             result = await self.__posts_handler.create_post(data=data, author=user_id)
 
             if result:  # Post created successfully - now process media
+                BusinessMetrics.POSTS_CREATED.inc()
                 # Publish media upload tasks to RMQ (only after validation passes)
                 media_publish_tasks = []
                 for i, file in enumerate(files.values()):

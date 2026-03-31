@@ -48,6 +48,7 @@ from stream_chat import StreamChatAsync
 
 from shared.classful import route, QuartClassful
 from shared.utils import api_response, api_error, coordinates_to_geometry_point
+from shared.kpi import BusinessMetrics
 from livestream.src.connectors import LiveStreamDB
 
 
@@ -490,6 +491,8 @@ class BaseView(QuartClassful):
             except redis.exceptions.RedisError:
                 pass
 
+            BusinessMetrics.LIVESTREAM_STARTS.inc()
+            BusinessMetrics.LIVESTREAMS_ACTIVE.inc()
             app.logger.info(f"Stream {call_id} is now live (user {user_id})")
             return api_response("Stream is now live", HTTPStatus.OK)
 
@@ -528,6 +531,7 @@ class BaseView(QuartClassful):
             except redis.exceptions.RedisError:
                 pass
 
+            BusinessMetrics.LIVESTREAMS_ACTIVE.dec()
             app.logger.info(f"Stream {call_id} moved back to backstage (user {user_id})")
             return api_response("Broadcast stopped", HTTPStatus.OK)
 

@@ -14,6 +14,7 @@ import orjson as json
 from aiocache import cached
 from shared.workers.rmq import RMQBroker
 from shared.utils import recursively_sign_object_media, api_response, api_error
+from shared.kpi import BusinessMetrics
 
 
 
@@ -528,6 +529,7 @@ class BaseView(QuartClassful):
                 )
 
             if result := await self.conn.create_friend_relationship(data):
+                BusinessMetrics.FRIEND_REQUESTS.inc()
                 app.logger.info(
                     f"Friend request created: {json.dumps(result, option=json.OPT_INDENT_2, default=str)}"
                 )
