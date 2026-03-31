@@ -13,7 +13,7 @@ In Grafana Cloud → **Administration → Plugins** → search **"Infinity"** �
 | Field | Value |
 |-------|-------|
 | Name | `Partyscene KPIs` |
-| URL | `https://your-api-domain.com/users/kpis` |
+| URL | `https://your-api-domain.com/auth/kpis` |
 | Auth | Bearer token (optional, if endpoint is protected) |
 
 ## 3. Dashboard Panels
@@ -22,7 +22,7 @@ In Grafana Cloud → **Administration → Plugins** → search **"Infinity"** �
 
 - **Type**: Stat or Bar gauge
 - **Source**: Infinity → JSON
-- **URL**: `/users/kpis`
+- **URL**: `/auth/kpis`
 - **Parser**: JSONata
 - **Fields**:
 
@@ -115,7 +115,7 @@ In Grafana Cloud → **Administration → Plugins** → search **"Infinity"** �
 
 Set the dashboard auto-refresh to **1m** (matches the KPI aggregator's 60s background loop).
 
-For on-demand refresh, the endpoint `POST /users/kpis/refresh` forces an immediate recalculation.
+For on-demand refresh, the endpoint `POST /auth/kpis/refresh` forces an immediate recalculation.
 
 ## 5. JSON Response Structure
 

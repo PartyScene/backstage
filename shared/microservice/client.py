@@ -363,11 +363,12 @@ class MicroService(Quart):
             # Start background refresh loop (every 60s)
             await aggregator.start_background_loop(interval=60)
 
-            # Register KPI endpoints
-            prefix = self.microservice_instance.lower()
-            self.add_url_rule(f"/{prefix}/kpis", "kpis", kpis_handler, methods=["GET"])
-            self.add_url_rule(f"/{prefix}/kpis/refresh", "kpis_refresh", kpis_refresh_handler, methods=["POST"])
-            logger.info(f"KPI endpoints registered at /{prefix}/kpis")
+            # Register KPI endpoints only on auth service to avoid
+            # route conflicts (e.g. users /{user_id}/ catch-all).
+            if self.microservice_instance.lower() == "auth":
+                self.add_url_rule("/auth/kpis", "kpis", kpis_handler, methods=["GET"])
+                self.add_url_rule("/auth/kpis/refresh", "kpis_refresh", kpis_refresh_handler, methods=["POST"])
+                logger.info("KPI endpoints registered at /auth/kpis")
 
         @self.before_request
         async def before_request():

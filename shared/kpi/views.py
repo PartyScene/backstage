@@ -4,7 +4,7 @@ KPI endpoint — serves the aggregated KPI snapshot as JSON.
 Compatible with Grafana's JSON API / Infinity datasource plugin.
 The endpoint returns a flat structure that Grafana can parse directly.
 
-Mounted by the MicroService base class at /{service}/kpis.
+Mounted by the MicroService base class on the auth service at /auth/kpis.
 """
 
 from http import HTTPStatus
@@ -15,7 +15,7 @@ from shared.utils.response import api_response
 
 async def kpis_handler():
     """
-    GET /{service}/kpis
+    GET /auth/kpis
 
     Returns the most recent KPI snapshot from Redis cache.
     If the cache is empty, triggers a synchronous refresh (rare).
@@ -59,7 +59,7 @@ async def kpis_handler():
 
 async def kpis_refresh_handler():
     """
-    POST /{service}/kpis/refresh
+    POST /auth/kpis/refresh
 
     Force an immediate KPI refresh (useful for testing / manual trigger).
     """
