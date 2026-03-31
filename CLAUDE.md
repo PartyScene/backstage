@@ -78,3 +78,143 @@ A user describing a bug for the third time isn't thinking "this AI is trying har
 - Focus on data structures over code: Prioritize well-designed data and their relationships; good code follows from that. Minimize globals and use structs to group related data.
 
 - Lead decisively as a benevolent dictator: Make firm technical decisions in your domain, saying "no" when needed, but build trust through consistent, project-focused choices. Communication is key in open source—read and write emails effectively, as coding takes a backseat in leadership.
+
+# PartyScene Backstage — Architecture Reference
+
+## Service Architecture
+- 7 microservices deployed to GKE Autopilot (us-central1): auth, events, posts, users, media, payments, livestream
+- All services share `shared/` library with `MicroService` base class (`shared/microservice/client.py`)
+- ASGI server: Granian (Rust) with uvloop, `--task-impl rust`, `--runtime-mode mt`
+- Most services run 1 Granian worker on 250m vCPU pods (auth uses `$(nproc)`)
+- Port 5510 for all services
+- Database: SurrealDB v2 (schemaless+schemafull, graph, geo, HNSW vectors)
+- Connection pool: purreal (min=3, max=20 per service)
+- Redis: max_connections=5 per service, used for JWT sharing, rate limiting, caching
+- Message queue: RabbitMQ via FastStream, ormsgpack serialization
+- Schema: `init/schema.surql` — single source of truth for all tables, indexes, triggers, stored functions
+
+## Notification System (Novu)
+
+### Architecture
+- Registry pattern with auto-registration via `__init_subclass__`
+- Base class: `shared/workers/novu/base.py` — `BaseNotification` (abstract, `workflow_id` triggers registration)
+- Config: `shared/workers/novu/config.py` — `WorkflowID` class, all workflow IDs centralized here
+- Manager: `shared/workers/novu/manager.py` — `NotificationManager` public facade, convenience methods
+- Subscribers: `shared/workers/novu/subscribers.py` — Novu subscriber CRUD
+- Notifications: `shared/workers/novu/notifications/` — one `@dataclass` file per type (self-registering)
+- Legacy: `shared/workers/novu/notifications.py` — old monolithic class, superseded, do not use
+
+### Adding a New Notification
+1. Create `shared/workers/novu/notifications/<name>.py` — `@dataclass` subclass of `BaseNotification`
+2. Add workflow ID to `shared/workers/novu/config.py` `WorkflowID` class
+3. Import in `shared/workers/novu/notifications/__init__.py`
+4. Import in `shared/workers/novu/manager.py` (registration import + convenience method)
+5. Create email template in `shared/workers/novu/templates/<name>.html`
+6. Create workflow in Novu dashboard with matching workflow ID
+
+### Error Handling
+- `critical = True` → exceptions propagate (used for OTP, recent-login — security-sensitive)
+- `critical = False` → exceptions logged and swallowed (social/UX notifications)
+
+### Subscriber ID = User ID
+- Novu subscriber_id is the internal user ID (short UUID) — they are always in sync
+- Device tokens (FCM/APNs) appended via `SubscriberService.append_device_token()`
+
+### Existing Workflow IDs (as of 2026-04-01)
+- `email-verification-flow` (OTP), `recent-login`, `welcome`, `friend-request`
+- `event-invitation`, `event-reminder`, `livestream-notification`, `post-interaction`
+- `ticket-purchase-host-notification`, `ticket-purchase-buyer-receipt`
+- `password-reset-confirmation`, `event-recap`
+
+## Novu SDK Constraints (novu-py)
+
+### Payload
+- Type: `Dict[str, Any]` — must be a dict at top level
+- Nested dicts and lists of dicts are fully supported
+- All values must be JSON-serializable (no Python `datetime`, `bytes`, or custom objects — convert to strings)
+- **No SDK-side size limit**, but Novu API enforces ~256 KB total request body (HTTP 413 on exceed)
+- Max 100 recipients per trigger call
+
+### LiquidJS Email Templates (CRITICAL — NOT Handlebars)
+Novu uses **LiquidJS**, not Handlebars. Every template in `shared/workers/novu/templates/` must use this syntax:
+
+**Variables — must use `payload.` prefix:**
+```
+{{ payload.field_name }}
+{{ payload.nested.field }}
+```
+
+**Conditionals:**
+```
+{% if payload.field != '' %}...{% endif %}
+{% if payload.count > 0 %}...{% endif %}
+{% if payload.flag == true %}...{% endif %}
+```
+- String comparisons MUST use single quotes: `{% if payload.status == 'active' %}`
+- Double quotes are NOT supported in Liquid conditionals
+
+**Loops:**
+```
+{% for item in payload.items %}
+  {{ item.name }} — {{ item.price }}
+{% endfor %}
+```
+
+**Loop helpers:**
+- `forloop.first` — true on first iteration
+- `forloop.last` — true on last iteration
+- `{% unless forloop.last %}, {% endunless %}` — comma-separated lists
+
+**What does NOT work in Novu's LiquidJS:**
+- `{{ array.size }}` — NOT supported, use `forloop.first` pattern instead
+- `{{ array.length }}` — NOT supported
+- `{% if array != empty %}` — `empty` keyword NOT supported
+- Handlebars syntax (`{{#if}}`, `{{#each}}`, `{{/if}}`, `{{this}}`) — completely wrong
+
+**Pattern for conditional sections with arrays (no size/empty check needed):**
+```
+{% for item in payload.items %}
+{% if forloop.first %}
+<p>Section Header</p>
+{% endif %}
+  ...render item...
+{% if forloop.last %}
+</table>
+{% endif %}
+{% endfor %}
+```
+If the array is empty, the loop body never executes — the section is hidden automatically.
+
+**Images:**
+- URLs only (string values in payload) — no base64, no binary attachments
+- Reference in template: `<img src="{{ payload.image_url }}">`
+
+**Subscriber variables:** `{{ subscriber.firstName }}`, `{{ subscriber.data.custom_field }}`
+
+## Event Lifecycle
+- Status: `scheduled` → `live` → `ended` (or `scheduled` → `cancelled`)
+- Status updated via `PATCH /events/<id>/status` (host-only, JWT-authenticated)
+- `reminder_sent` field: set atomically when 1-hour pre-event reminder dispatched
+- `recap_sent` field: set atomically when post-event recap dispatched
+- `attendee_count`: denormalized counter, auto-incremented by SurrealDB trigger on `attends` CREATE
+- `end_time`: always computed as `time + duration::from::mins(duration)` — never stored
+
+## CronJob Pattern (Cloud Run Jobs)
+- Located in `usr/Jobs/<name>/` with `recap.py`, `Dockerfile`, `requirements.txt`, `cloudbuild.yaml`
+- K8s manifests in `k8s/<name>-cronjob.yaml`
+- Atomic claiming pattern: `UPDATE...SET field = time::now() WHERE field = NONE RETURN BEFORE`
+- This ensures idempotency — overlapping runs are safe, only one instance claims each record
+- SurrealDB connection: direct `AsyncSurreal`, not purreal pool (jobs are short-lived)
+- Build context is repo root so Dockerfile can `COPY shared/workers/novu/`
+
+## Key Database Patterns
+- `events` table is SCHEMALESS — can write any field without schema changes
+- `fn::fetch_event($event_id)` returns full event detail: attendees, scanned/unscanned tickets, tiers, media, host
+- Trending score: `(attendee_count * 3) + (post_count * 2)`
+- Ticket tiers: max 3 per event, `sold_count` auto-incremented by SurrealDB trigger on ticket CREATE
+- Ticket numbers: auto-generated `TKT-XXXX-XXXX` pattern
+
+## Rate Limiting
+- Redis + atomic Lua script, 3 sliding windows per request
+- Tiers: OTP (3/10/20), AUTH (10/100/500), MEDIA (30/500/2000), API (60/1000/10000), PUBLIC (120/2000/20000)
+- Keys: SHA-256(IP:User-Agent) truncated to 16 hex chars, or JWT user ID

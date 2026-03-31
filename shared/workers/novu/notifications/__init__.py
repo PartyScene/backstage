@@ -20,6 +20,7 @@ from .post_interaction import PostInteractionNotification
 from .ticket_purchase_host import TicketPurchaseHostNotification
 from .ticket_purchase_buyer import TicketPurchaseBuyerNotification
 from .password_reset_confirmation import PasswordResetConfirmation
+from .event_recap import EventRecapNotification
 
 __all__ = [
     "OTPNotification",
@@ -33,4 +34,5 @@ __all__ = [
     "TicketPurchaseHostNotification",
     "TicketPurchaseBuyerNotification",
     "PasswordResetConfirmation",
+    "EventRecapNotification",
 ]

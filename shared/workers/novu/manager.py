@@ -48,6 +48,7 @@ from shared.workers.novu.notifications import (  # noqa: F401
     TicketPurchaseHostNotification,
     TicketPurchaseBuyerNotification,
     PasswordResetConfirmation,
+    EventRecapNotification,
 )
 
 logger = logging.getLogger(__name__)
@@ -344,5 +345,26 @@ class NotificationManager:
         notification = PasswordResetConfirmation(
             subscriber_id=subscriber_id,
             email=email,
+        )
+        return await self._dispatch(notification)
+
+    async def send_event_recap(
+        self,
+        host_subscriber_id: str,
+        event_id: str,
+        event_name: str,
+        **recap_data,
+    ):
+        """
+        Send a PartyScene Wrapped recap to the event host.
+
+        Accepts all recap fields as kwargs — the CronJob and inline
+        trigger both compute these via the recap collector.
+        """
+        notification = EventRecapNotification(
+            host_subscriber_id=host_subscriber_id,
+            event_id=event_id,
+            event_name=event_name,
+            **recap_data,
         )
         return await self._dispatch(notification)

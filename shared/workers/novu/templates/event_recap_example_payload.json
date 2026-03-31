@@ -1,0 +1,120 @@
+{
+  "event_id": "r4k9x2m7",
+  "event_name": "Afrobeats & Amapiano Night",
+  "event_date": "2025-10-17",
+  "event_duration_mins": 180,
+  "event_location": "The Lighthouse, Lekki Phase 1, Lagos",
+  "event_categories": ["music", "nightlife", "afrobeats"],
+
+  "total_attendees": 247,
+  "registered_attendees": 210,
+  "guest_attendees": 37,
+  "checkin_count": 215,
+  "checkin_rate": 87.0,
+  "no_show_count": 32,
+
+  "total_revenue": 6250.00,
+  "currency": "NGN",
+  "tickets_sold": 247,
+  "tier_breakdown": [
+    {
+      "name": "Early Bird",
+      "price": 5000,
+      "sold": 80,
+      "capacity": 80,
+      "revenue": 400000,
+      "fill_rate": 100.0
+    },
+    {
+      "name": "General Admission",
+      "price": 10000,
+      "sold": 130,
+      "capacity": 200,
+      "revenue": 1300000,
+      "fill_rate": 65.0
+    },
+    {
+      "name": "VIP",
+      "price": 25000,
+      "sold": 37,
+      "capacity": 50,
+      "revenue": 925000,
+      "fill_rate": 74.0
+    }
+  ],
+  "best_selling_tier": "General Admission",
+  "sellthrough_rate": 74.8,
+
+  "total_posts": 34,
+  "total_comments": 89,
+  "total_media_uploads": 28,
+  "engagement_rate": 0.14,
+
+  "top_contributors": [
+    {
+      "name": "Amara Okafor",
+      "avatar": "https://storage.googleapis.com/ps-media/avatars/amara.jpg",
+      "post_count": 8
+    },
+    {
+      "name": "Tunde Bakare",
+      "avatar": "https://storage.googleapis.com/ps-media/avatars/tunde.jpg",
+      "post_count": 5
+    },
+    {
+      "name": "Zainab Ibrahim",
+      "avatar": "",
+      "post_count": 4
+    },
+    {
+      "name": "Chidi Eze",
+      "avatar": "https://storage.googleapis.com/ps-media/avatars/chidi.jpg",
+      "post_count": 3
+    },
+    {
+      "name": "Folake Adeyemi",
+      "avatar": "",
+      "post_count": 3
+    }
+  ],
+  "first_checkin_name": "Amara Okafor",
+  "first_checkin_time": "2025-10-17T19:02",
+  "peak_checkin_hour": "8:00 PM - 9:00 PM",
+
+  "total_invited": 50,
+  "invites_accepted": 42,
+  "invites_declined": 3,
+  "invite_acceptance_rate": 84.0,
+
+  "had_livestream": true,
+  "livestream_duration_mins": 45,
+
+  "event_media": [
+    {
+      "url": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/flyer.jpg",
+      "thumbnail": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/flyer_thumb.webp",
+      "blurhash": "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+    },
+    {
+      "url": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/crowd_1.jpg",
+      "thumbnail": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/crowd_1_thumb.webp",
+      "blurhash": "LGF5]+Yk^6#M@-5c,1J5@[or[Q6."
+    },
+    {
+      "url": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/dj_booth.jpg",
+      "thumbnail": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/dj_booth_thumb.webp",
+      "blurhash": "L6PZfSi_.AyE_3t7t7R**0o#DgR4"
+    },
+    {
+      "url": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/vip_section.jpg",
+      "thumbnail": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/vip_section_thumb.webp",
+      "blurhash": "LKO2?U%2Tw=w]~RBVZRi};RPxuwH"
+    }
+  ],
+  "hero_image_url": "https://storage.googleapis.com/ps-media/events/r4k9x2m7/flyer.jpg",
+
+  "projected_full_capacity_revenue": 3525000.00,
+  "revenue_opportunity_missed": 900000.00,
+  "avg_ticket_price": 10627.53,
+  "trending_score": 809
+}

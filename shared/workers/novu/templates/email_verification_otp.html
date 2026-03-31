@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify Your Email</title>
+</head>
+<body style="margin:0;padding:0;background-color:#09090b;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#ffffff;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#09090b;">
+<tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+<!-- ============================================ -->
+<!-- HEADER                                       -->
+<!-- ============================================ -->
+<tr><td style="border-radius:20px 20px 0 0;background:linear-gradient(160deg,#0f0a1e 0%,#1a0e2e 40%,#2d1654 100%);padding:52px 40px;text-align:center;border:1px solid rgba(139,92,246,0.15);border-bottom:none;">
+
+  <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:4px;color:rgba(168,85,247,0.7);font-weight:600;">{{ payload.data.app_name }}</p>
+  <h1 style="margin:0;font-size:28px;font-weight:700;line-height:1.3;color:#ffffff;letter-spacing:-0.3px;">Verify Your Email</h1>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- OTP CODE                                     -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:48px 40px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 32px;font-size:15px;color:rgba(255,255,255,0.5);line-height:1.6;">
+    Enter this code to verify your email address.<br>
+    It expires in 10 minutes.
+  </p>
+
+  <!-- OTP display -->
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#16102a,#1c1435);border:1px solid rgba(139,92,246,0.25);border-radius:16px;padding:28px 52px;">
+      <span style="font-size:44px;font-weight:700;letter-spacing:14px;color:#ffffff;font-family:'Courier New',Courier,monospace;">{{ payload.data.otp_code }}</span>
+    </td>
+  </tr>
+  </table>
+
+  <p style="margin:32px 0 0;font-size:13px;color:rgba(255,255,255,0.25);">
+    If you didn't request this code, you can safely ignore this email.
+  </p>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- REQUEST DETAILS                              -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<tr><td style="background-color:#0f0f14;padding:28px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 14px;font-size:11px;text-transform:uppercase;letter-spacing:2.5px;color:rgba(168,85,247,0.5);font-weight:600;">Request Details</p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#16102a;border-radius:12px;border:1px solid rgba(139,92,246,0.1);">
+  <tr>
+    <td style="padding:14px 18px;border-bottom:1px solid rgba(139,92,246,0.06);">
+      <span style="font-size:11px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;">IP Address</span><br>
+      <span style="font-size:14px;color:rgba(255,255,255,0.8);font-family:'Courier New',Courier,monospace;">{{ payload.data.requested_by }}</span>
+    </td>
+  </tr>
+  {% if payload.data.requested_at != '' %}
+  <tr>
+    <td style="padding:14px 18px;">
+      <span style="font-size:11px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;">Location</span><br>
+      <span style="font-size:14px;color:rgba(255,255,255,0.8);">{{ payload.data.requested_at }}</span>
+    </td>
+  </tr>
+  {% endif %}
+  </table>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- FOOTER                                       -->
+<!-- ============================================ -->
+<tr><td style="background:linear-gradient(160deg,#0d0b14,#09090b);border-radius:0 0 20px 20px;padding:28px 40px;text-align:center;border:1px solid rgba(139,92,246,0.1);border-top:1px solid rgba(139,92,246,0.06);">
+
+  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:rgba(168,85,247,0.4);">PartyScene</p>
+  <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.18);">This is an automated security email. Please do not reply.</p>
+
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>

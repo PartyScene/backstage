@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: event-recap
+  namespace: default
+  labels:
+    app: event-recap
+    component: recap-job
+spec:
+  # Run every hour on the half-hour mark.
+  # Events need at least 60 minutes of cooldown after ending,
+  # so hourly is plenty frequent to catch them promptly.
+  schedule: "30 * * * *"
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid  # atomic claiming handles overlap, but no need to waste resources
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600  # 10 minutes — recap queries are lightweight
+      template:
+        metadata:
+          labels:
+            app: event-recap
+            component: recap-job
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: default
+          containers:
+          - name: event-recap
+            image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/event-recap:latest
+            imagePullPolicy: Always
+            env:
+            - name: SURREAL_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: SURREAL_URI
+            - name: SURREAL_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: SURREAL_USER
+            - name: SURREAL_PASS
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: SURREAL_PASS
+            - name: NOVU_SECRET_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: NOVU_SECRET_KEY
+            - name: IPINFO_TOKEN
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: IPINFO_TOKEN
+            - name: ENVIRONMENT
+              value: "production"
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"

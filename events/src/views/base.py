@@ -24,6 +24,8 @@ from quart import (
 from events.src.connectors import EventsDB
 from shared.classful import route, QuartClassful
 from shared.kpi import BusinessMetrics
+from shared.workers.novu import NotificationManager
+from shared.workers.novu.recap import collect_recap
 
 from quart_jwt_extended import jwt_required, get_jwt_identity
 from aiocache import cached
@@ -598,6 +600,13 @@ class BaseView(QuartClassful):
                 event_id, status=new_status, metadata=data.get("metadata")
             )
             app.logger.info(f"Successfully updated status for event {event_id}")
+
+            # Fire recap notification to host when event ends
+            if new_status == "ended":
+                asyncio.ensure_future(
+                    self._send_event_recap(event_id, event)
+                )
+
             return api_response(
                 "Event status updated successfully.",
                 HTTPStatus.OK,
@@ -612,6 +621,56 @@ class BaseView(QuartClassful):
             return api_error(
                 f"Failed to update event status: {str(e)}",
                 HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    async def _send_event_recap(self, event_id: str, event: dict):
+        """
+        Collect post-event insights and send a PartyScene Wrapped
+        recap to the host.  Runs as a background task so it never
+        blocks the status-update response.
+        """
+        try:
+            host = event.get("host") or event.get("creator") or ""
+            if isinstance(host, dict):
+                host_id = str(host.get("id", "")).split(":")[-1]
+            else:
+                host_id = str(host).split(":")[-1]
+
+            if not host_id:
+                app.logger.warning(
+                    "Recap skipped for event %s: no host ID", event_id
+                )
+                return
+
+            event_name = (
+                event.get("title")
+                or event.get("name")
+                or "Your Event"
+            )
+
+            async with self.conn.pool.acquire() as conn:
+                recap_data = await collect_recap(conn, event_id)
+
+            if not recap_data:
+                app.logger.warning(
+                    "Recap skipped for event %s: no data", event_id
+                )
+                return
+
+            notifier = NotificationManager()
+            await notifier.send_event_recap(
+                host_subscriber_id=host_id,
+                event_id=event_id,
+                event_name=event_name,
+                **recap_data,
+            )
+            app.logger.info(
+                "Recap sent for event %s (%s)", event_id, event_name
+            )
+        except Exception as e:
+            app.logger.error(
+                "Recap dispatch failed for event %s: %s",
+                event_id, e, exc_info=True,
             )
 
     @route("/events/<event_id>/live", methods=["GET"])

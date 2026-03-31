@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Event Recap</title>
+</head>
+<body style="margin:0;padding:0;background-color:#09090b;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#ffffff;">
+
+<!-- Wrapper -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#09090b;">
+<tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+<!-- ============================================ -->
+<!-- HERO                                         -->
+<!-- ============================================ -->
+<tr><td style="border-radius:20px 20px 0 0;background:linear-gradient(160deg,#0f0a1e 0%,#1a0e2e 30%,#2d1654 60%,#3b1d6e 100%);padding:56px 40px;text-align:center;border:1px solid rgba(139,92,246,0.15);border-bottom:none;">
+
+  {% if payload.hero_image_url != '' %}
+  <img src="{{ payload.hero_image_url }}" alt="{{ payload.event_name }}" width="120" height="120" style="width:120px;height:120px;border-radius:20px;object-fit:cover;margin-bottom:24px;border:2px solid rgba(139,92,246,0.3);">
+  {% endif %}
+
+  <p style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:4px;color:rgba(168,85,247,0.7);font-weight:600;">Your Event Recap</p>
+  <h1 style="margin:0 0 10px;font-size:32px;font-weight:700;line-height:1.15;color:#ffffff;letter-spacing:-0.3px;">{{ payload.event_name }}</h1>
+  <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.55);">{{ payload.event_date }} &middot; {{ payload.event_location }}</p>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- ATTENDANCE                                   -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:36px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 24px;font-size:11px;text-transform:uppercase;letter-spacing:3px;color:rgba(168,85,247,0.6);font-weight:700;">Attendance</p>
+
+  <!-- Big number -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td align="center" style="padding-bottom:28px;">
+      <span style="font-size:72px;font-weight:700;color:#ffffff;line-height:1;letter-spacing:-2px;">{{ payload.total_attendees }}</span>
+      <br>
+      <span style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;">people showed up</span>
+    </td>
+  </tr>
+  </table>
+
+  <!-- Stats row -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#16102a;border-radius:16px;border:1px solid rgba(139,92,246,0.1);">
+  <tr>
+    <td width="33%" align="center" style="padding:22px 8px;">
+      <span style="font-size:28px;font-weight:700;color:rgba(168,85,247,0.9);">{{ payload.registered_attendees }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Registered</span>
+    </td>
+    <td width="33%" align="center" style="padding:22px 8px;border-left:1px solid rgba(139,92,246,0.08);border-right:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:28px;font-weight:700;color:rgba(139,92,246,0.9);">{{ payload.guest_attendees }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Guests</span>
+    </td>
+    <td width="33%" align="center" style="padding:22px 8px;">
+      <span style="font-size:28px;font-weight:700;color:rgba(196,148,255,0.9);">{{ payload.checkin_rate }}%</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Check-in Rate</span>
+    </td>
+  </tr>
+  </table>
+
+  {% if payload.first_checkin_name != '' %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
+  <tr>
+    <td style="background-color:#16102a;border-radius:12px;padding:14px 18px;border:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:12px;color:rgba(255,255,255,0.4);">First to arrive</span><br>
+      <span style="font-size:15px;font-weight:600;color:rgba(255,255,255,0.9);">{{ payload.first_checkin_name }}</span>
+      <span style="font-size:13px;color:rgba(255,255,255,0.3);"> &middot; {{ payload.first_checkin_time }}</span>
+    </td>
+  </tr>
+  </table>
+  {% endif %}
+
+  {% if payload.peak_checkin_hour != '' %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;">
+  <tr>
+    <td style="background-color:#16102a;border-radius:12px;padding:14px 18px;border:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:12px;color:rgba(255,255,255,0.4);">Peak hour</span><br>
+      <span style="font-size:15px;font-weight:600;color:rgba(255,255,255,0.9);">{{ payload.peak_checkin_hour }}</span>
+    </td>
+  </tr>
+  </table>
+  {% endif %}
+
+</td></tr>
+
+<!-- Divider -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<!-- ============================================ -->
+<!-- REVENUE                                      -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:36px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 24px;font-size:11px;text-transform:uppercase;letter-spacing:3px;color:rgba(168,85,247,0.6);font-weight:700;">Revenue</p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td align="center" style="padding-bottom:4px;">
+      <span style="font-size:14px;color:rgba(255,255,255,0.4);">{{ payload.currency }}</span>
+      <span style="font-size:72px;font-weight:700;color:#ffffff;line-height:1;letter-spacing:-2px;">{{ payload.total_revenue }}</span>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding-bottom:28px;">
+      <span style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;">total revenue &middot; {{ payload.tickets_sold }} tickets sold</span>
+    </td>
+  </tr>
+  </table>
+
+  <!-- Tier breakdown -->
+  {% for tier in payload.tier_breakdown %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+  <tr>
+    <td style="background-color:#16102a;border-radius:12px;padding:18px 20px;border:1px solid rgba(139,92,246,0.08);">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td>
+          <span style="font-size:15px;font-weight:600;color:rgba(255,255,255,0.9);">{{ tier.name }}</span><br>
+          <span style="font-size:13px;color:rgba(255,255,255,0.35);">{{ tier.price }} per ticket</span>
+        </td>
+        <td align="right">
+          <span style="font-size:20px;font-weight:700;color:rgba(168,85,247,0.9);">{{ tier.sold }}</span>
+          {% if tier.capacity %}<span style="font-size:13px;color:rgba(255,255,255,0.3);">/{{ tier.capacity }}</span>{% endif %}<br>
+          <span style="font-size:13px;color:rgba(255,255,255,0.35);">{{ tier.revenue }} earned</span>
+        </td>
+      </tr>
+      </table>
+      <!-- Fill bar -->
+      {% if tier.capacity %}
+      <div style="margin-top:12px;background-color:rgba(139,92,246,0.12);border-radius:4px;height:5px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#7c3aed,#a855f7);height:5px;border-radius:4px;width:{{ tier.fill_rate }}%;max-width:100%;"></div>
+      </div>
+      {% endif %}
+    </td>
+  </tr>
+  </table>
+  {% endfor %}
+
+  {% if payload.best_selling_tier != '' %}
+  <p style="margin:16px 0 0;font-size:13px;color:rgba(255,255,255,0.4);text-align:center;">
+    Best seller: <span style="color:rgba(168,85,247,0.9);font-weight:600;">{{ payload.best_selling_tier }}</span> &middot; {{ payload.sellthrough_rate }}% sell-through
+  </p>
+  {% endif %}
+
+</td></tr>
+
+<!-- Divider -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<!-- ============================================ -->
+<!-- ENGAGEMENT                                   -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:36px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 24px;font-size:11px;text-transform:uppercase;letter-spacing:3px;color:rgba(168,85,247,0.6);font-weight:700;">Engagement</p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#16102a;border-radius:16px;border:1px solid rgba(139,92,246,0.1);">
+  <tr>
+    <td width="33%" align="center" style="padding:24px 8px;">
+      <span style="font-size:36px;font-weight:700;color:rgba(168,85,247,0.9);">{{ payload.total_posts }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Posts</span>
+    </td>
+    <td width="33%" align="center" style="padding:24px 8px;border-left:1px solid rgba(139,92,246,0.08);border-right:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:36px;font-weight:700;color:rgba(139,92,246,0.9);">{{ payload.total_comments }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Comments</span>
+    </td>
+    <td width="33%" align="center" style="padding:24px 8px;">
+      <span style="font-size:36px;font-weight:700;color:rgba(196,148,255,0.9);">{{ payload.total_media_uploads }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Media</span>
+    </td>
+  </tr>
+  </table>
+
+  <!-- Top contributors -->
+  {% for contributor in payload.top_contributors %}
+  {% if forloop.first %}
+  <p style="margin:28px 0 14px;font-size:11px;text-transform:uppercase;letter-spacing:2px;color:rgba(168,85,247,0.45);font-weight:600;">Top Contributors</p>
+  {% endif %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:6px;">
+  <tr>
+    <td style="background-color:#16102a;border-radius:12px;padding:12px 16px;border:1px solid rgba(139,92,246,0.06);">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        {% if contributor.avatar != '' %}
+        <td width="36" style="padding-right:12px;">
+          <img src="{{ contributor.avatar }}" alt="" width="36" height="36" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1px solid rgba(139,92,246,0.2);">
+        </td>
+        {% endif %}
+        <td>
+          <span style="font-size:14px;font-weight:600;color:rgba(255,255,255,0.9);">{{ contributor.name }}</span>
+        </td>
+        <td align="right">
+          <span style="font-size:18px;font-weight:700;color:rgba(168,85,247,0.9);">{{ contributor.post_count }}</span>
+          <span style="font-size:12px;color:rgba(255,255,255,0.3);"> posts</span>
+        </td>
+      </tr>
+      </table>
+    </td>
+  </tr>
+  </table>
+  {% endfor %}
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- GUESTLIST (conditional)                      -->
+<!-- ============================================ -->
+{% if payload.total_invited > 0 %}
+<!-- Divider -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<tr><td style="background-color:#0f0f14;padding:36px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 24px;font-size:11px;text-transform:uppercase;letter-spacing:3px;color:rgba(168,85,247,0.6);font-weight:700;">Guestlist</p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#16102a;border-radius:16px;border:1px solid rgba(139,92,246,0.1);">
+  <tr>
+    <td width="25%" align="center" style="padding:22px 6px;">
+      <span style="font-size:28px;font-weight:700;color:rgba(168,85,247,0.9);">{{ payload.total_invited }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;">Invited</span>
+    </td>
+    <td width="25%" align="center" style="padding:22px 6px;border-left:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:28px;font-weight:700;color:rgba(139,92,246,0.9);">{{ payload.invites_accepted }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;">Accepted</span>
+    </td>
+    <td width="25%" align="center" style="padding:22px 6px;border-left:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:28px;font-weight:700;color:rgba(255,255,255,0.4);">{{ payload.invites_declined }}</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;">Declined</span>
+    </td>
+    <td width="25%" align="center" style="padding:22px 6px;border-left:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:28px;font-weight:700;color:rgba(196,148,255,0.9);">{{ payload.invite_acceptance_rate }}%</span><br>
+      <span style="font-size:10px;color:rgba(255,255,255,0.4);text-transform:uppercase;">Accept Rate</span>
+    </td>
+  </tr>
+  </table>
+
+</td></tr>
+{% endif %}
+
+<!-- ============================================ -->
+<!-- LIVESTREAM (conditional)                     -->
+<!-- ============================================ -->
+{% if payload.had_livestream == true %}
+<!-- Divider -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<tr><td style="background-color:#0f0f14;padding:36px 40px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 24px;font-size:11px;text-transform:uppercase;letter-spacing:3px;color:rgba(168,85,247,0.6);font-weight:700;text-align:left;">Livestream</p>
+
+  <span style="display:inline-block;background:linear-gradient(160deg,#7c3aed,#6366f1);color:#ffffff;font-size:10px;font-weight:700;padding:4px 12px;border-radius:4px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:16px;">Live</span><br>
+  <span style="font-size:56px;font-weight:700;color:#ffffff;line-height:1;letter-spacing:-2px;">{{ payload.livestream_duration_mins }}</span><br>
+  <span style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;">minutes streamed</span>
+
+</td></tr>
+{% endif %}
+
+<!-- ============================================ -->
+<!-- MEDIA GALLERY (conditional)                  -->
+<!-- ============================================ -->
+{% for media in payload.event_media %}
+{% if forloop.first %}
+<!-- Divider -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<tr><td style="background-color:#0f0f14;padding:36px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 24px;font-size:11px;text-transform:uppercase;letter-spacing:3px;color:rgba(168,85,247,0.6);font-weight:700;">Moments</p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+{% endif %}
+    <td style="padding:3px;width:33%;">
+      {% if media.thumbnail != '' %}
+      <img src="{{ media.thumbnail }}" alt="" width="170" style="width:100%;height:auto;border-radius:10px;display:block;border:1px solid rgba(139,92,246,0.15);">
+      {% else %}
+      <img src="{{ media.url }}" alt="" width="170" style="width:100%;height:auto;border-radius:10px;display:block;border:1px solid rgba(139,92,246,0.15);">
+      {% endif %}
+    </td>
+{% if forloop.last %}
+  </tr>
+  </table>
+
+</td></tr>
+{% endif %}
+{% endfor %}
+
+<!-- Divider -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<!-- ============================================ -->
+<!-- FORECASTS & PREDICTIONS                      -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:36px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 24px;font-size:11px;text-transform:uppercase;letter-spacing:3px;color:rgba(168,85,247,0.6);font-weight:700;">Insights &amp; Forecasts</p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#16102a;border-radius:16px;border:1px solid rgba(139,92,246,0.1);">
+  <tr>
+    <td width="50%" align="center" style="padding:24px 14px;">
+      <span style="font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Full Capacity Revenue</span><br>
+      <span style="font-size:28px;font-weight:700;color:rgba(168,85,247,0.9);">{{ payload.currency }} {{ payload.projected_full_capacity_revenue }}</span>
+    </td>
+    <td width="50%" align="center" style="padding:24px 14px;border-left:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Opportunity Missed</span><br>
+      <span style="font-size:28px;font-weight:700;color:rgba(255,255,255,0.5);">{{ payload.currency }} {{ payload.revenue_opportunity_missed }}</span>
+    </td>
+  </tr>
+  </table>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;background-color:#16102a;border-radius:16px;border:1px solid rgba(139,92,246,0.1);">
+  <tr>
+    <td width="50%" align="center" style="padding:22px 14px;">
+      <span style="font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Avg Ticket Price</span><br>
+      <span style="font-size:24px;font-weight:700;color:rgba(255,255,255,0.9);">{{ payload.currency }} {{ payload.avg_ticket_price }}</span>
+    </td>
+    <td width="50%" align="center" style="padding:22px 14px;border-left:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:1px;">Trending Score</span><br>
+      <span style="font-size:24px;font-weight:700;color:rgba(168,85,247,0.9);">{{ payload.trending_score }}</span>
+    </td>
+  </tr>
+  </table>
+
+  {% if payload.revenue_opportunity_missed > 0 %}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;">
+  <tr>
+    <td style="background-color:#16102a;border-radius:12px;padding:20px 22px;border-left:3px solid rgba(139,92,246,0.5);">
+      <span style="font-size:13px;color:rgba(255,255,255,0.55);line-height:1.6;">
+        If every tier had sold out, you would have earned
+        <strong style="color:rgba(168,85,247,0.9);">{{ payload.currency }} {{ payload.projected_full_capacity_revenue }}</strong>.
+        Consider raising prices or adding capacity for your next event.
+      </span>
+    </td>
+  </tr>
+  </table>
+  {% endif %}
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- CTA                                          -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:28px 40px 44px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#7c3aed,#6366f1);border-radius:10px;padding:16px 44px;">
+      <a href="https://partyscene.app/events/create" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:0.3px;">Create Your Next Event</a>
+    </td>
+  </tr>
+  </table>
+
+  <p style="margin:24px 0 0;font-size:12px;color:rgba(255,255,255,0.2);">
+    {{ payload.event_name }} &middot; {{ payload.event_duration_mins }} min
+    {% for cat in payload.event_categories %}{% if forloop.first %}&middot; {% endif %}{{ cat }}{% unless forloop.last %}, {% endunless %}{% endfor %}
+  </p>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- FOOTER                                       -->
+<!-- ============================================ -->
+<tr><td style="background:linear-gradient(160deg,#0d0b14,#09090b);border-radius:0 0 20px 20px;padding:28px 40px;text-align:center;border:1px solid rgba(139,92,246,0.1);border-top:1px solid rgba(139,92,246,0.06);">
+
+  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:rgba(168,85,247,0.4);">PartyScene</p>
+  <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.18);">You received this because you hosted an event on PartyScene.</p>
+
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>

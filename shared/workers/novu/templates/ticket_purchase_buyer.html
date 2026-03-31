@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tickets Confirmed</title>
+</head>
+<body style="margin:0;padding:0;background-color:#09090b;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#ffffff;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#09090b;">
+<tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+<!-- ============================================ -->
+<!-- HEADER                                       -->
+<!-- ============================================ -->
+<tr><td style="border-radius:20px 20px 0 0;background:linear-gradient(160deg,#0f0a1e 0%,#1a0e2e 30%,#2d1654 70%,#3b1d6e 100%);padding:56px 40px;text-align:center;border:1px solid rgba(139,92,246,0.15);border-bottom:none;">
+
+  <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:4px;color:rgba(168,85,247,0.7);font-weight:600;">You're In</p>
+  <h1 style="margin:0 0 10px;font-size:32px;font-weight:700;line-height:1.15;color:#ffffff;letter-spacing:-0.3px;">Tickets Confirmed</h1>
+  <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.6);">{{ payload.event_name }}</p>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- TICKET SUMMARY                               -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:48px 40px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <!-- Big ticket count -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td align="center" style="padding-bottom:32px;">
+      <span style="font-size:72px;font-weight:700;color:#ffffff;line-height:1;letter-spacing:-2px;">{{ payload.ticket_count }}</span>
+      <br>
+      <span style="font-size:13px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:2px;">
+        {% if payload.ticket_count == 1 %}ticket{% else %}tickets{% endif %} confirmed
+      </span>
+    </td>
+  </tr>
+  </table>
+
+  <!-- Order details -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#16102a;border-radius:16px;border:1px solid rgba(139,92,246,0.1);">
+  <tr>
+    <td width="50%" align="center" style="padding:22px 14px;border-right:1px solid rgba(139,92,246,0.08);">
+      <span style="font-size:11px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;">Event</span><br>
+      <span style="font-size:15px;font-weight:600;color:rgba(255,255,255,0.9);">{{ payload.event_name }}</span>
+    </td>
+    <td width="50%" align="center" style="padding:22px 14px;">
+      <span style="font-size:11px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;">Total Paid</span><br>
+      <span style="font-size:15px;font-weight:600;color:rgba(168,85,247,0.9);">{{ payload.currency }} {{ payload.total_amount }}</span>
+    </td>
+  </tr>
+  </table>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- WHAT'S NEXT                                  -->
+<!-- ============================================ -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<tr><td style="background-color:#0f0f14;padding:28px 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  <p style="margin:0 0 18px;font-size:11px;text-transform:uppercase;letter-spacing:2.5px;color:rgba(168,85,247,0.5);font-weight:600;">What's Next</p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background-color:#16102a;border-radius:12px;padding:18px 22px;border:1px solid rgba(139,92,246,0.1);">
+      <span style="font-size:14px;color:rgba(255,255,255,0.6);line-height:1.7;">
+        <strong style="color:rgba(168,85,247,0.8);">1.</strong> Your ticket QR code is in the app under My Tickets<br>
+        <strong style="color:rgba(168,85,247,0.8);">2.</strong> Show it at the door for check-in<br>
+        <strong style="color:rgba(168,85,247,0.8);">3.</strong> Start posting once the event begins
+      </span>
+    </td>
+  </tr>
+  </table>
+
+  <!-- CTA -->
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 0;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#7c3aed,#6366f1);border-radius:10px;padding:16px 44px;">
+      <a href="https://partyscene.app/tickets" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:0.3px;">View My Tickets</a>
+    </td>
+  </tr>
+  </table>
+
+</td></tr>
+
+<!-- ============================================ -->
+<!-- FOOTER                                       -->
+<!-- ============================================ -->
+<tr><td style="background:linear-gradient(160deg,#0d0b14,#09090b);border-radius:0 0 20px 20px;padding:28px 40px;text-align:center;border:1px solid rgba(139,92,246,0.1);border-top:1px solid rgba(139,92,246,0.06);">
+
+  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:rgba(168,85,247,0.4);">PartyScene</p>
+  <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.18);">You received this because you purchased tickets on PartyScene.</p>
+
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>
