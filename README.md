@@ -31,7 +31,7 @@ Cloud-native microservices platform built on Quart (async Python) served by Gran
 
 ```
               ┌──────────────────────────────────────────────────┐
-              │              GKE Ingress / Load Balancer          │
+              │         GCP Load Balancer (API Gateway)           │
               └────────────────────┬─────────────────────────────┘
                                    │
          ┌─────────┬───────────┬───┴───┬───────────┬─────────────┐
