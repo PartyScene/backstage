@@ -25,14 +25,23 @@ contention.  The batch query returns everything in one round-trip.
 """
 
 import logging
+import os
 from collections import Counter
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
+
+from shared.utils import signer
 
 logger = logging.getLogger(__name__)
 
 # Maximum media items to include in the notification payload
 MAX_MEDIA_ITEMS = 6
 MAX_TOP_CONTRIBUTORS = 5
+
+# Recap emails are archival — sign media URLs for 1 year so they
+# remain viewable whenever the host reopens the email.
+RECAP_MEDIA_TTL = timedelta(days=365)
+LOAD_BALANCER_BASE_URL = os.environ.get("LOAD_BALANCER_BASE_URL", "")
 
 # ── Batch query ─────────────────────────────────────────────────────────────
 # Single round-trip to SurrealDB that returns everything needed for a recap.
@@ -77,7 +86,7 @@ GROUP ALL);
 
 -- 6. Event media
 LET $media = (SELECT
-    url, thumbnail, blurhash, filename, metadata
+    filename, thumbnail, blurhash
 FROM media
 WHERE id IN (
     SELECT VALUE ->has_media->media.id
@@ -193,6 +202,27 @@ async def collect_recap(
     media = data.get("media") or []
     guestlist = data.get("guestlist") or []
     scene_list = data.get("scene") or []
+
+    # CDN-sign a GCS filename into a publicly accessible URL.
+    # Mirrors sign_media_url / sign_media_object robustness:
+    #   • str  → plain filename, sign directly
+    #   • dict → media object with "filename" key, extract and sign
+    #   • falsy / anything else → empty string
+    def _sign(obj) -> str:
+        path = ""
+        if isinstance(obj, dict):
+            path = obj.get("filename", "") or ""
+        elif isinstance(obj, str):
+            path = obj
+        if not path:
+            return ""
+        try:
+            return signer.generate_cdn_signed_url(
+                LOAD_BALANCER_BASE_URL, "/" + path, RECAP_MEDIA_TTL,
+            )
+        except Exception as e:
+            logger.error("Failed to sign media path %s: %s", path, e)
+            return ""
 
     # ── Attendance ──────────────────────────────────────────────────
     registered = [t for t in tickets if t.get("user")]
@@ -323,7 +353,7 @@ async def collect_recap(
         info = author_info.get(uid, {})
         top_contributors.append({
             "name": info.get("name", uid),
-            "avatar": info.get("avatar", ""),
+            "avatar": _sign(info.get("avatar", "")),
             "post_count": count,
         })
 
@@ -364,9 +394,11 @@ async def collect_recap(
     event_media = []
     hero_image_url = ""
     for m in media[:MAX_MEDIA_ITEMS]:
+        filename = m.get("filename", "") or ""
+        thumb = m.get("thumbnail", "") or ""
         entry = {
-            "url": m.get("url", "") or "",
-            "thumbnail": m.get("thumbnail", "") or "",
+            "url": _sign(filename),
+            "thumbnail": _sign(thumb),
             "blurhash": m.get("blurhash", "") or "",
         }
         event_media.append(entry)
