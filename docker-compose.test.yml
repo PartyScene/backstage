@@ -189,7 +189,7 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "/surreal", "isready"]
       interval: 5s
       timeout: 3s
       retries: 10

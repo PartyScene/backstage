@@ -7,7 +7,7 @@ import uuid
 
 from typing import AsyncGenerator, Dict, Any, Tuple, Optional
 from http import HTTPStatus
-from shared.utils import recursively_sign_object_media, api_response, api_error, record_id_to_json
+from shared.utils import recursively_sign_object_media, sign_media_object, api_response, api_error, record_id_to_json
 
 from shared.middleware.validation import ValidationMiddleware
 
@@ -463,7 +463,7 @@ class BaseView(QuartClassful):
 
             for item in results:
                 if item.get("event") and item["event"].get("media"):
-                    item["event"]["media"] = await recursively_sign_object_media(item["event"]["media"])
+                    item["event"]["media"] = await sign_media_object(item["event"]["media"])
                 if item.get("event") and item["event"].get("host"):
                     item["event"]["host"] = await recursively_sign_object_media(item["event"]["host"])
 
