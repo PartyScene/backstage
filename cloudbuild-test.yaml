@@ -38,7 +38,7 @@ steps:
   args:
     - '-c'
     - |
-      docker-compose -f docker-compose.test.yml down -v || true
+      docker compose -f docker-compose.test.yml down -v || true
       docker network rm cloudbuild || true
   waitFor: ['integration-tests']
   id: 'cleanup'

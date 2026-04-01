@@ -94,17 +94,25 @@ services:
       - REDIS_URI=redis://redis:6379
       - GCS_BUCKET_NAME=partyscene-test
 
-  # microservices.livestream:
-  #   container_name: microservices.livestream
-  #   build:
-  #     target: test
-  #     context: .
-  #     dockerfile: livestream/Dockerfile
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   depends_on:
-  #     microservices.events:
-  #       condition: service_completed_successfully
+  microservices.livestream:
+    container_name: microservices.livestream
+    build:
+      target: test
+      context: .
+      dockerfile: livestream/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - SCHEMA_FILE=/home/schema.surql
+      - SURREAL_URI=ws://surrealdb:8000/rpc
+      - SURREAL_USER=root
+      - SURREAL_PASS=root
+      - REDIS_URI=redis://redis:6379
 
   microservices.events:
     container_name: microservices.events

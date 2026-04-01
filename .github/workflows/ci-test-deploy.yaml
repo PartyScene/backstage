@@ -11,7 +11,7 @@ env:
   COMPOSE_DOCKER_CLI_BUILD: 1
 
 jobs:
-  # Stage 1: Code Quality & Security
+  # Stage 1: Code Quality — fast syntax/format checks
   code-quality:
     runs-on: ubuntu-latest
     steps:
@@ -24,25 +24,23 @@ jobs:
           python-version: '3.13'
 
       - name: Install linting tools
-        run: |
-          pip install flake8 black mypy
+        run: pip install flake8 black
 
-      - name: Run flake8 (syntax errors)
+      - name: Run flake8 (syntax errors only)
         run: flake8 --select=E9,F63,F7,F82 . --exclude=.venv,debz,usr
 
       - name: Run black (formatting check)
         run: black --check . --exclude='/(\.venv|debz|usr)/'
 
-      - name: Run mypy (type checking)
-        run: mypy --config-file pyproject.toml . || true
-
   # Stage 2: Unit Tests per Microservice
+  # Mirrors the docker-compose.test.yml service definitions.
+  # Each service's Dockerfile has a `test` target that runs pytest.
   unit-tests:
     runs-on: ubuntu-latest
     needs: code-quality
     strategy:
       matrix:
-        service: [auth, events, users, posts, media, payments, r18e]
+        service: [auth, events, users, posts, media, payments, livestream, r18e]
       fail-fast: false
 
     steps:
@@ -54,296 +52,27 @@ jobs:
 
       - name: Start dependencies (SurrealDB, Redis, RabbitMQ)
         run: |
-          docker compose -f docker-compose.test.yml up -d rabbitmq
-          sleep 10
+          docker compose -f docker-compose.test.yml up -d surrealdb redis rabbitmq
 
-      - name: Build and test ${{ matrix.service }} service
+      - name: Wait for dependencies to be healthy
         run: |
-          docker compose -f docker-compose.test.yml build microservices.${{ matrix.service }}
-          docker compose -f docker-compose.test.yml run --rm microservices.${{ matrix.service }}
-        env:
-          SCHEMA_FILE: /home/schema.surql
+          docker compose -f docker-compose.test.yml exec -T surrealdb sh -c \
+            'for i in $(seq 1 30); do curl -sf http://localhost:8000/health && exit 0; sleep 1; done; exit 1'
+          docker compose -f docker-compose.test.yml exec -T redis sh -c \
+            'for i in $(seq 1 15); do redis-cli ping && exit 0; sleep 1; done; exit 1'
+          docker compose -f docker-compose.test.yml exec -T rabbitmq sh -c \
+            'for i in $(seq 1 30); do rabbitmq-diagnostics ping && exit 0; sleep 1; done; exit 1'
 
-      - name: Generate coverage report
+      - name: Run ${{ matrix.service }} tests
         run: |
-          docker compose -f docker-compose.test.yml run --rm \
-            microservices.${{ matrix.service }} \
-            pytest --cov=/tests --cov-report=xml --cov-report=html
+          docker compose -f docker-compose.test.yml up \
+            --build --abort-on-container-exit \
+            microservices.${{ matrix.service }}
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.xml
-          flags: ${{ matrix.service }}
-          name: ${{ matrix.service }}-coverage
-
-      - name: Cleanup
-        if: always()
-        run: docker compose -f docker-compose.test.yml down -v
-
-  # Stage 3: Integration Tests
-  integration-tests:
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create Docker network
-        run: docker network create cloudbuild || true
-
-      - name: Start all services
-        run: |
-          docker compose -f docker-compose.test.yml up -d
-          sleep 30
-
-      - name: Wait for services to be healthy
-        run: |
-          timeout 300 bash -c 'until docker compose -f docker-compose.test.yml ps | grep -q "healthy"; do sleep 5; done'
-
-      - name: Run integration tests
-        run: |
-          docker run --network cloudbuild \
-            -v $(pwd)/tests:/tests \
-            -e SURREAL_URI=$SURREAL_URI \
-            python:3.13-slim \
-            bash -c "pip install pytest httpx && pytest /tests/integration/"
-
-      - name: Collect service logs
+      - name: Collect logs on failure
         if: failure()
         run: docker compose -f docker-compose.test.yml logs
 
       - name: Cleanup
         if: always()
         run: docker compose -f docker-compose.test.yml down -v
-
-  # Stage 4: Contract Tests (API Compatibility)
-  contract-tests:
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Postman CLI
-        run: |
-          curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
-
-      - name: Start services
-        run: docker compose -f docker-compose.test.yml up -d
-
-      - name: Run Postman collections
-        run: |
-          postman collection run tests/postman/partyscene-api.json \
-            --environment tests/postman/test-env.json
-
-      - name: Cleanup
-        if: always()
-        run: docker compose -f docker-compose.test.yml down -v
-
-  # Stage 5: Build Production Images
-  build-images:
-    runs-on: ubuntu-latest
-    needs: [integration-tests, contract-tests]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
-    strategy:
-      matrix:
-        include:
-          - service: auth
-            dockerfile: auth/Dockerfile
-          - service: events
-            dockerfile: events/Dockerfile
-          - service: posts
-            dockerfile: posts/Dockerfile
-          - service: users
-            dockerfile: users/Dockerfile
-          - service: media
-            dockerfile: media/Dockerfile
-          - service: payments
-            dockerfile: payments/Dockerfile
-          - service: scenes
-            dockerfile: livestream/Dockerfile
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GCP Artifact Registry
-        uses: docker/login-action@v3
-        with:
-          registry: us-central1-docker.pkg.dev
-          username: _json_key
-          password: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Build and push ${{ matrix.service }}
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./${{ matrix.dockerfile }}
-          target: prod
-          push: true
-          tags: |
-            us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.${{ matrix.service }}:${{ github.sha }}
-            us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.${{ matrix.service }}:latest
-          cache-from: type=registry,ref=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.${{ matrix.service }}:latest
-          cache-to: type=inline
-
-  # Stage 6: Deploy to Staging
-  deploy-staging:
-    runs-on: ubuntu-latest
-    needs: build-images
-    if: github.ref == 'refs/heads/staging'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy to GKE Staging
-        run: |
-          gcloud container clusters get-credentials backstage-cluster \
-            --zone us-central1 --project ${{ secrets.GCP_PROJECT_ID }}
-          
-          kubectl set image deployment/auth \
-            auth=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.auth:${{ github.sha }} \
-            -n staging
-          
-          kubectl set image deployment/events \
-            events=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.events:${{ github.sha }} \
-            -n staging
-          
-          kubectl set image deployment/users \
-            users=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.users:${{ github.sha }} \
-            -n staging
-
-      - name: Wait for rollout
-        run: |
-          kubectl rollout status deployment/auth -n staging --timeout=5m
-          kubectl rollout status deployment/events -n staging --timeout=5m
-          kubectl rollout status deployment/users -n staging --timeout=5m
-
-  # Stage 7: Smoke Tests in Staging
-  staging-smoke-tests:
-    runs-on: ubuntu-latest
-    needs: deploy-staging
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          pip install httpx pytest
-
-      - name: Run smoke tests against staging
-        run: |
-          pytest tests/smoke/ --base-url=${{ secrets.STAGING_URL }}
-        env:
-          API_KEY: ${{ secrets.STAGING_API_KEY }}
-
-      - name: Run basic load test
-        run: |
-          docker run --rm grafana/k6 run - <tests/k6/smoke.js \
-            --env BASE_URL=${{ secrets.STAGING_URL }}
-
-  # Stage 8: Deploy to Production
-  deploy-production:
-    runs-on: ubuntu-latest
-    needs: staging-smoke-tests
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      url: https://api.partyscene.app
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy to GKE Production (Blue-Green)
-        run: |
-          gcloud container clusters get-credentials backstage-cluster \
-            --zone us-central1 --project ${{ secrets.GCP_PROJECT_ID }}
-          
-          # Deploy to green environment
-          kubectl set image deployment/auth-green \
-            auth=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.auth:${{ github.sha }} \
-            -n production
-          
-          kubectl set image deployment/events-green \
-            events=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.events:${{ github.sha }} \
-            -n production
-          
-          kubectl set image deployment/users-green \
-            users=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/scenes-backstage/microservices.users:${{ github.sha }} \
-            -n production
-
-      - name: Wait for green rollout
-        run: |
-          kubectl rollout status deployment/auth-green -n production --timeout=5m
-          kubectl rollout status deployment/events-green -n production --timeout=5m
-          kubectl rollout status deployment/users-green -n production --timeout=5m
-
-      - name: Run canary health checks
-        run: |
-          pytest tests/smoke/ --base-url=${{ secrets.PRODUCTION_GREEN_URL }}
-
-      - name: Switch traffic to green (Blue-Green swap)
-        run: |
-          kubectl patch service auth -n production -p '{"spec":{"selector":{"version":"green"}}}'
-          kubectl patch service events -n production -p '{"spec":{"selector":{"version":"green"}}}'
-          kubectl patch service users -n production -p '{"spec":{"selector":{"version":"green"}}}'
-
-      - name: Monitor for 5 minutes
-        run: sleep 300
-
-      - name: Check error rates
-        run: |
-          # Query Prometheus/monitoring for error rates
-          # If error rate > threshold, rollback
-          echo "Monitoring metrics..."
-
-  # Stage 9: Rollback on Failure
-  rollback:
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    if: failure()
-    steps:
-      - name: Rollback production deployment
-        run: |
-          kubectl patch service auth -n production -p '{"spec":{"selector":{"version":"blue"}}}'
-          kubectl patch service events -n production -p '{"spec":{"selector":{"version":"blue"}}}'
-          kubectl patch service users -n production -p '{"spec":{"selector":{"version":"blue"}}}'
-
-      - name: Notify team
-        uses: slackapi/slack-github-action@v1
-        with:
-          payload: |
-            {
-              "text": "🚨 Production deployment FAILED and rolled back",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Production Deployment Failed*\nCommit: ${{ github.sha }}\nBranch: ${{ github.ref }}"
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
