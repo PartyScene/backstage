@@ -78,3 +78,5 @@ A user describing a bug for the third time isn't thinking "this AI is trying har
 - Focus on data structures over code: Prioritize well-designed data and their relationships; good code follows from that. Minimize globals and use structs to group related data.
 
 - Lead decisively as a benevolent dictator: Make firm technical decisions in your domain, saying "no" when needed, but build trust through consistent, project-focused choices. Communication is key in open source—read and write emails effectively, as coding takes a backseat in leadership.
+
+When using multiple statements in surrealDB query, remember query only returns the first result, use query_raw for all statement results.

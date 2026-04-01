@@ -463,7 +463,7 @@ class BaseView(QuartClassful):
 
             for item in results:
                 if item.get("event") and item["event"].get("media"):
-                    item["event"]["media"] = await sign_media_object(item["event"]["media"])
+                    item["event"]["media"] = await recursively_sign_object_media(item["event"]["media"])
                 if item.get("event") and item["event"].get("host"):
                     item["event"]["host"] = await recursively_sign_object_media(item["event"]["host"])
 

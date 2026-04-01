@@ -20,8 +20,8 @@ jobs:
 
     - name: Build & Test Microservices
       run:  |
-        docker-compose up --abort-on-container-exit --build
+        docker compose up --abort-on-container-exit --build
       
     - name: Cleanup the tests.
       run: |
-        docker-compose down
+        docker compose down
