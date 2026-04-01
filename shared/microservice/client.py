@@ -32,7 +32,8 @@ dictConfig(
         "disable_existing_loggers": False,
         "formatters": {
             "default": {
-                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                "format": "%(asctime)s  %(levelname)-5s  %(name)s  %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
             }
         },
         "handlers": {
@@ -116,17 +117,67 @@ class MicroService(Quart):
 
         @self.before_request
         async def log_request():
-            if len(request.path) > 1:
-                logger.warning(request.headers.to_wsgi_list())
-                logger.warning(f"Request Overview: Method: {request.method}, Path: {request.path}")
-                logger.warning(f"Request body: {await request.data}")
-                logger.warning(f"Request args: {request.args}")
+            request._log_start = time.time()
 
         @self.after_request
         async def log_response(response):
-            if response.status_code not in [200, 201, 204]:
-                logger.warning(f"Response body: {await response.data}")
-                logger.warning(f"Response code sent: {response.status_code}")
+            path = request.path
+            if path == "/" or path.startswith("/health"):
+                return response
+
+            elapsed = time.time() - getattr(
+                request, "_log_start", time.time()
+            )
+            method = request.method
+            status = response.status_code
+            args = dict(request.args) or None
+            user = request.headers.get("X-User-Id", "-")
+
+            # Parse request body (skip binary/multipart)
+            req_body = None
+            ct = request.content_type or ""
+            if "json" in ct or "form" in ct:
+                raw = await request.data
+                if raw:
+                    try:
+                        req_body = json.loads(raw)
+                    except Exception:
+                        req_body = raw.decode(
+                            "utf-8", errors="replace"
+                        )[:500]
+
+            # Parse response body
+            res_body = None
+            rct = response.content_type or ""
+            if "json" in rct:
+                raw = await response.data
+                if raw:
+                    try:
+                        res_body = json.loads(raw)
+                    except Exception:
+                        res_body = raw.decode(
+                            "utf-8", errors="replace"
+                        )[:500]
+
+            parts = [
+                f"\n{'─' * 60}",
+                f"  {method}  {path}  →  {status}"
+                f"  ({elapsed * 1000:.0f}ms)"
+                f"  user={user}",
+            ]
+            if args:
+                parts.append(f"  params   {args}")
+            if req_body:
+                parts.append(f"  req      {req_body}")
+            if res_body:
+                parts.append(f"  res      {res_body}")
+            parts.append(f"{'─' * 60}")
+
+            level = (
+                logging.WARNING if status >= 400
+                else logging.INFO
+            )
+            logger.log(level, "\n".join(parts))
             return response
 
         @self.before_serving

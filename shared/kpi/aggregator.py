@@ -313,7 +313,7 @@ class KPIAggregator:
             self.logger.error(f"KPI cache write failed: {exc}")
 
         elapsed = time.monotonic() - t0
-        self.logger.info(f"KPI refresh completed in {elapsed:.3f}s")
+        self.logger.debug(f"KPI refresh completed in {elapsed:.3f}s")
         return snapshot
 
     async def snapshot(self) -> dict:
