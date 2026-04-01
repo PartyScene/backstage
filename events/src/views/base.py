@@ -133,12 +133,16 @@ class BaseView(QuartClassful):
                 "status": "confirmed",  # You can add more fields as needed
             }
 
-            # Assuming you have a method to create the relationship in your database
             result = await self.conn.create_attendance(attendance_data)
             BusinessMetrics.EVENT_ATTENDANCES.inc()
 
+            # Fire RSVP notifications without blocking the response
+            asyncio.ensure_future(
+                self._send_rsvp_notifications(user_id, event_id, event)
+            )
+
             return api_response(
-                "Ticket purchased successfully",
+                "Attendance confirmed",
                 HTTPStatus.OK,
                 data=result,
             )
@@ -649,6 +653,20 @@ class BaseView(QuartClassful):
             )
 
             async with self.conn.pool.acquire() as conn:
+                # Atomically claim so the CronJob won't send a duplicate
+                claimed = await conn.query(
+                    "UPDATE type::thing('events', $eid) "
+                    "SET recap_sent = time::now() "
+                    "WHERE recap_sent = NONE "
+                    "RETURN BEFORE",
+                    {"eid": event_id},
+                )
+                if not claimed:
+                    app.logger.info(
+                        "Recap already claimed for event %s", event_id
+                    )
+                    return
+
                 recap_data = await collect_recap(conn, event_id)
 
             if not recap_data:
@@ -670,6 +688,61 @@ class BaseView(QuartClassful):
         except Exception as e:
             app.logger.error(
                 "Recap dispatch failed for event %s: %s",
+                event_id, e, exc_info=True,
+            )
+
+    async def _send_rsvp_notifications(
+        self, user_id: str, event_id: str, event: dict
+    ):
+        """Fire attendee + host RSVP notifications in the background."""
+        try:
+            event_name = (
+                event.get("title")
+                or event.get("name")
+                or "an event"
+            )
+            host = event.get("host") or {}
+            host_id = host.get("id")
+
+            # Fetch attendee name for the host notification
+            attendee_name = "Someone"
+            try:
+                async with self.conn.pool.acquire() as conn:
+                    user = await conn.query(
+                        "SELECT first_name, last_name, username "
+                        "FROM ONLY type::thing('users', $uid)",
+                        {"uid": user_id},
+                    )
+                if user:
+                    first = user.get("first_name", "")
+                    last = user.get("last_name", "")
+                    attendee_name = (
+                        f"{first} {last}".strip()
+                        or user.get("username", "Someone")
+                    )
+            except Exception:
+                pass  # fall back to "Someone"
+
+            notifier = NotificationManager()
+
+            # Confirm to the attendee
+            await notifier.send_event_rsvp_attendee(
+                subscriber_id=user_id,
+                event_name=event_name,
+                event_id=event_id,
+            )
+
+            # Notify the host
+            if host_id:
+                await notifier.send_event_rsvp_host(
+                    host_subscriber_id=host_id,
+                    attendee_name=attendee_name,
+                    event_name=event_name,
+                    event_id=event_id,
+                )
+        except Exception as e:
+            app.logger.error(
+                "RSVP notification failed for event %s: %s",
                 event_id, e, exc_info=True,
             )
 

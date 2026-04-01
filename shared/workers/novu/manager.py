@@ -49,6 +49,9 @@ from shared.workers.novu.notifications import (  # noqa: F401
     TicketPurchaseBuyerNotification,
     PasswordResetConfirmation,
     EventRecapNotification,
+    EventRSVPAttendeeNotification,
+    EventRSVPHostNotification,
+    HostWelcomeNotification,
 )
 
 logger = logging.getLogger(__name__)
@@ -366,5 +369,47 @@ class NotificationManager:
             event_id=event_id,
             event_name=event_name,
             **recap_data,
+        )
+        return await self._dispatch(notification)
+
+    async def send_event_rsvp_attendee(
+        self,
+        subscriber_id: str,
+        event_name: str,
+        event_id: str,
+    ):
+        """Confirm to the attendee that they've RSVP'd."""
+        notification = EventRSVPAttendeeNotification(
+            subscriber_id=subscriber_id,
+            event_name=event_name,
+            event_id=event_id,
+        )
+        return await self._dispatch(notification)
+
+    async def send_event_rsvp_host(
+        self,
+        host_subscriber_id: str,
+        attendee_name: str,
+        event_name: str,
+        event_id: str,
+    ):
+        """Notify the host that someone RSVP'd to their event."""
+        notification = EventRSVPHostNotification(
+            host_subscriber_id=host_subscriber_id,
+            attendee_name=attendee_name,
+            event_name=event_name,
+            event_id=event_id,
+        )
+        return await self._dispatch(notification)
+
+    async def send_host_welcome(
+        self,
+        subscriber_id: str,
+        first_name: str,
+    ):
+        """Welcome email for new hosts."""
+        notification = HostWelcomeNotification(
+            subscriber_id=subscriber_id,
+            first_name=first_name,
         )
         return await self._dispatch(notification)

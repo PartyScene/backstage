@@ -33,6 +33,9 @@ class WorkflowID:
     TICKET_PURCHASE_BUYER = "ticket-purchase-buyer-receipt"
     PASSWORD_RESET_CONFIRMATION = "password-reset-confirmation"
     EVENT_RECAP = "event-recap"
+    EVENT_RSVP_ATTENDEE = "event-rsvp-attendee"
+    EVENT_RSVP_HOST = "event-rsvp-host"
+    HOST_WELCOME = "host-welcome"
 
 
 APP_NAME = "Scenes"

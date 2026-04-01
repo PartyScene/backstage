@@ -21,6 +21,8 @@ from .ticket_purchase_host import TicketPurchaseHostNotification
 from .ticket_purchase_buyer import TicketPurchaseBuyerNotification
 from .password_reset_confirmation import PasswordResetConfirmation
 from .event_recap import EventRecapNotification
+from .event_rsvp import EventRSVPAttendeeNotification, EventRSVPHostNotification
+from .host_welcome import HostWelcomeNotification
 
 __all__ = [
     "OTPNotification",
@@ -35,4 +37,7 @@ __all__ = [
     "TicketPurchaseBuyerNotification",
     "PasswordResetConfirmation",
     "EventRecapNotification",
+    "EventRSVPAttendeeNotification",
+    "EventRSVPHostNotification",
+    "HostWelcomeNotification",
 ]
