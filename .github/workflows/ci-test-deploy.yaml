@@ -11,7 +11,7 @@ env:
   COMPOSE_DOCKER_CLI_BUILD: 1
 
 jobs:
-  # Stage 1: Code Quality — fast syntax/format checks
+  # Stage 1: Code Quality — fast syntax checks
   code-quality:
     runs-on: ubuntu-latest
     steps:
@@ -29,17 +29,12 @@ jobs:
       - name: Run flake8 (syntax errors only)
         run: flake8 --select=E9,F63,F7,F82 . --exclude=.venv,debz,usr
 
-  # Stage 2: Unit Tests per Microservice
-  # Mirrors the docker-compose.test.yml service definitions.
-  # Each service's Dockerfile has a `test` target that runs pytest.
-  unit-tests:
+  # Stage 2: Build & Test all microservices
+  # Uses docker-compose.test.yml which has healthchecks and
+  # service dependency ordering built in.
+  integration-tests:
     runs-on: ubuntu-latest
     needs: code-quality
-    strategy:
-      matrix:
-        service: [auth, events, users, posts, media, payments, livestream, r18e]
-      fail-fast: false
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,24 +42,10 @@ jobs:
       - name: Create Docker network
         run: docker network create cloudbuild || true
 
-      - name: Start dependencies (SurrealDB, Redis, RabbitMQ)
-        run: |
-          docker compose -f docker-compose.test.yml up -d surrealdb redis rabbitmq
-
-      - name: Wait for dependencies to be healthy
-        run: |
-          docker compose -f docker-compose.test.yml exec -T surrealdb sh -c \
-            'for i in $(seq 1 30); do curl -sf http://localhost:8000/health && exit 0; sleep 1; done; exit 1'
-          docker compose -f docker-compose.test.yml exec -T redis sh -c \
-            'for i in $(seq 1 15); do redis-cli ping && exit 0; sleep 1; done; exit 1'
-          docker compose -f docker-compose.test.yml exec -T rabbitmq sh -c \
-            'for i in $(seq 1 30); do rabbitmq-diagnostics ping && exit 0; sleep 1; done; exit 1'
-
-      - name: Run ${{ matrix.service }} tests
+      - name: Build & run all service tests
         run: |
           docker compose -f docker-compose.test.yml up \
-            --build --abort-on-container-exit \
-            microservices.${{ matrix.service }}
+            --build --abort-on-container-exit
 
       - name: Collect logs on failure
         if: failure()
