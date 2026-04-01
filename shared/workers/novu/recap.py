@@ -30,7 +30,7 @@ from collections import Counter
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from shared.utils import signer
+from shared.utils.signer import generate_cdn_signed_url
 
 logger = logging.getLogger(__name__)
 
@@ -174,16 +174,39 @@ async def collect_recap(
         A dict of kwargs ready for EventRecapNotification, or None if
         the event doesn't exist or has no meaningful data.
     """
+    # query_raw() is required because the query has multiple LET
+    # statements followed by a RETURN.  query() only returns the
+    # first statement's result (a LET → None), losing the RETURN.
     try:
-        raw = await db_conn.query(_RECAP_QUERY, {"event_id": event_id})
+        raw = await db_conn.query_raw(
+            _RECAP_QUERY, {"event_id": event_id},
+        )
     except Exception as e:
         logger.error("Recap query failed for event %s: %s", event_id, e)
         return None
 
-    # raw is typically [result] from the RETURN statement
-    data = raw[-1] if isinstance(raw, list) else raw
+    # raw is {"result": [<per-statement>, ...], ...}
+    statements = raw.get("result") if isinstance(raw, dict) else raw
+    if not isinstance(statements, list) or not statements:
+        logger.warning("No recap data returned for event %s", event_id)
+        return None
+
+    last = statements[-1]
+
+    # Each statement entry is {"status": "OK", "result": <value>}
+    if isinstance(last, dict) and "result" in last:
+        if last.get("status") == "ERR":
+            logger.error(
+                "Recap RETURN error for event %s: %s",
+                event_id, last["result"],
+            )
+            return None
+        data = last["result"]
+    else:
+        data = last
+
     if isinstance(data, list) and len(data) > 0:
-        data = data[-1]
+        data = data[0]
     if not data or not isinstance(data, dict):
         logger.warning("No recap data returned for event %s", event_id)
         return None
@@ -217,7 +240,7 @@ async def collect_recap(
         if not path:
             return ""
         try:
-            return signer.generate_cdn_signed_url(
+            return generate_cdn_signed_url(
                 LOAD_BALANCER_BASE_URL, "/" + path, RECAP_MEDIA_TTL,
             )
         except Exception as e:
