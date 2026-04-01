@@ -54,19 +54,19 @@ jobs:
 
       - name: Start dependencies (SurrealDB, Redis, RabbitMQ)
         run: |
-          docker-compose -f docker-compose.test.yml up -d rabbitmq
+          docker compose -f docker-compose.test.yml up -d rabbitmq
           sleep 10
 
       - name: Build and test ${{ matrix.service }} service
         run: |
-          docker-compose -f docker-compose.test.yml build microservices.${{ matrix.service }}
-          docker-compose -f docker-compose.test.yml run --rm microservices.${{ matrix.service }}
+          docker compose -f docker-compose.test.yml build microservices.${{ matrix.service }}
+          docker compose -f docker-compose.test.yml run --rm microservices.${{ matrix.service }}
         env:
           SCHEMA_FILE: /home/schema.surql
 
       - name: Generate coverage report
         run: |
-          docker-compose -f docker-compose.test.yml run --rm \
+          docker compose -f docker-compose.test.yml run --rm \
             microservices.${{ matrix.service }} \
             pytest --cov=/tests --cov-report=xml --cov-report=html
 
@@ -79,7 +79,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker-compose -f docker-compose.test.yml down -v
+        run: docker compose -f docker-compose.test.yml down -v
 
   # Stage 3: Integration Tests
   integration-tests:
@@ -94,12 +94,12 @@ jobs:
 
       - name: Start all services
         run: |
-          docker-compose -f docker-compose.test.yml up -d
+          docker compose -f docker-compose.test.yml up -d
           sleep 30
 
       - name: Wait for services to be healthy
         run: |
-          timeout 300 bash -c 'until docker-compose -f docker-compose.test.yml ps | grep -q "healthy"; do sleep 5; done'
+          timeout 300 bash -c 'until docker compose -f docker-compose.test.yml ps | grep -q "healthy"; do sleep 5; done'
 
       - name: Run integration tests
         run: |
@@ -111,11 +111,11 @@ jobs:
 
       - name: Collect service logs
         if: failure()
-        run: docker-compose -f docker-compose.test.yml logs
+        run: docker compose -f docker-compose.test.yml logs
 
       - name: Cleanup
         if: always()
-        run: docker-compose -f docker-compose.test.yml down -v
+        run: docker compose -f docker-compose.test.yml down -v
 
   # Stage 4: Contract Tests (API Compatibility)
   contract-tests:
@@ -130,7 +130,7 @@ jobs:
           curl -o- "https://dl-cli.pstmn.io/install/linux64.sh" | sh
 
       - name: Start services
-        run: docker-compose -f docker-compose.test.yml up -d
+        run: docker compose -f docker-compose.test.yml up -d
 
       - name: Run Postman collections
         run: |
@@ -139,7 +139,7 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker-compose -f docker-compose.test.yml down -v
+        run: docker compose -f docker-compose.test.yml down -v
 
   # Stage 5: Build Production Images
   build-images:
