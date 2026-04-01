@@ -18,10 +18,13 @@ jobs:
     #     surrealdb_strict: false
     #     surrealdb_log: debug
 
+    - name: Create Docker network
+      run: docker network create cloudbuild || true
+
     - name: Build & Test Microservices
-      run:  |
-        docker compose up --abort-on-container-exit --build
-      
+      run: |
+        docker compose -f docker-compose.test.yml up --abort-on-container-exit --build
+
     - name: Cleanup the tests.
       run: |
-        docker compose down
+        docker compose -f docker-compose.test.yml down -v
