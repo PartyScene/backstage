@@ -73,10 +73,30 @@ spec:
             configMapKeyRef:
               key: SURREAL_PASS
               name: microserv.events-config-y2ek
+        - name: NOVU_SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              key: NOVU_SECRET_KEY
+              name: microserv.events-config-y2ek
         - name: MEDIA_MICROSERVICE_URL
           valueFrom:
             configMapKeyRef:
               key: MEDIA_MICROSERVICE_URL
+              name: microserv.events-config-y2ek
+        - name: GCS_BUCKET_NAME
+          valueFrom:
+            configMapKeyRef:
+              key: GCS_BUCKET_NAME
+              name: microserv.events-config-y2ek
+        - name: STREAM_API_KEY
+          valueFrom:
+            configMapKeyRef:
+              key: STREAM_API_KEY
+              name: microserv.events-config-y2ek
+        - name: STREAM_API_SECRET
+          valueFrom:
+            configMapKeyRef:
+              key: STREAM_API_SECRET
               name: microserv.events-config-y2ek
         image: us-central1-docker.pkg.dev/partyscene-441317/scenes-backstage/microservices.events:latest
         imagePullPolicy: Always
