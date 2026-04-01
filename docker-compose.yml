@@ -34,17 +34,18 @@ services:
       - ENVIRONMENT=dev
     env_file: .env
 
-  # microservices.livestream:
-  #   container_name: microservices.livestream
-  #   build:
-  #     target: prod
-  #     context: .
-  #     dockerfile: livestream/Dockerfile
-  #   volumes:
-  #     - ./init/schema.surql:/home/schema.surql
-  #   depends_on:
-  #     microservices.events:
-  #       condition: service_completed_successfully
+  microservices.scenes:
+    container_name: microservices.scenes
+    build:
+      target: prod
+      context: .
+      dockerfile: livestream/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.events:
+        condition: service_started
+    env_file: .env
 
   microservices.events:
     container_name: microservices.events
@@ -85,6 +86,20 @@ services:
     depends_on:
       microservices.media:
         condition: service_started # service_completed_successfully
+    env_file: .env
+
+
+  microservices.payments:
+    container_name: microservices.payments
+    build:
+      target: prod
+      context: .
+      dockerfile: payments/Dockerfile
+    volumes:
+      - ./init/schema.surql:/home/schema.surql
+    depends_on:
+      microservices.media:
+        condition: service_started
     env_file: .env
 
 

@@ -15,6 +15,9 @@ import os
 import secrets
 import logging
 import asyncio
+import hmac
+import hashlib
+import jwt
 import uuid_utils as ruuid
 import orjson as json
 
@@ -36,6 +39,7 @@ logger = logging.getLogger(__name__)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "288617366843-b4uvkfpaqcavca7tcc9co7die2opu62k.apps.googleusercontent.com")
 APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID", "com.scenesllc.partyscene")  # Your Apple app bundle ID or service ID
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # Use env vars for security
+VERIFF_API_KEY = os.getenv("VERIFF_API_KEY", "")
 
 
 class BaseView(QuartClassful):
@@ -593,11 +597,13 @@ class BaseView(QuartClassful):
         if not token_str:
             return api_error("Missing ID token", HTTPStatus.BAD_REQUEST)
 
-        # try:
-        # Verify the token
-        idinfo = id_token.verify_oauth2_token(
-            token_str, grequests.Request(), GOOGLE_CLIENT_ID
-        )
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                token_str, grequests.Request(), GOOGLE_CLIENT_ID
+            )
+        except ValueError:
+            logger.error("Invalid or expired Google ID token")
+            return api_error("Invalid ID token", HTTPStatus.UNAUTHORIZED)
 
         # Optional: check email is verified
         if not idinfo.get("email_verified"):
@@ -684,15 +690,6 @@ class BaseView(QuartClassful):
             status_code,
             data={"access_token": access_token, "token_type": "bearer"}
         )
-
-        # except ValueError:
-        #     # Invalid token
-        #     logger.error("Invalid ID token")
-        #     status_code = HTTPStatus.UNAUTHORIZED
-        #     return (
-        #         jsonify(message="Invalid ID token", status=status_code.phrase),
-        #         status_code,
-        #     )
 
     @route("/auth/apple", methods=["POST"])
     async def auth_apple(self):
@@ -833,7 +830,7 @@ class BaseView(QuartClassful):
             )
         
         except jwt.ExpiredSignatureError:
-            logger.warning(f"Expired Apple token attempted from {get_client_ip()}")
+            logger.warning(f"Expired Apple token attempted from {get_client_ip(request)}")
             return api_error(
                 "Apple token has expired, please sign in again",
                 HTTPStatus.UNAUTHORIZED
@@ -854,7 +851,7 @@ class BaseView(QuartClassful):
             )
             
         except jwt.InvalidTokenError as e:
-            logger.warning(f"Invalid Apple token from {get_client_ip()}: {e}")
+            logger.warning(f"Invalid Apple token from {get_client_ip(request)}: {e}")
             return api_error(
                 "Invalid or malformed Apple token",
                 HTTPStatus.UNAUTHORIZED
@@ -880,9 +877,6 @@ class BaseView(QuartClassful):
             # Guard against double-creation: if the user already has a Stripe
             # account ID stored, return a fresh onboarding link for it instead
             # of creating a second orphaned account in Stripe.
-            existing_user = await self.conn._fetch_user(user_id, "stripe_account_id") if False else None
-            # Fetch directly to check stripe_account_id
-            import orjson as _j
             existing_check = await self.conn.pool.execute_query(
                 "SELECT stripe_account_id FROM type::thing('users', $uid);",
                 {"uid": user_id},
@@ -1066,13 +1060,15 @@ class BaseView(QuartClassful):
     
     @route("/auth/veriff-webhook", methods=["POST"])
     async def veriff_webhook(self):
-        raw_body = await request.get_data()  # Raw bytes for signature verification
-        # received_signature = request.headers.get("X-HMAC-SIGNATURE")
+        raw_body = await request.get_data()
+        received_signature = request.headers.get("X-HMAC-SIGNATURE", "")
 
-        # # Verify signature
-        # expected_signature = hmac.new(VERIFF_SECRET, raw_body, hashlib.sha256).hexdigest()
-        # if not hmac.compare_digest(expected_signature, received_signature):
-        #     return jsonify({"error": "Invalid signature"}), 403
+        if VERIFF_API_KEY:
+            expected_signature = hmac.new(
+                VERIFF_API_KEY.encode(), raw_body, hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(expected_signature, received_signature):
+                return api_error("Invalid signature", HTTPStatus.FORBIDDEN)
 
         data = await request.json
 

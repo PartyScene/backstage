@@ -148,7 +148,21 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
     strategy:
       matrix:
-        service: [auth, events, users]
+        include:
+          - service: auth
+            dockerfile: auth/Dockerfile
+          - service: events
+            dockerfile: events/Dockerfile
+          - service: posts
+            dockerfile: posts/Dockerfile
+          - service: users
+            dockerfile: users/Dockerfile
+          - service: media
+            dockerfile: media/Dockerfile
+          - service: payments
+            dockerfile: payments/Dockerfile
+          - service: scenes
+            dockerfile: livestream/Dockerfile
 
     steps:
       - name: Checkout code
@@ -168,7 +182,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./${{ matrix.service }}/Dockerfile
+          file: ./${{ matrix.dockerfile }}
           target: prod
           push: true
           tags: |

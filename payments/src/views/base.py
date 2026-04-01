@@ -1097,11 +1097,6 @@ class BaseView(QuartClassful):
                     })
                     app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
 
-                # Increment tier sold_count so capacity enforcement is accurate.
-                if tier_id:
-                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
-
-                await self.conn.increment_attendee_count(event_id, ticket_count)
                 BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="stripe").inc(ticket_count)
 
                 await self._send_tickets_email(
@@ -1112,6 +1107,7 @@ class BaseView(QuartClassful):
                 )
 
                 # Notify the event host about the ticket purchase (non-critical)
+                event_data = None
                 try:
                     event_data = await self.conn._fetch(event_id)
                     if event_data:
@@ -1312,11 +1308,6 @@ class BaseView(QuartClassful):
                     })
                     app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
 
-                # Increment tier sold_count so capacity enforcement is accurate.
-                if tier_id:
-                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
-
-                await self.conn.increment_attendee_count(event_id, ticket_count)
                 BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="paystack").inc(ticket_count)
 
                 await self._send_tickets_email(
@@ -1327,6 +1318,7 @@ class BaseView(QuartClassful):
                 )
 
                 # Notify the event host about the ticket purchase (non-critical)
+                ps_event_data = None
                 try:
                     ps_event_data = await self.conn._fetch(event_id)
                     if ps_event_data:

@@ -1,4 +1,3 @@
-from cloudflare.types.stream.live_input import LiveInput
 from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
 import os
@@ -29,73 +28,6 @@ class LiveStreamDB:
             dict: Created report record
         """
         return await report_resource(self.pool, data, resource_table="scenes")
-
-    async def store_cloudflare_scene(self, input_response: dict | LiveInput, event_id: str, user_id: str):
-        """
-        Store the ingest url / playback url / from Cloudflare and attach it to the event and user.
-        Supports SRT, RTMPS, WebRTC ingest and HLS/DASH playback.
-
-        Args:
-            input_response: Cloudflare LiveInput object or dict with stream configuration
-            event_id: Unique identifier for the event
-            user_id: Unique identifier for the user creating the stream
-
-        Returns:
-            dict: Created scene record with all stream data
-        """
-        # Handle both dict (from direct API) and LiveInput object (from SDK)
-        if isinstance(input_response, dict):
-            data = {
-                "input_uid": input_response.get("uid", ""),
-                "srt": input_response.get("srt", {}),
-                "srtPlayback": input_response.get("srtPlayback", {}),
-                "rtmps": input_response.get("rtmps", {}),
-                "rtmpsPlayback": input_response.get("rtmpsPlayback", {}),
-                "webRTC": input_response.get("webRTC", {}),
-                "webRTCPlayback": input_response.get("webRTCPlayback", {}),
-                "playback": {},
-                "metadata": {
-                    "created": input_response.get("created"),
-                    "modified": input_response.get("modified"),
-                    "status": input_response.get("status"),
-                    "deleteRecordingAfterDays": input_response.get("deleteRecordingAfterDays"),
-                    "meta": input_response.get("meta", {}),
-                },
-                "event_id": event_id,
-                "user_id": user_id,
-            }
-        else:
-            # Handle LiveInput object
-            data = {
-                "input_uid": input_response.uid or "",
-                "srt": input_response.srt.model_dump() if input_response.srt else {},
-                "srtPlayback": input_response.srt_playback.model_dump() if input_response.srt_playback else {},
-                "rtmps": input_response.rtmps.model_dump() if input_response.rtmps else {},
-                "rtmpsPlayback": input_response.rtmps_playback.model_dump() if input_response.rtmps_playback else {},
-                "webRTC": input_response.web_rtc.model_dump() if input_response.web_rtc else {},
-                "webRTCPlayback": input_response.web_rtc_playback.model_dump() if input_response.web_rtc_playback else {},
-                "playback": {},
-                "metadata": {
-                    "created": str(input_response.created) if input_response.created else None,
-                    "modified": str(input_response.modified) if input_response.modified else None,
-                    "status": input_response.status if input_response.status else None,
-                    "deleteRecordingAfterDays": input_response.delete_recording_after_days if input_response.delete_recording_after_days else None,
-                    "meta": input_response.meta if input_response.meta else {},
-                },
-                "event_id": event_id,
-                "user_id": user_id,
-            }
-        
-        async with self.pool.acquire() as conn:
-            result = await conn.query(
-                """
-                INSERT INTO scenes 
-                    (input_uid, srt, srtPlayback, rtmps, rtmpsPlayback, webRTC, webRTCPlayback, playback, metadata, event, user) 
-                VALUES ($input_uid, $srt, $srtPlayback, $rtmps, $rtmpsPlayback, $webRTC, $webRTCPlayback, $playback, $metadata, type::thing("events", $event_id), type::thing("users", $user_id))
-                """,
-                data,
-            )
-        return record_id_to_json(result)
 
     async def fetch_cloudflare_scene(self, event_id: str, user_id: str = None):
         """

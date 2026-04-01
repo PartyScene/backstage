@@ -57,6 +57,16 @@ spec:
                 configMapKeyRef:
                   name: microserv.auth-config-xn0q
                   key: IPINFO_TOKEN
+            - name: CDN_SIGNING_KEY_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: CDN_SIGNING_KEY_NAME
+            - name: CDN_SIGNING_SECRET
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: CDN_SIGNING_SECRET
             - name: ENVIRONMENT
               value: "production"
             resources:

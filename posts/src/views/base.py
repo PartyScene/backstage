@@ -102,6 +102,7 @@ class BaseView(QuartClassful):
                 HTTPStatus.CREATED,
                 data=result,
             )
+        return api_error("Failed to submit report", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     @route("/posts/<post_id>/comments", methods=["GET"])
     @jwt_required
@@ -243,6 +244,7 @@ class BaseView(QuartClassful):
                 HTTPStatus.CREATED,
                 data=result,
             )
+        return api_error("Failed to submit report", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     @route("/posts/event/<id>", methods=["GET"])
     @jwt_required  # Added JWT requirement assuming it's needed
@@ -251,7 +253,7 @@ class BaseView(QuartClassful):
         try:
             current_user_id = get_jwt_identity()
             result = await self.__posts_handler.fetch_event_posts(id, current_user_id)
-            reuslt = await recursively_sign_object_media(result)
+            result = await recursively_sign_object_media(result)
             return api_response(
                 "Event posts fetched successfully.",
                 HTTPStatus.OK,
@@ -273,7 +275,7 @@ class BaseView(QuartClassful):
         try:
             current_user_id = get_jwt_identity()
             result = await self.__posts_handler.fetch_user_posts(id, current_user_id)
-            reuslt = await recursively_sign_object_media(result)
+            result = await recursively_sign_object_media(result)
             return api_response(
                 "User posts fetched successfully.",
                 HTTPStatus.OK,
