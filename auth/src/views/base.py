@@ -965,9 +965,22 @@ class BaseView(QuartClassful):
         app.logger.warning("%s | %s | %s", user["id"], account.id, account)
         app.logger.warning("Attempting to update user with stripe account id %s", account.id)
 
+        if not account.details_submitted:
+            return api_response(
+                "Onboarding incomplete — please finish verification",
+                HTTPStatus.OK,
+                data={"kyc_complete": False},
+            )
+
         await self.conn.update_user(
             {"id": user["id"], "stripe_account_kyc_status": True}
         )
+
+        await self.__notification_manager.send_host_welcome(
+            subscriber_id=user["id"],
+            first_name=user.get("first_name", ""),
+        )
+
         return api_response("Onboarding completed successfully", HTTPStatus.OK)
 
     @route("/auth/reauth-stripe", methods=["GET"])
