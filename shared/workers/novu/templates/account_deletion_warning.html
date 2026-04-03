@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Account Deletion Warning</title>
+</head>
+<body style="margin:0;padding:0;background-color:#09090b;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#ffffff;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#09090b;">
+<tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+<!-- HEADER -->
+<tr><td style="border-radius:20px 20px 0 0;background:linear-gradient(160deg,#0f0c08 0%,#1e1508 35%,#3b2a0e 70%,#52390f 100%);padding:52px 40px;text-align:center;border:1px solid rgba(245,158,11,0.2);border-bottom:none;">
+  <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:4px;color:rgba(245,158,11,0.7);font-weight:600;">Important Notice</p>
+  <h1 style="margin:0 0 10px;font-size:28px;font-weight:700;line-height:1.3;color:#ffffff;letter-spacing:-0.3px;">Your account is scheduled for deletion</h1>
+  <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.5);">Action required to keep your account</p>
+</td></tr>
+
+<!-- BODY -->
+<tr><td style="background-color:#0f0f14;padding:48px 40px;text-align:center;border-left:1px solid rgba(245,158,11,0.1);border-right:1px solid rgba(245,158,11,0.1);">
+
+  <!-- Warning icon -->
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#2d2010,#523910);border:1px solid rgba(245,158,11,0.4);border-radius:50%;width:72px;height:72px;text-align:center;vertical-align:middle;font-size:32px;color:rgba(245,158,11,0.95);">
+      &#9888;
+    </td>
+  </tr>
+  </table>
+
+  <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#ffffff;">Deletion scheduled for {{ payload.deletion_date }}</p>
+  <p style="margin:0 0 32px;font-size:15px;color:rgba(255,255,255,0.45);line-height:1.6;">
+    You requested to delete your account. If you changed your mind, you can cancel this request before the date above and your account will be fully restored.
+  </p>
+
+  <!-- Countdown card -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a160a;border-radius:16px;border:1px solid rgba(245,158,11,0.15);margin-bottom:28px;">
+  <tr>
+    <td align="center" style="padding:28px 24px;">
+      <span style="display:block;font-size:11px;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">Scheduled deletion</span>
+      <span style="font-size:20px;font-weight:700;color:rgba(245,158,11,0.9);">{{ payload.deletion_date }}</span>
+    </td>
+  </tr>
+  </table>
+
+  <!-- What will be lost -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+  <tr>
+    <td style="background-color:#1a160a;border-radius:12px;padding:20px 22px;border-left:3px solid rgba(245,158,11,0.6);">
+      <span style="font-size:13px;color:rgba(255,255,255,0.6);line-height:1.8;">
+        <strong style="color:rgba(245,158,11,0.9);">When deleted, you will lose:</strong><br>
+        Your profile, events, posts, tickets, and all associated data permanently.
+        This action cannot be undone after {{ payload.deletion_date }}.
+      </span>
+    </td>
+  </tr>
+  </table>
+
+  <!-- CTA -->
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#d97706,#b45309);border-radius:10px;padding:16px 44px;">
+      <a href="https://partyscene.app/account/cancel-deletion" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:0.3px;">Cancel Deletion &amp; Keep Account</a>
+    </td>
+  </tr>
+  </table>
+
+</td></tr>
+
+<!-- DIVIDER -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(245,158,11,0.1);border-right:1px solid rgba(245,158,11,0.1);"><div style="border-top:1px solid rgba(245,158,11,0.07);"></div></td></tr>
+
+<!-- FINE PRINT -->
+<tr><td style="background-color:#0f0f14;padding:24px 40px 32px;border-left:1px solid rgba(245,158,11,0.1);border-right:1px solid rgba(245,158,11,0.1);">
+  <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.3);text-align:center;line-height:1.6;">
+    If you did not request account deletion, please contact support immediately at support@partyscene.app.
+  </p>
+</td></tr>
+
+<!-- FOOTER -->
+<tr><td style="background:linear-gradient(160deg,#0d0b14,#09090b);border-radius:0 0 20px 20px;padding:28px 40px;text-align:center;border:1px solid rgba(245,158,11,0.1);border-top:1px solid rgba(245,158,11,0.06);">
+  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:rgba(168,85,247,0.4);">PartyScene</p>
+  <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.18);">This is an automated account management email from Scenes.</p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>

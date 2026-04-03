@@ -19,6 +19,7 @@ class EventInvitationNotification(BaseNotification):
     critical = False
 
     event_id: str
+    event_name: str = ""
     invitee_ids: List[str] = None
 
     def __post_init__(self):
@@ -29,4 +30,7 @@ class EventInvitationNotification(BaseNotification):
         return [{"subscriber_id": uid} for uid in self.invitee_ids]
 
     def build_payload(self) -> Dict[str, Any]:
-        return {"event_id": self.event_id}
+        return {
+            "event_id": self.event_id,
+            "event_name": self.event_name,
+        }

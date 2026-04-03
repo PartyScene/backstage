@@ -249,10 +249,12 @@ class NotificationManager:
         self,
         event_id: str,
         invitee_ids: List[str] = None,
+        event_name: str = "",
         workflow_id: str = None,
     ):
         notification = EventInvitationNotification(
             event_id=event_id,
+            event_name=event_name,
             invitee_ids=invitee_ids or [],
         )
         return await self._dispatch(notification, workflow_id_override=workflow_id)

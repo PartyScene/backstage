@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if payload.change_type == "cancelled" %}Event Cancelled{% else %}Event Updated{% endif %}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#09090b;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#ffffff;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#09090b;">
+<tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+<!-- HEADER -->
+{% if payload.change_type == "cancelled" %}
+<tr><td style="border-radius:20px 20px 0 0;background:linear-gradient(160deg,#1a0808 0%,#2e0f0f 35%,#581515 70%,#7a1e1e 100%);padding:52px 40px;text-align:center;border:1px solid rgba(239,68,68,0.2);border-bottom:none;">
+  <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:4px;color:rgba(239,68,68,0.7);font-weight:600;">Event Cancelled</p>
+  <h1 style="margin:0 0 10px;font-size:28px;font-weight:700;line-height:1.3;color:#ffffff;letter-spacing:-0.3px;">{{ payload.event_name }}</h1>
+  <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.5);">This event has been cancelled by the host</p>
+</td></tr>
+{% else %}
+<tr><td style="border-radius:20px 20px 0 0;background:linear-gradient(160deg,#0f0c0a 0%,#1e1508 35%,#3b2a0e 70%,#52390f 100%);padding:52px 40px;text-align:center;border:1px solid rgba(245,158,11,0.2);border-bottom:none;">
+  <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:4px;color:rgba(245,158,11,0.7);font-weight:600;">Event Updated</p>
+  <h1 style="margin:0 0 10px;font-size:28px;font-weight:700;line-height:1.3;color:#ffffff;letter-spacing:-0.3px;">{{ payload.event_name }}</h1>
+  <p style="margin:0;font-size:15px;color:rgba(255,255,255,0.5);">Important details have changed</p>
+</td></tr>
+{% endif %}
+
+<!-- BODY -->
+<tr><td style="background-color:#0f0f14;padding:48px 40px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+
+  {% if payload.change_type == "cancelled" %}
+
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#2d1010,#581515);border:1px solid rgba(239,68,68,0.35);border-radius:50%;width:64px;height:64px;text-align:center;vertical-align:middle;font-size:28px;color:rgba(239,68,68,0.9);">
+      &#10007;
+    </td>
+  </tr>
+  </table>
+
+  <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#ffffff;">This event has been cancelled</p>
+  <p style="margin:0 0 32px;font-size:15px;color:rgba(255,255,255,0.45);line-height:1.6;">
+    We're sorry for the inconvenience. If you purchased tickets, a refund will be processed automatically.
+  </p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background-color:#1e1010;border-radius:12px;padding:20px 22px;border-left:3px solid rgba(239,68,68,0.6);">
+      <span style="font-size:13px;color:rgba(255,255,255,0.6);line-height:1.7;">
+        <strong style="color:rgba(239,68,68,0.9);">Refunds:</strong> Paid tickets will be refunded within 5–10 business days to your original payment method.
+      </span>
+    </td>
+  </tr>
+  </table>
+
+  {% else %}
+
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#2d2010,#523910);border:1px solid rgba(245,158,11,0.35);border-radius:50%;width:64px;height:64px;text-align:center;vertical-align:middle;font-size:28px;color:rgba(245,158,11,0.9);">
+      &#9998;
+    </td>
+  </tr>
+  </table>
+
+  <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#ffffff;">Event details have changed</p>
+  <p style="margin:0 0 32px;font-size:15px;color:rgba(255,255,255,0.45);line-height:1.6;">
+    The host updated the following: <strong style="color:rgba(245,158,11,0.9);">{{ payload.changed_fields }}</strong>
+  </p>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background-color:#1a160a;border-radius:12px;padding:20px 22px;border-left:3px solid rgba(245,158,11,0.6);">
+      <span style="font-size:13px;color:rgba(255,255,255,0.6);line-height:1.7;">
+        Check the event page for the latest details before attending.
+      </span>
+    </td>
+  </tr>
+  </table>
+
+  {% endif %}
+
+</td></tr>
+
+<!-- CTA -->
+<tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
+
+<tr><td style="background-color:#0f0f14;padding:28px 40px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
+  {% if payload.change_type != "cancelled" %}
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+  <tr>
+    <td style="background:linear-gradient(160deg,#7c3aed,#6366f1);border-radius:10px;padding:16px 44px;">
+      <a href="https://partyscene.app/events/{{ payload.event_id }}" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;letter-spacing:0.3px;">View Updated Event</a>
+    </td>
+  </tr>
+  </table>
+  {% endif %}
+</td></tr>
+
+<!-- FOOTER -->
+<tr><td style="background:linear-gradient(160deg,#0d0b14,#09090b);border-radius:0 0 20px 20px;padding:28px 40px;text-align:center;border:1px solid rgba(139,92,246,0.1);border-top:1px solid rgba(139,92,246,0.06);">
+  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:rgba(168,85,247,0.4);">PartyScene</p>
+  <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.18);">You received this because you have a ticket to {{ payload.event_name }}.</p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+
+</body>
+</html>
