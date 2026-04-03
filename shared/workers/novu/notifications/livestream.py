@@ -18,6 +18,8 @@ class LivestreamNotification(BaseNotification):
     critical = False
 
     event_id: str
+    event_name: str = ""
+    host_name: str = ""
     subscriber_ids: List[str] = None
 
     def __post_init__(self):
@@ -28,4 +30,8 @@ class LivestreamNotification(BaseNotification):
         return [{"subscriber_id": uid} for uid in self.subscriber_ids]
 
     def build_payload(self) -> Dict[str, Any]:
-        return {"event_id": self.event_id}
+        return {
+            "event_id": self.event_id,
+            "event_name": self.event_name,
+            "host_name": self.host_name,
+        }

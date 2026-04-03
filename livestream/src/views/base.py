@@ -49,6 +49,7 @@ from stream_chat import StreamChatAsync
 from shared.classful import route, QuartClassful
 from shared.utils import api_response, api_error, coordinates_to_geometry_point
 from shared.kpi import BusinessMetrics
+from shared.workers.novu import NotificationManager
 from livestream.src.connectors import LiveStreamDB
 
 
@@ -494,6 +495,11 @@ class BaseView(QuartClassful):
             BusinessMetrics.LIVESTREAM_STARTS.inc()
             BusinessMetrics.LIVESTREAMS_ACTIVE.inc()
             app.logger.info(f"Stream {call_id} is now live (user {user_id})")
+
+            asyncio.ensure_future(
+                self._notify_livestream_started(event_id, user_id)
+            )
+
             return api_response("Stream is now live", HTTPStatus.OK)
 
         except Exception as exc:
@@ -781,3 +787,67 @@ class BaseView(QuartClassful):
         except Exception as exc:
             app.logger.exception(f"Error reporting livestream {event_id}/{scene_id}")
             return api_error(f"Failed to report: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    # ------------------------------------------------------------------
+    # Background notification helper
+    # ------------------------------------------------------------------
+
+    async def _notify_livestream_started(self, event_id: str, host_user_id: str):
+        """
+        Fetch event name, host display name, and all ticket-holder subscriber
+        IDs, then fan out a livestream-started notification in the background.
+        Non-fatal: a Novu failure must never surface to the host.
+        """
+        try:
+            async with self.conn.pool.acquire() as conn:
+                event_info = await conn.query(
+                    "SELECT title, name, "
+                    "host.{id, first_name, last_name, organization_name} AS host_profile "
+                    "FROM ONLY type::thing('events', $eid)",
+                    {"eid": event_id},
+                )
+                attendee_rows = await conn.query(
+                    "SELECT VALUE string::split(string::concat(user, ''), ':')[1] "
+                    "FROM tickets "
+                    "WHERE event = type::thing('events', $eid) AND user != NONE",
+                    {"eid": event_id},
+                )
+
+            event_name = ""
+            host_name = ""
+            if event_info:
+                event_name = event_info.get("title") or event_info.get("name") or ""
+                host = event_info.get("host_profile") or {}
+                first = host.get("first_name", "")
+                last = host.get("last_name", "")
+                host_name = (
+                    host.get("organization_name")
+                    or f"{first} {last}".strip()
+                    or "Your host"
+                )
+
+            subscriber_ids = list({uid for uid in (attendee_rows or []) if uid})
+            # Exclude the host from the fan-out (they started it)
+            subscriber_ids = [uid for uid in subscriber_ids if uid != host_user_id]
+
+            if not subscriber_ids:
+                app.logger.info(
+                    "Livestream notification skipped for %s: no subscribers", event_id
+                )
+                return
+
+            notifier = NotificationManager()
+            await notifier.send_livestream_notification(
+                event_id=event_id,
+                event_name=event_name,
+                host_name=host_name,
+                subscribers=[{"subscriber_id": uid} for uid in subscriber_ids],
+            )
+            app.logger.info(
+                "Livestream notification sent for %s → %d subscribers",
+                event_id, len(subscriber_ids),
+            )
+        except Exception as e:
+            app.logger.error(
+                "Livestream notification failed for %s: %s", event_id, e, exc_info=True
+            )

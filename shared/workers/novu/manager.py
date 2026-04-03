@@ -279,10 +279,14 @@ class NotificationManager:
         self,
         event_id: str,
         subscribers: List[str] = None,
+        event_name: str = "",
+        host_name: str = "",
         workflow_id: str = None,
     ):
         notification = LivestreamNotification(
             event_id=event_id,
+            event_name=event_name,
+            host_name=host_name,
             subscriber_ids=subscribers or [],
         )
         return await self._dispatch(notification, workflow_id_override=workflow_id)
