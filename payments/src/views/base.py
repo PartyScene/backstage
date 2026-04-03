@@ -1153,7 +1153,30 @@ class BaseView(QuartClassful):
                 data["kyc_payment_status"] = True
                 # Update the user's KYC status in the database
                 await self.conn._update_user(data)
-                app.logger.info(f"User {user_id} KYC status updated to 'verified'.")
+                app.logger.info(f"User {user_id} KYC payment status updated.")
+                # If Stripe onboarding was already completed, fire host-welcome now
+                # (covers the edge case where Stripe was set up before the KYC fee)
+                try:
+                    user_record = await self.conn.pool.execute_query(
+                        "SELECT stripe_account_kyc_status, first_name "
+                        "FROM ONLY type::thing('users', $uid)",
+                        {"uid": user_id},
+                    )
+                    user_record = user_record[0] if user_record else {}
+                    if user_record.get("stripe_account_kyc_status"):
+                        await self._notification_manager.send_host_welcome(
+                            subscriber_id=user_id,
+                            first_name=user_record.get("first_name", ""),
+                        )
+                        app.logger.info(
+                            f"Host-welcome sent to {user_id} after KYC fee "
+                            "(Stripe onboarding was already complete)"
+                        )
+                except Exception as host_welcome_err:
+                    app.logger.warning(
+                        f"Host-welcome check after KYC payment failed (non-blocking): "
+                        f"{host_welcome_err}"
+                    )
             else:
                 app.logger.warning(
                     f"No ticket data found in metadata for PaymentIntent {payment_intent['id']}. Cannot create ticket."

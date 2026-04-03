@@ -207,8 +207,10 @@ class BaseView(QuartClassful):
         if await self.conn._reset_password(email, new_password):
             # Send password-reset confirmation (email + push, non-critical)
             try:
+                user_info = await self.conn._fetch_user_by_email(email)
+                subscriber_id = user_info["id"] if user_info else email
                 await self.__notification_manager.send_password_reset_confirmation(
-                    subscriber_id=email,
+                    subscriber_id=subscriber_id,
                     email=email,
                 )
             except Exception as notif_err:
@@ -970,10 +972,19 @@ class BaseView(QuartClassful):
             {"id": user["id"], "stripe_account_kyc_status": True}
         )
 
-        await self.__notification_manager.send_host_welcome(
-            subscriber_id=user["id"],
-            first_name=user.get("first_name", ""),
-        )
+        if user.get("kyc_payment_status"):
+            try:
+                await self.__notification_manager.send_host_welcome(
+                    subscriber_id=user["id"],
+                    first_name=user.get("first_name", ""),
+                )
+            except Exception as notif_err:
+                logger.warning(f"Host-welcome notification failed (non-blocking): {notif_err}")
+        else:
+            logger.info(
+                "Stripe onboarding complete for %s but KYC fee not yet paid — "
+                "host-welcome deferred", user["id"]
+            )
 
         return api_response("Onboarding completed successfully", HTTPStatus.OK)
 
