@@ -83,6 +83,8 @@ class BaseView(QuartClassful):
                         "enabled_events": [
                             "payment_intent.succeeded",
                             "payment_intent.payment_failed",
+                            "charge.refunded",
+                            "payout.paid",
                         ],
                         "description": "Webhook for payment intents",
                     }
@@ -1161,6 +1163,52 @@ class BaseView(QuartClassful):
             payment_intent = event.data.object
             app.logger.warning(f"PaymentIntent failed: {payment_intent['id']}")
             # TODO: Implement failed payment handling (ticket status update, user notification)
+
+        elif event["type"] == "charge.refunded":
+            charge = event.data.object
+            metadata = charge.get("metadata", {})
+            user_id = metadata.get("user_id")
+            event_id = metadata.get("event_id")
+            event_name = metadata.get("event_name", "your event")
+            amount = charge.get("amount_refunded", 0) / 100
+            currency = charge.get("currency", "usd")
+            app.logger.info(f"Charge refunded: {charge.get('id')} for user {user_id}")
+            if user_id:
+                try:
+                    await self._notification_manager.send_ticket_refund(
+                        subscriber_id=user_id,
+                        event_name=event_name,
+                        event_id=event_id or "",
+                        amount=amount,
+                        currency=currency,
+                    )
+                except Exception as refund_notif_err:
+                    app.logger.error(f"Refund notification failed (non-blocking): {refund_notif_err}")
+
+        elif event["type"] == "payout.paid":
+            payout = event.data.object
+            stripe_account_id = event.get("account")
+            amount = payout.get("amount", 0) / 100
+            currency = payout.get("currency", "usd")
+            arrival_date = str(payout.get("arrival_date", ""))
+            app.logger.info(f"Payout paid: {payout.get('id')} account={stripe_account_id}")
+            if stripe_account_id:
+                try:
+                    host_rows = await self.conn.pool.execute_query(
+                        "SELECT VALUE string::split(string::concat(id, ''), ':')[1] "
+                        "FROM ONLY users WHERE stripe_account_id = $acct LIMIT 1",
+                        {"acct": stripe_account_id},
+                    )
+                    host_id = host_rows[0] if host_rows else None
+                    if host_id:
+                        await self._notification_manager.send_payout_processed(
+                            host_subscriber_id=host_id,
+                            amount=amount,
+                            currency=currency,
+                            arrival_date=arrival_date,
+                        )
+                except Exception as payout_notif_err:
+                    app.logger.error(f"Payout notification failed (non-blocking): {payout_notif_err}")
 
         else:
             # Log other event types that you might not be handling explicitly

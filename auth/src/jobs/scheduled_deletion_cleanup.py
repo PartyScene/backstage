@@ -23,6 +23,8 @@ from purreal import SurrealDBPoolManager
 from redis.asyncio import Redis
 import stripe
 
+from shared.workers.novu import NotificationManager
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +41,7 @@ class ScheduledDeletionCleanup:
     
     def __init__(self, auth_db: AuthDB):
         self.auth_db = auth_db
+        self.notifier = NotificationManager()
     
     async def get_accounts_for_deletion(self) -> List[Dict]:
         """
@@ -115,6 +118,60 @@ class ScheduledDeletionCleanup:
             logger.error(f"Error processing deletion for user {user_id}: {e}")
             return False
     
+    async def warn_pending_deletions(self) -> int:
+        """
+        Send a deletion warning to users whose account will be deleted in
+        ≤7 days and who have not yet received a warning.
+
+        Marks `deletion_warning_sent` atomically to prevent duplicate sends.
+
+        Returns:
+            Number of warnings sent.
+        """
+        query = """
+            UPDATE users
+            SET deletion_warning_sent = time::now()
+            WHERE scheduled_deletion_at != NONE
+            AND scheduled_deletion_at > time::now()
+            AND scheduled_deletion_at <= time::now() + 7d
+            AND deletion_warning_sent = NONE
+            RETURN BEFORE
+        """
+        try:
+            rows = await self.auth_db.pool.execute_query(query)
+        except Exception as e:
+            logger.error(f"Error querying pending deletion warnings: {e}")
+            return 0
+
+        users = rows or []
+        if isinstance(users, list) and users and isinstance(users[0], list):
+            users = users[0]
+
+        count = 0
+        for user in users:
+            uid = user.get("id")
+            if hasattr(uid, "id"):
+                uid = uid.id
+            elif isinstance(uid, str) and ":" in uid:
+                uid = uid.split(":")[-1]
+
+            deletion_at = user.get("scheduled_deletion_at")
+            deletion_date = str(deletion_at) if deletion_at else "soon"
+
+            if not uid:
+                continue
+            try:
+                await self.notifier.send_account_deletion_warning(
+                    subscriber_id=uid,
+                    deletion_date=deletion_date,
+                )
+                count += 1
+                logger.info(f"Deletion warning sent to user {uid} (deletes {deletion_date})")
+            except Exception as e:
+                logger.warning(f"Deletion warning failed for user {uid}: {e}")
+
+        return count
+
     async def run(self) -> Dict[str, int]:
         """
         Main execution method for the cleanup job.
@@ -123,6 +180,9 @@ class ScheduledDeletionCleanup:
             Dictionary with statistics about the cleanup run
         """
         logger.info("Starting scheduled deletion cleanup job")
+
+        warnings_sent = await self.warn_pending_deletions()
+        logger.info(f"Deletion warnings sent: {warnings_sent}")
         
         # Get accounts scheduled for deletion
         accounts = await self.get_accounts_for_deletion()
@@ -130,7 +190,8 @@ class ScheduledDeletionCleanup:
         stats = {
             "total_scheduled": len(accounts),
             "successful_deletions": 0,
-            "failed_deletions": 0
+            "failed_deletions": 0,
+            "warnings_sent": warnings_sent,
         }
         
         # Process each account

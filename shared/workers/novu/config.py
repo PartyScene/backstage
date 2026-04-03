@@ -36,6 +36,15 @@ class WorkflowID:
     EVENT_RSVP_ATTENDEE = "event-rsvp-attendee"
     EVENT_RSVP_HOST = "event-rsvp-host"
     HOST_WELCOME = "host-welcome"
+    EVENT_CANCELLED = "event-cancelled"
+    EVENT_UPDATED = "event-updated"
+    KYC_DECISION = "kyc-decision"
+    GUESTLIST_DECISION = "guestlist-decision"
+    GUESTLIST_RSVP = "guestlist-rsvp"
+    PAYOUT_PROCESSED = "payout-processed"
+    TICKET_REFUND = "ticket-refund"
+    ACCOUNT_DELETION_WARNING = "account-deletion-warning"
+    TICKET_CHECKIN_HOST = "ticket-checkin-host"
 
 
 APP_NAME = "Scenes"

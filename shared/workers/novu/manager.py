@@ -52,6 +52,15 @@ from shared.workers.novu.notifications import (  # noqa: F401
     EventRSVPAttendeeNotification,
     EventRSVPHostNotification,
     HostWelcomeNotification,
+    EventCancelledNotification,
+    EventUpdatedNotification,
+    KYCDecisionNotification,
+    GuestlistDecisionNotification,
+    GuestlistRSVPNotification,
+    PayoutProcessedNotification,
+    TicketRefundNotification,
+    AccountDeletionWarningNotification,
+    TicketCheckinHostNotification,
 )
 
 logger = logging.getLogger(__name__)
@@ -411,5 +420,149 @@ class NotificationManager:
         notification = HostWelcomeNotification(
             subscriber_id=subscriber_id,
             first_name=first_name,
+        )
+        return await self._dispatch(notification)
+
+    async def send_event_cancelled(
+        self,
+        attendee_ids: List[str],
+        event_name: str,
+        event_id: str,
+    ):
+        """Notify all attendees that an event has been cancelled."""
+        if not attendee_ids:
+            return None
+        notification = EventCancelledNotification(
+            attendee_ids=attendee_ids,
+            event_name=event_name,
+            event_id=event_id,
+        )
+        return await self._dispatch(notification)
+
+    async def send_event_updated(
+        self,
+        attendee_ids: List[str],
+        event_name: str,
+        event_id: str,
+        changed_fields: List[str],
+    ):
+        """Notify all attendees that a material event detail has changed."""
+        if not attendee_ids:
+            return None
+        notification = EventUpdatedNotification(
+            attendee_ids=attendee_ids,
+            event_name=event_name,
+            event_id=event_id,
+            changed_fields=changed_fields,
+        )
+        return await self._dispatch(notification)
+
+    async def send_kyc_decision(
+        self,
+        subscriber_id: str,
+        approved: bool,
+    ):
+        """Notify a user of their Veriff KYC approval or rejection."""
+        notification = KYCDecisionNotification(
+            subscriber_id=subscriber_id,
+            approved=approved,
+        )
+        return await self._dispatch(notification)
+
+    async def send_guestlist_decision(
+        self,
+        guest_subscriber_id: str,
+        event_name: str,
+        event_id: str,
+        status: str,
+    ):
+        """Notify a guest of the host's decision on their guestlist application."""
+        notification = GuestlistDecisionNotification(
+            guest_subscriber_id=guest_subscriber_id,
+            event_name=event_name,
+            event_id=event_id,
+            status=status,
+        )
+        return await self._dispatch(notification)
+
+    async def send_guestlist_rsvp(
+        self,
+        host_subscriber_id: str,
+        guest_name: str,
+        event_name: str,
+        event_id: str,
+        status: str,
+    ):
+        """Notify the host that an invited guest has responded to their invitation."""
+        notification = GuestlistRSVPNotification(
+            host_subscriber_id=host_subscriber_id,
+            guest_name=guest_name,
+            event_name=event_name,
+            event_id=event_id,
+            status=status,
+        )
+        return await self._dispatch(notification)
+
+    async def send_payout_processed(
+        self,
+        host_subscriber_id: str,
+        amount: float,
+        currency: str,
+        arrival_date: str,
+    ):
+        """Notify a host that a Stripe payout has been dispatched."""
+        notification = PayoutProcessedNotification(
+            host_subscriber_id=host_subscriber_id,
+            amount=amount,
+            currency=currency,
+            arrival_date=arrival_date,
+        )
+        return await self._dispatch(notification)
+
+    async def send_ticket_refund(
+        self,
+        subscriber_id: str,
+        event_name: str,
+        event_id: str,
+        amount: float,
+        currency: str,
+    ):
+        """Notify a buyer that a refund has been issued for their ticket."""
+        notification = TicketRefundNotification(
+            subscriber_id=subscriber_id,
+            event_name=event_name,
+            event_id=event_id,
+            amount=amount,
+            currency=currency,
+        )
+        return await self._dispatch(notification)
+
+    async def send_account_deletion_warning(
+        self,
+        subscriber_id: str,
+        deletion_date: str,
+    ):
+        """Warn a user that their account will be permanently deleted soon."""
+        notification = AccountDeletionWarningNotification(
+            subscriber_id=subscriber_id,
+            deletion_date=deletion_date,
+        )
+        return await self._dispatch(notification)
+
+    async def send_ticket_checkin_host(
+        self,
+        host_subscriber_id: str,
+        event_name: str,
+        event_id: str,
+        attendee_name: str,
+        ticket_number: str,
+    ):
+        """Push-notify the host the moment a ticket is freshly checked in."""
+        notification = TicketCheckinHostNotification(
+            host_subscriber_id=host_subscriber_id,
+            event_name=event_name,
+            event_id=event_id,
+            attendee_name=attendee_name,
+            ticket_number=ticket_number,
         )
         return await self._dispatch(notification)

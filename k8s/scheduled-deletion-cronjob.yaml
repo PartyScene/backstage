@@ -58,6 +58,16 @@ spec:
                 configMapKeyRef:
                   name: microserv.auth-config-xn0q
                   key: STRIPE_SECRET_KEY
+            - name: NOVU_SECRET_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: NOVU_SECRET_KEY
+            - name: IPINFO_TOKEN
+              valueFrom:
+                configMapKeyRef:
+                  name: microserv.auth-config-xn0q
+                  key: IPINFO_TOKEN
             - name: ENVIRONMENT
               value: "production"
             resources:

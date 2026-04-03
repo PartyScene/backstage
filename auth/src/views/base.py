@@ -1076,11 +1076,18 @@ class BaseView(QuartClassful):
         user_id = data.get("verification").get("vendorData")
         status = data.get("verification").get("decision").get("status")
         if status == "approved":
-            # Mark user as verified
             await self.conn.update_user({"id": user_id, "kyc_status": True})
         elif status == "declined":
-            # Handle rejection
             await self.conn.update_user({"id": user_id, "kyc_status": False})
+
+        if status in ("approved", "declined") and user_id:
+            try:
+                await self.__notification_manager.send_kyc_decision(
+                    subscriber_id=user_id,
+                    approved=(status == "approved"),
+                )
+            except Exception as kyc_notif_err:
+                logger.warning(f"KYC decision notification failed (non-blocking): {kyc_notif_err}")
 
         return api_response("Webhook received", HTTPStatus.OK, data={"status": "received"})
 

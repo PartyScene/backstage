@@ -297,6 +297,17 @@ class BaseView(QuartClassful):
 
                 if event_info["creator"] == requester:
                     if result := await self.conn.update_event_data(event_id, data):
+                        material_changes = [
+                            f for f in ("time", "location", "coordinates")
+                            if f in data
+                        ]
+                        if material_changes:
+                            event_name = event_info.get("title") or event_info.get("name") or "your event"
+                            asyncio.ensure_future(
+                                self._notify_event_updated(
+                                    event_id, event_name, material_changes
+                                )
+                            )
                         return api_response(
                             "Event updated successfully.",
                             HTTPStatus.OK,
@@ -503,7 +514,11 @@ class BaseView(QuartClassful):
             if event.get("creator") != user_id:  # Assuming host field stores user ID
                 return api_error("Unauthorized to delete this event", HTTPStatus.FORBIDDEN)
 
+            event_name = event.get("title") or event.get("name") or "your event"
             await self.conn.delete_event(event_id)
+            asyncio.ensure_future(
+                self._notify_event_cancelled(event_id, event_name)
+            )
             return api_response("Event deleted successfully", HTTPStatus.OK)
         except Exception as e:
             app.logger.error(
@@ -744,6 +759,151 @@ class BaseView(QuartClassful):
             app.logger.error(
                 "RSVP notification failed for event %s: %s",
                 event_id, e, exc_info=True,
+            )
+
+    async def _notify_event_cancelled(self, event_id: str, event_name: str):
+        """Fan out event-cancelled notifications to all ticket holders and RSVPs."""
+        try:
+            async with self.conn.pool.acquire() as conn:
+                rows = await conn.query(
+                    """
+                    SELECT VALUE string::split(string::concat(user, ''), ':')[1]
+                    FROM tickets
+                    WHERE event = type::thing('events', $eid)
+                    AND user != NONE
+                    """,
+                    {"eid": event_id},
+                )
+            attendee_ids = list({uid for uid in (rows or []) if uid})
+            if not attendee_ids:
+                return
+            notifier = NotificationManager()
+            await notifier.send_event_cancelled(
+                attendee_ids=attendee_ids,
+                event_name=event_name,
+                event_id=event_id,
+            )
+            app.logger.info(
+                "Event-cancelled notification sent for %s → %d attendees",
+                event_id, len(attendee_ids),
+            )
+        except Exception as e:
+            app.logger.error(
+                "Event-cancelled notification failed for %s: %s",
+                event_id, e, exc_info=True,
+            )
+
+    async def _notify_event_updated(
+        self, event_id: str, event_name: str, changed_fields: list
+    ):
+        """Fan out event-updated notifications to all ticket holders."""
+        try:
+            async with self.conn.pool.acquire() as conn:
+                rows = await conn.query(
+                    """
+                    SELECT VALUE string::split(string::concat(user, ''), ':')[1]
+                    FROM tickets
+                    WHERE event = type::thing('events', $eid)
+                    AND user != NONE
+                    """,
+                    {"eid": event_id},
+                )
+            attendee_ids = list({uid for uid in (rows or []) if uid})
+            if not attendee_ids:
+                return
+            notifier = NotificationManager()
+            await notifier.send_event_updated(
+                attendee_ids=attendee_ids,
+                event_name=event_name,
+                event_id=event_id,
+                changed_fields=changed_fields,
+            )
+            app.logger.info(
+                "Event-updated notification sent for %s → %d attendees, fields: %s",
+                event_id, len(attendee_ids), changed_fields,
+            )
+        except Exception as e:
+            app.logger.error(
+                "Event-updated notification failed for %s: %s",
+                event_id, e, exc_info=True,
+            )
+
+    async def _notify_guestlist_decision(
+        self, guest_id: str, event_name: str, event_id: str, status: str
+    ):
+        """Notify a guest of the host's accept/decline decision."""
+        try:
+            notifier = NotificationManager()
+            await notifier.send_guestlist_decision(
+                guest_subscriber_id=guest_id,
+                event_name=event_name,
+                event_id=event_id,
+                status=status,
+            )
+        except Exception as e:
+            app.logger.error(
+                "Guestlist-decision notification failed for guest %s event %s: %s",
+                guest_id, event_id, e, exc_info=True,
+            )
+
+    async def _notify_guestlist_rsvp(
+        self, host_id: str, guest_id: str, event_name: str, event_id: str, status: str
+    ):
+        """Notify the host when an invited guest accepts or declines."""
+        try:
+            guest_name = "A guest"
+            try:
+                async with self.conn.pool.acquire() as conn:
+                    user = await conn.query(
+                        "SELECT first_name, last_name, username "
+                        "FROM ONLY type::thing('users', $uid)",
+                        {"uid": guest_id},
+                    )
+                if user:
+                    first = user.get("first_name", "")
+                    last = user.get("last_name", "")
+                    guest_name = (
+                        f"{first} {last}".strip()
+                        or user.get("username", "A guest")
+                    )
+            except Exception:
+                pass
+            notifier = NotificationManager()
+            await notifier.send_guestlist_rsvp(
+                host_subscriber_id=host_id,
+                guest_name=guest_name,
+                event_name=event_name,
+                event_id=event_id,
+                status=status,
+            )
+        except Exception as e:
+            app.logger.error(
+                "Guestlist-RSVP notification failed for host %s event %s: %s",
+                host_id, event_id, e, exc_info=True,
+            )
+
+    async def _notify_ticket_checkin(
+        self,
+        host_id: str,
+        event_name: str,
+        event_id: str,
+        attendee_name: str,
+        ticket_number: str,
+    ):
+        """Notify the host of a fresh ticket check-in."""
+        try:
+            notifier = NotificationManager()
+            await notifier.send_ticket_checkin_host(
+                host_subscriber_id=host_id,
+                event_name=event_name,
+                event_id=event_id,
+                attendee_name=attendee_name,
+                ticket_number=ticket_number,
+            )
+        except Exception as e:
+            app.logger.error(
+                "Ticket-checkin notification failed for host %s event %s: %s",
+                host_id, event_id, e, exc_info=True,
             )
 
     @route("/events/<event_id>/live", methods=["GET"])
@@ -1013,7 +1173,31 @@ class BaseView(QuartClassful):
 
             new_status = data["status"]
             result = await self.conn.update_guestlist_status(event_id, user_id, new_status)
-            
+
+            event_name = event.get("title") or event.get("name") or "your event"
+            if new_status in ("accepted", "declined"):
+                if is_host:
+                    asyncio.ensure_future(
+                        self._notify_guestlist_decision(
+                            guest_id=user_id,
+                            event_name=event_name,
+                            event_id=event_id,
+                            status=new_status,
+                        )
+                    )
+                elif is_invited_user:
+                    host_id = str(event.get("host", {}).get("id", "")).split(":")[-1]
+                    if host_id:
+                        asyncio.ensure_future(
+                            self._notify_guestlist_rsvp(
+                                host_id=host_id,
+                                guest_id=user_id,
+                                event_name=event_name,
+                                event_id=event_id,
+                                status=new_status,
+                            )
+                        )
+
             return api_response(
                 "Guestlist status updated successfully",
                 HTTPStatus.OK,
@@ -1180,6 +1364,25 @@ class BaseView(QuartClassful):
                     app.logger.warning(f"⚠️ Failed to grant attendee role for {event_id}: {stream_err}")
 
                 BusinessMetrics.TICKET_CHECKINS.inc()
+
+                host_id = str(event.get("host", {}).get("id", "")).split(":")[-1]
+                if host_id:
+                    ticket_obj = result.get("ticket") or {}
+                    attendee_name = (
+                        ticket_obj.get("guest_name")
+                        or ticket_obj.get("user", {}).get("username")
+                        or "Attendee"
+                    )
+                    asyncio.ensure_future(
+                        self._notify_ticket_checkin(
+                            host_id=host_id,
+                            event_name=event.get("title", "your event"),
+                            event_id=event_id,
+                            attendee_name=attendee_name,
+                            ticket_number=ticket_number,
+                        )
+                    )
+
                 return api_response(
                     "Ticket verified and checked in successfully",
                     HTTPStatus.OK,
