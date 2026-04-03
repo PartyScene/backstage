@@ -1101,12 +1101,15 @@ class BaseView(QuartClassful):
 
                 BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="stripe").inc(ticket_count)
 
-                await self._send_tickets_email(
-                    to_email=user_or_email,
-                    user_name=guest_name or user_or_email.split('@')[0],
-                    event_id=event_id,
-                    is_guest=is_guest,
-                )
+                # Guests get the full Resend QR email; authenticated buyers get
+                # their QR tickets via Novu (email + push in one dispatch).
+                if is_guest:
+                    await self._send_tickets_email(
+                        to_email=user_or_email,
+                        user_name=guest_name or user_or_email.split('@')[0],
+                        event_id=event_id,
+                        is_guest=True,
+                    )
 
                 # Notify the event host about the ticket purchase (non-critical)
                 event_data = None
@@ -1130,10 +1133,16 @@ class BaseView(QuartClassful):
                 except Exception as host_notify_err:
                     app.logger.error(f"Host notification failed (non-blocking): {host_notify_err}")
 
-                # Push-notify the buyer (authenticated users only)
+                # Email + push-notify the buyer with QR tickets (authenticated only)
                 if not is_guest:
                     try:
-                        evt_title = event_data.get("title", "your event")
+                        ticket_rows = await self.conn._get_ticket_details_by_user(
+                            user_or_email, event_id
+                        )
+                        ticket_numbers = [
+                            t.get("ticket_number", "") for t in ticket_rows if t.get("ticket_number")
+                        ]
+                        evt_title = (event_data or {}).get("title", "your event")
                         await self._notification_manager.send_ticket_purchase_buyer_notification(
                             buyer_subscriber_id=user_or_email,
                             event_name=evt_title,
@@ -1141,6 +1150,7 @@ class BaseView(QuartClassful):
                             ticket_count=ticket_count,
                             total_amount=payment_intent.get("amount", 0) / 100,
                             currency=payment_intent.get("currency", "usd").upper(),
+                            ticket_numbers=ticket_numbers,
                         )
                     except Exception as buyer_err:
                         app.logger.error(f"Buyer notification failed (non-blocking): {buyer_err}")

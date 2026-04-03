@@ -2,23 +2,20 @@
 Ticket purchase buyer receipt — push + email notification.
 
 Sent to the buyer immediately after their ticket purchase is confirmed
-(Stripe or Paystack webhook success).  Complements the rich HTML receipt
-email sent via Resend by delivering a real-time push notification so the
-buyer sees instant confirmation on their lock screen.
+(Stripe or Paystack webhook success).  Carries QR ticket data so the
+Novu email step renders one QR card per ticket inline — Resend is no
+longer used for authenticated buyers.
 
 Novu workflow setup
 ───────────────────
-The ``ticket-purchase-buyer-receipt`` workflow should have two steps:
-  1. Push (FCM / APNs) — "Your tickets for {{event_name}} are confirmed!"
-  2. In-App — fallback if push delivery fails or user has no device token.
-
-The Resend HTML receipt is sent separately in payments/src/views/base.py
-via ``_send_tickets_email`` and is intentionally NOT part of this Novu
-workflow to avoid duplicate emails (Novu email vs Resend email).
+The ``ticket-purchase`` workflow buyer branch should have three steps:
+  1. Email — ticket_purchase.html (buyer branch with QR loop)
+  2. Push (FCM / APNs) — "Your tickets for {{event_name}} are confirmed!"
+  3. In-App — fallback if push delivery fails or user has no device token.
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 from shared.workers.novu.base import BaseNotification
 from shared.workers.novu.config import WorkflowID
@@ -36,6 +33,7 @@ class TicketPurchaseBuyerNotification(BaseNotification):
     ticket_count: int
     total_amount: float = 0.0
     currency: str = "USD"
+    ticket_numbers: List[str] = field(default_factory=list)
 
     def build_recipient(self) -> Dict[str, str]:
         return {"subscriber_id": self.buyer_subscriber_id}
@@ -48,4 +46,5 @@ class TicketPurchaseBuyerNotification(BaseNotification):
             "ticket_count": self.ticket_count,
             "total_amount": self.total_amount,
             "currency": self.currency,
+            "ticket_numbers": self.ticket_numbers,
         }

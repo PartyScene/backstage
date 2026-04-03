@@ -342,8 +342,9 @@ class NotificationManager:
         ticket_count: int,
         total_amount: float = 0.0,
         currency: str = "USD",
+        ticket_numbers: list = None,
     ):
-        """Push-notify the buyer that their ticket purchase is confirmed."""
+        """Email + push-notify the buyer that their ticket purchase is confirmed."""
         notification = TicketPurchaseBuyerNotification(
             buyer_subscriber_id=buyer_subscriber_id,
             event_name=event_name,
@@ -351,6 +352,7 @@ class NotificationManager:
             ticket_count=ticket_count,
             total_amount=total_amount,
             currency=currency,
+            ticket_numbers=ticket_numbers or [],
         )
         return await self._dispatch(notification)
 
