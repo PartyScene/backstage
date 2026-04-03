@@ -28,7 +28,7 @@ from shared.workers.novu.config import WorkflowID
 class GuestlistDecisionNotification(BaseNotification):
     """Host accepted or declined a guest's guestlist application."""
 
-    workflow_id = WorkflowID.GUESTLIST_DECISION
+    workflow_id = WorkflowID.GUESTLIST_STATUS
     critical = False
 
     guest_subscriber_id: str
@@ -41,6 +41,7 @@ class GuestlistDecisionNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "notification_type": "host_decision",
             "event_name": self.event_name,
             "event_id": self.event_id,
             "status": self.status,
@@ -51,7 +52,7 @@ class GuestlistDecisionNotification(BaseNotification):
 class GuestlistRSVPNotification(BaseNotification):
     """Invited guest accepted or declined a host-issued invitation."""
 
-    workflow_id = WorkflowID.GUESTLIST_RSVP
+    workflow_id = WorkflowID.GUESTLIST_STATUS
     critical = False
 
     host_subscriber_id: str
@@ -65,6 +66,7 @@ class GuestlistRSVPNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "notification_type": "guest_rsvp",
             "guest_name": self.guest_name,
             "event_name": self.event_name,
             "event_id": self.event_id,

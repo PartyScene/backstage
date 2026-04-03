@@ -20,7 +20,7 @@ from shared.workers.novu.config import WorkflowID
 @dataclass
 class EventCancelledNotification(BaseNotification):
 
-    workflow_id = WorkflowID.EVENT_CANCELLED
+    workflow_id = WorkflowID.EVENT_CHANGE
     critical = False  # never block the delete response for a notification failure
 
     attendee_ids: List[str]
@@ -32,6 +32,7 @@ class EventCancelledNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "change_type": "cancelled",
             "event_name": self.event_name,
             "event_id": self.event_id,
         }

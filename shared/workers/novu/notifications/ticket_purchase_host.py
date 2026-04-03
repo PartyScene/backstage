@@ -25,7 +25,7 @@ from shared.workers.novu.config import WorkflowID
 @dataclass
 class TicketPurchaseHostNotification(BaseNotification):
 
-    workflow_id = WorkflowID.TICKET_PURCHASE_HOST
+    workflow_id = WorkflowID.TICKET_PURCHASE
     critical = False  # host notification failure must never block ticket issuance
 
     host_subscriber_id: str
@@ -41,6 +41,7 @@ class TicketPurchaseHostNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "notification_type": "host",
             "buyer_name": self.buyer_name,
             "event_name": self.event_name,
             "event_id": self.event_id,

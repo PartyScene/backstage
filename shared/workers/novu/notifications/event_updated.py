@@ -20,7 +20,7 @@ from shared.workers.novu.config import WorkflowID
 @dataclass
 class EventUpdatedNotification(BaseNotification):
 
-    workflow_id = WorkflowID.EVENT_UPDATED
+    workflow_id = WorkflowID.EVENT_CHANGE
     critical = False
 
     attendee_ids: List[str]
@@ -33,6 +33,7 @@ class EventUpdatedNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "change_type": "updated",
             "event_name": self.event_name,
             "event_id": self.event_id,
             "changed_fields": ", ".join(self.changed_fields),

@@ -27,7 +27,7 @@ from shared.workers.novu.config import WorkflowID
 @dataclass
 class TicketPurchaseBuyerNotification(BaseNotification):
 
-    workflow_id = WorkflowID.TICKET_PURCHASE_BUYER
+    workflow_id = WorkflowID.TICKET_PURCHASE
     critical = False  # push failure must never block ticket issuance
 
     buyer_subscriber_id: str
@@ -42,6 +42,7 @@ class TicketPurchaseBuyerNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "notification_type": "buyer",
             "event_name": self.event_name,
             "event_id": self.event_id,
             "ticket_count": self.ticket_count,

@@ -15,7 +15,7 @@ from shared.workers.novu.config import WorkflowID
 @dataclass
 class EventRSVPAttendeeNotification(BaseNotification):
 
-    workflow_id = WorkflowID.EVENT_RSVP_ATTENDEE
+    workflow_id = WorkflowID.EVENT_RSVP
     critical = False
 
     subscriber_id: str
@@ -27,6 +27,7 @@ class EventRSVPAttendeeNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "notification_type": "attendee",
             "event_name": self.event_name,
             "event_id": self.event_id,
         }
@@ -35,7 +36,7 @@ class EventRSVPAttendeeNotification(BaseNotification):
 @dataclass
 class EventRSVPHostNotification(BaseNotification):
 
-    workflow_id = WorkflowID.EVENT_RSVP_HOST
+    workflow_id = WorkflowID.EVENT_RSVP
     critical = False
 
     host_subscriber_id: str
@@ -48,6 +49,7 @@ class EventRSVPHostNotification(BaseNotification):
 
     def build_payload(self) -> Dict[str, Any]:
         return {
+            "notification_type": "host",
             "attendee_name": self.attendee_name,
             "event_name": self.event_name,
             "event_id": self.event_id,

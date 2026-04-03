@@ -29,18 +29,33 @@ class WorkflowID:
     EVENT_REMINDER = "event-reminder"
     LIVESTREAM = "livestream-notification"
     POST_INTERACTION = "post-interaction"
-    TICKET_PURCHASE_HOST = "ticket-purchase-host-notification"
-    TICKET_PURCHASE_BUYER = "ticket-purchase-buyer-receipt"
+    # Merged: host + buyer share one workflow; template branches on notification_type
+    TICKET_PURCHASE = "ticket-purchase"
+    TICKET_PURCHASE_HOST = TICKET_PURCHASE   # alias — do not use for new Novu workflows
+    TICKET_PURCHASE_BUYER = TICKET_PURCHASE  # alias — do not use for new Novu workflows
+
     PASSWORD_RESET_CONFIRMATION = "password-reset-confirmation"
     EVENT_RECAP = "event-recap"
-    EVENT_RSVP_ATTENDEE = "event-rsvp-attendee"
-    EVENT_RSVP_HOST = "event-rsvp-host"
+
+    # Merged: attendee + host share one workflow; template branches on notification_type
+    EVENT_RSVP = "event-rsvp"
+    EVENT_RSVP_ATTENDEE = EVENT_RSVP   # alias
+    EVENT_RSVP_HOST = EVENT_RSVP       # alias
+
     HOST_WELCOME = "host-welcome"
-    EVENT_CANCELLED = "event-cancelled"
-    EVENT_UPDATED = "event-updated"
+
+    # Merged: cancelled + updated share one workflow; template branches on change_type
+    EVENT_CHANGE = "event-change"
+    EVENT_CANCELLED = EVENT_CHANGE   # alias
+    EVENT_UPDATED = EVENT_CHANGE     # alias
+
     KYC_DECISION = "kyc-decision"
-    GUESTLIST_DECISION = "guestlist-decision"
-    GUESTLIST_RSVP = "guestlist-rsvp"
+
+    # Merged: host decision + guest RSVP share one workflow; template branches on notification_type
+    GUESTLIST_STATUS = "guestlist-status"
+    GUESTLIST_DECISION = GUESTLIST_STATUS   # alias
+    GUESTLIST_RSVP = GUESTLIST_STATUS       # alias
+
     PAYOUT_PROCESSED = "payout-processed"
     TICKET_REFUND = "ticket-refund"
     ACCOUNT_DELETION_WARNING = "account-deletion-warning"
