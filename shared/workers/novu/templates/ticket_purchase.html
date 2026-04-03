@@ -77,7 +77,6 @@
   </table>
 
   <!-- QR ticket cards -->
-  {% if payload.ticket_numbers != empty %}
   <p style="margin:0 0 14px;font-size:13px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:2px;">Your Ticket{% if payload.ticket_count != 1 %}s{% endif %}</p>
   {% for ticket_number in payload.ticket_numbers %}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#16102a;border-radius:14px;border:1px solid rgba(139,92,246,0.15);margin-bottom:14px;">
@@ -96,19 +95,6 @@
     </td>
   </tr>
   </table>
-  {% else %}
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-  <tr>
-    <td style="background-color:#16102a;border-radius:12px;padding:18px 22px;border:1px solid rgba(139,92,246,0.1);">
-      <span style="font-size:14px;color:rgba(255,255,255,0.6);line-height:1.7;">
-        <strong style="color:rgba(168,85,247,0.8);">1.</strong> Your ticket QR code is in the app under My Tickets<br>
-        <strong style="color:rgba(168,85,247,0.8);">2.</strong> Show it at the door for check-in<br>
-        <strong style="color:rgba(168,85,247,0.8);">3.</strong> Start posting once the event begins
-      </span>
-    </td>
-  </tr>
-  </table>
-  {% endif %}
 
   {% endif %}
 
