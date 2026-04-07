@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% if payload.change_type == "cancelled" %}Event Cancelled{% else %}Event Updated{% endif %}</title>
+<title>{% if payload.change_type == 'cancelled' %}Event Cancelled{% else %}Event Updated{% endif %}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#09090b;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#ffffff;">
 
@@ -12,7 +12,7 @@
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
 
 <!-- HEADER -->
-{% if payload.change_type == "cancelled" %}
+{% if payload.change_type == 'cancelled' %}
 <tr><td style="border-radius:20px 20px 0 0;background:linear-gradient(160deg,#1a0808 0%,#2e0f0f 35%,#581515 70%,#7a1e1e 100%);padding:52px 40px;text-align:center;border:1px solid rgba(239,68,68,0.2);border-bottom:none;">
   <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:4px;color:rgba(239,68,68,0.7);font-weight:600;">Event Cancelled</p>
   <h1 style="margin:0 0 10px;font-size:28px;font-weight:700;line-height:1.3;color:#ffffff;letter-spacing:-0.3px;">{{ payload.event_name }}</h1>
@@ -29,7 +29,7 @@
 <!-- BODY -->
 <tr><td style="background-color:#0f0f14;padding:48px 40px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
 
-  {% if payload.change_type == "cancelled" %}
+  {% if payload.change_type == 'cancelled' %}
 
   <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px;">
   <tr>
@@ -87,7 +87,7 @@
 <tr><td style="background-color:#0f0f14;padding:0 40px;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);"><div style="border-top:1px solid rgba(139,92,246,0.08);"></div></td></tr>
 
 <tr><td style="background-color:#0f0f14;padding:28px 40px;text-align:center;border-left:1px solid rgba(139,92,246,0.1);border-right:1px solid rgba(139,92,246,0.1);">
-  {% if payload.change_type != "cancelled" %}
+  {% if payload.change_type != 'cancelled' %}
   <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
   <tr>
     <td style="background:linear-gradient(160deg,#7c3aed,#6366f1);border-radius:10px;padding:16px 44px;">
