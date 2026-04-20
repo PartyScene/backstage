@@ -1056,7 +1056,7 @@ class BaseView(QuartClassful):
                 app.logger.info(f"Duplicate Stripe webhook ignored: {payment_intent_id}")
                 return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
 
-            metadata = payment_intent.get("metadata")
+            metadata = payment_intent.metadata
 
             if "ticket_count" in metadata:
                 ticket_count = int(metadata.get("ticket_count"))
@@ -1199,7 +1199,7 @@ class BaseView(QuartClassful):
 
         elif event["type"] == "charge.refunded":
             charge = event.data.object
-            metadata = charge.get("metadata", {})
+            metadata = charge.metadata
             user_id = metadata.get("user_id")
             event_id = metadata.get("event_id")
             event_name = metadata.get("event_name", "your event")
