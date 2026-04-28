@@ -2,13 +2,6 @@
 	"folders": [
 		{
 			"path": "."
-		},
-		{
-			"path": "../purreal"
 		}
-	],
-	"settings": {
-		"github.copilot.chat.codeGeneration.useInstructionFiles": true,
-		"postman.settings.dotenv-detection-notification-visibility": false
-	}
+	]
 }
