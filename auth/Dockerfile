@@ -23,9 +23,10 @@ RUN pip install --no-cache-dir -r /shared/requirements.txt \
 # Copy application and test code AFTER dependency installation
 COPY shared/ /shared/
 COPY auth/ .
-COPY init/schema.surql /home/schema.surql 
+COPY init/schema.surql /home/schema.surql
 # Consider placing within /auth or /shared if related
 COPY tests/conftest.py /tests/conftest.py
+COPY tests/shared_base.py /tests/shared_base.py
 COPY tests/auth/ /tests/auth/
 COPY tests/pytest.ini /tests/pytest.ini
 

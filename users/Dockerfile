@@ -24,6 +24,7 @@ COPY auth/ /auth/
 
 # Copy application code and tests
 COPY tests/conftest.py /tests/conftest.py
+COPY tests/shared_base.py /tests/shared_base.py
 COPY tests/users/ /tests/users/
 COPY tests/pytest.ini /tests/pytest.ini
 
