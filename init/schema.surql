@@ -21,7 +21,7 @@ DEFINE FIELD OVERWRITE paystack_subaccount_id ON TABLE users TYPE string DEFAULT
 
 -- Host profile fields. Stable host-facing data is explicit; only `socials`
 -- is flexible because the platform list is expected to grow.
-DEFINE FIELD OVERWRITE cover_image ON TABLE users TYPE any DEFAULT "";
+DEFINE FIELD OVERWRITE cover_image ON TABLE users TYPE option<string | record<media>> DEFAULT NONE;
 DEFINE FIELD OVERWRITE profile_slug ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE is_verified_host ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE host_since ON TABLE users TYPE option<datetime>;
