@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.claude/
+.windsurf/
+.agents/
 
 # C extensions
 *.so
