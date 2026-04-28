@@ -26,7 +26,7 @@ DEFINE FIELD OVERWRITE profile_slug ON TABLE users TYPE option<string>;
 DEFINE FIELD OVERWRITE is_verified_host ON TABLE users TYPE option<bool> DEFAULT NONE;
 DEFINE FIELD OVERWRITE host_since ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE organization_type ON TABLE users TYPE option<string>;
-DEFINE FIELD OVERWRITE socials ON TABLE users FLEXIBLE TYPE object DEFAULT {};
+DEFINE FIELD OVERWRITE socials ON TABLE users FLEXIBLE TYPE option<object> DEFAULT NONE;
 
 DEFINE FIELD OVERWRITE scheduled_deletion_at ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE last_active ON TABLE users TYPE option<datetime>;
