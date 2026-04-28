@@ -1,12 +1,25 @@
 from quart import Quart
 from surrealdb import AsyncSurreal, RecordID
 import os
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, List, Dict
 from shared.utils import record_id_to_json, report_resource
 from purreal import SurrealDBConnectionPool, SurrealDBPoolManager
 
 
 import orjson as json
+
+
+PROFILE_SLUG_MIN_LEN = 3
+PROFILE_SLUG_MAX_LEN = 50
+HOST_GALLERY_MAX_ITEMS = 20
+
+
+class SlugConflictError(Exception):
+    """Raised when a profile_slug normalization collides with another user.
+
+    Kept as its own exception so views can map it cleanly to HTTP 409 without
+    string-matching ValueError messages.
+    """
 
 
 class UsersDB:
@@ -370,6 +383,426 @@ class UsersDB:
             )
         self.logger.info(json.dumps(result, option=json.OPT_INDENT_2, default=str))
         return record_id_to_json(result)
+
+
+    # ------------------------------------------------------------------
+    # Host profile: slug + flexible socials
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def is_valid_slug_input(raw: Any) -> bool:
+        """Sanity-check raw slug input before sending it to SurrealDB.
+
+        Server-side normalization with `string::slug` is the source of truth
+        for what's "valid" — this just rejects shapes that obviously can't
+        produce a sensible slug (non-strings, empty, absurdly long).
+        """
+        return (
+            isinstance(raw, str)
+            and PROFILE_SLUG_MIN_LEN <= len(raw.strip()) <= 200
+        )
+
+    async def fetch_by_slug(self, slug: str) -> Optional[dict]:
+        """Resolve a profile_slug to a user record (or None)."""
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "SELECT * OMIT password, hashed_password, hashed_email "
+                "FROM users WHERE profile_slug = $slug LIMIT 1;",
+                {"slug": slug},
+            )
+        if not result:
+            return None
+        first = result[0] if isinstance(result, list) else result
+        return record_id_to_json(first) if first else None
+
+    async def set_profile_slug(self, user_id: str, raw: str) -> str:
+        """
+        Normalize and assign a profile_slug atomically.
+
+        Pipeline (single `query_raw` round-trip):
+            1. `string::slug($raw)` — SurrealDB's built-in normalizer turns
+               "DJ Mike!" into "dj-mike", so the client doesn't have to know
+               our slug rules. Returns "" for unrenderable input.
+            2. Length / non-empty check.
+            3. Uniqueness check (excluding the current user).
+            4. UPDATE user SET profile_slug.
+
+        Raises:
+            ValueError    — input fails length/empty checks
+            SlugConflictError — slug is taken by another user
+
+        Returns the final normalized slug string on success.
+        """
+        if not self.is_valid_slug_input(raw):
+            raise ValueError(
+                f"profile_slug must be a {PROFILE_SLUG_MIN_LEN}-200 char string."
+            )
+
+        async with self.pool.acquire() as conn:
+            await conn.let("u", RecordID("users", user_id))
+            await conn.let("raw", raw)
+
+            response = await conn.query_raw(
+                f"""
+                LET $slug = string::slug($raw);
+                LET $valid = string::len($slug) >= {PROFILE_SLUG_MIN_LEN}
+                              AND string::len($slug) <= {PROFILE_SLUG_MAX_LEN};
+                LET $taken = SELECT id FROM users
+                             WHERE profile_slug = $slug AND id != $u
+                             LIMIT 1;
+
+                RETURN {{
+                    slug:  $slug,
+                    valid: $valid,
+                    taken: count($taken) > 0
+                }};
+                """
+            )
+
+        statements = response.get("result", []) if isinstance(response, dict) else []
+        for stmt in statements:
+            if isinstance(stmt, dict) and stmt.get("status") == "ERR":
+                raise Exception(f"set_profile_slug failed: {stmt.get('result')}")
+
+        final = statements[-1] if statements else {}
+        info = final.get("result") if isinstance(final, dict) else {}
+        if not isinstance(info, dict):
+            raise Exception("set_profile_slug returned no payload.")
+
+        slug = info.get("slug") or ""
+        if not info.get("valid"):
+            raise ValueError(
+                "profile_slug is empty after normalization or out of range."
+            )
+        if info.get("taken"):
+            raise SlugConflictError("profile_slug already taken.")
+
+        # Separate UPDATE so the previous LETs stay focused on validation —
+        # easier to read than wrapping the assignment inside the same block.
+        async with self.pool.acquire() as conn:
+            await conn.query(
+                "UPDATE ONLY type::thing('users', $uid) "
+                "SET profile_slug = $slug RETURN AFTER.profile_slug;",
+                {"uid": user_id, "slug": slug},
+            )
+
+        return slug
+
+    async def fetch_host_profile(
+        self, user_id: str, viewer_id: Optional[str] = None
+    ) -> Optional[dict]:
+        """
+        Aggregate the public host profile in a single round-trip.
+
+        Uses `query_raw` so we get the full multi-statement envelope and can
+        pull only the final RETURN object — same pattern used for the
+        recommendation engine in r18e/src/internals/connector.py.
+
+        Variables are bound up-front via `conn.let(...)` so the SurrealQL
+        block can refer to `$u` and `$v` without re-binding inside every
+        statement.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.let("u", RecordID("users", user_id))
+            await conn.let(
+                "v",
+                RecordID("users", viewer_id) if viewer_id else None,
+            )
+
+            response = await conn.query_raw(
+                """
+                LET $user = SELECT
+                    * OMIT password, hashed_password, hashed_email
+                FROM ONLY $u;
+
+                LET $total_events    = (SELECT count() FROM events
+                                        WHERE host = $u GROUP ALL)[0].count ?? 0;
+                LET $total_attendees = (SELECT count() FROM tickets
+                                        WHERE event.host = $u GROUP ALL)[0].count ?? 0;
+                LET $follower_count  = (SELECT count() FROM host_followers
+                                        WHERE out = $u GROUP ALL)[0].count ?? 0;
+                LET $is_following    = $v != NONE
+                    AND count(SELECT id FROM host_followers
+                              WHERE in = $v AND out = $u) > 0;
+
+                LET $upcoming = SELECT * FROM events
+                    WHERE host = $u AND time > time::now()
+                    ORDER BY time ASC LIMIT 10;
+                LET $past = SELECT * FROM events
+                    WHERE host = $u AND time <= time::now()
+                    ORDER BY time DESC LIMIT 20;
+                LET $media = SELECT *, out.* AS media FROM host_media
+                    WHERE in = $u
+                    ORDER BY sort_order ASC, created_at ASC;
+
+                RETURN {
+                    user:            $user,
+                    total_events:    $total_events,
+                    total_attendees: $total_attendees,
+                    follower_count:  $follower_count,
+                    is_following:    $is_following,
+                    upcoming_events: $upcoming,
+                    past_events:     $past,
+                    media:           $media
+                };
+                """
+            )
+
+        # query_raw returns one entry per statement. The final RETURN is the
+        # only one we care about, and a non-OK status anywhere in the chain
+        # should surface so we don't ship a half-built profile.
+        statements = response.get("result", []) if isinstance(response, dict) else []
+        if not statements:
+            return None
+        for stmt in statements:
+            if isinstance(stmt, dict) and stmt.get("status") == "ERR":
+                raise Exception(f"fetch_host_profile failed: {stmt.get('result')}")
+
+        final = statements[-1]
+        payload = final.get("result") if isinstance(final, dict) else final
+        if payload is None or (isinstance(payload, dict) and payload.get("user") is None):
+            return None
+        return record_id_to_json(payload)
+
+    async def backfill_host_since(self, user_id: str) -> Optional[dict]:
+        """Set host_since to the earliest hosted event time if missing."""
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                LET $u = type::thing('users', $user_id);
+                LET $earliest = (SELECT VALUE time FROM events
+                                  WHERE host = $u
+                                  ORDER BY time ASC LIMIT 1)[0];
+                IF $earliest != NONE {
+                    UPDATE ONLY $u SET host_since = $earliest
+                        WHERE host_since = NONE
+                        RETURN AFTER;
+                };
+                """,
+                {"user_id": user_id},
+            )
+        return record_id_to_json(result) if result else None
+
+    # ------------------------------------------------------------------
+    # Host follower graph
+    # ------------------------------------------------------------------
+
+    async def follow_host(self, follower_id: str, host_id: str) -> Optional[dict]:
+        """
+        Idempotently RELATE follower -> host_followers -> host.
+
+        Returns the existing edge if already present so callers can treat
+        repeat follows as a no-op without surfacing a constraint error.
+        """
+        if follower_id == host_id:
+            raise ValueError("Cannot follow yourself.")
+
+        async with self.pool.acquire() as conn:
+            existing = await conn.query(
+                """
+                SELECT * FROM host_followers
+                WHERE in = type::thing('users', $follower)
+                  AND out = type::thing('users', $host)
+                LIMIT 1;
+                """,
+                {"follower": follower_id, "host": host_id},
+            )
+            if existing:
+                return record_id_to_json(existing[0])
+
+            result = await conn.query(
+                """
+                RELATE ONLY type::thing('users', $follower)
+                       -> host_followers ->
+                       type::thing('users', $host)
+                SET created_at = time::now();
+                """,
+                {"follower": follower_id, "host": host_id},
+            )
+        return record_id_to_json(result)
+
+    async def unfollow_host(self, follower_id: str, host_id: str) -> Optional[dict]:
+        """Delete the follow edge if it exists; return BEFORE record or None."""
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                DELETE host_followers
+                WHERE in = type::thing('users', $follower)
+                  AND out = type::thing('users', $host)
+                RETURN BEFORE;
+                """,
+                {"follower": follower_id, "host": host_id},
+            )
+        if not result:
+            return None
+        first = result[0] if isinstance(result, list) and result else result
+        return record_id_to_json(first) if first else None
+
+    # ------------------------------------------------------------------
+    # Cover image
+    # ------------------------------------------------------------------
+
+    async def set_cover_media(self, user_id: str, filename: str, content_type: str) -> dict:
+        """
+        Create a media record for a cover upload and merge it onto the user.
+
+        Mirrors the existing avatar pattern in `update`: a media row is the
+        canonical reference so the RMQ pipeline can attach metadata, blurhash,
+        and signing later. We store the media RecordID on `cover_image`.
+        """
+        async with self.pool.acquire() as conn:
+            media = await conn.create(
+                "media",
+                {
+                    "filename": filename,
+                    "type": content_type,
+                    "creator": RecordID("users", user_id),
+                },
+            )
+            if not isinstance(media, dict):
+                raise Exception(f"Failed to create cover media record: {media}")
+
+            user = await conn.query(
+                "UPDATE ONLY type::thing('users', $uid) "
+                "SET cover_image = $media RETURN AFTER;",
+                {"uid": user_id, "media": media["id"]},
+            )
+        return {
+            "media": record_id_to_json(media),
+            "user":  record_id_to_json(user),
+        }
+
+    # ------------------------------------------------------------------
+    # Host gallery
+    # ------------------------------------------------------------------
+
+    async def count_host_gallery(self, user_id: str) -> int:
+        """Return current gallery item count for a host."""
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "SELECT count() FROM host_media "
+                "WHERE in = type::thing('users', $uid) GROUP ALL;",
+                {"uid": user_id},
+            )
+        if not result:
+            return 0
+        first = result[0] if isinstance(result, list) else result
+        return int(first.get("count", 0)) if isinstance(first, dict) else 0
+
+    async def add_gallery_media(
+        self,
+        user_id: str,
+        filename: str,
+        content_type: str,
+        caption: Optional[str] = None,
+        event_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Create a media record for a gallery upload and RELATE it via host_media.
+
+        Sort order is appended to the end of the current gallery so the client
+        can drag-reorder later through `reorder_gallery`.
+        """
+        current = await self.count_host_gallery(user_id)
+        if current >= HOST_GALLERY_MAX_ITEMS:
+            raise ValueError(
+                f"Gallery is full ({HOST_GALLERY_MAX_ITEMS} items max)."
+            )
+
+        async with self.pool.acquire() as conn:
+            media = await conn.create(
+                "media",
+                {
+                    "filename": filename,
+                    "type": content_type,
+                    "creator": RecordID("users", user_id),
+                },
+            )
+            if not isinstance(media, dict):
+                raise Exception(f"Failed to create gallery media: {media}")
+
+            relate_args: Dict[str, Any] = {
+                "user":      RecordID("users", user_id),
+                "media":     media["id"],
+                "caption":   caption,
+                "sort_order": current,
+                "event":     RecordID("events", event_id) if event_id else None,
+            }
+            edge = await conn.query(
+                """
+                RELATE ONLY $user -> host_media -> $media
+                SET caption    = $caption,
+                    sort_order = $sort_order,
+                    event      = $event;
+                """,
+                relate_args,
+            )
+        return {
+            "media": record_id_to_json(media),
+            "edge":  record_id_to_json(edge),
+        }
+
+    async def remove_gallery_media(self, user_id: str, media_id: str) -> bool:
+        """
+        Delete the host_media edge for (user_id, media_id).
+
+        Only the edge is removed by default; the underlying media row is left
+        alone because it may be referenced elsewhere (cover, posts, events).
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                DELETE host_media
+                WHERE in = type::thing('users', $uid)
+                  AND out = type::thing('media', $mid)
+                RETURN BEFORE;
+                """,
+                {"uid": user_id, "mid": media_id},
+            )
+        if not result:
+            return False
+        first = result[0] if isinstance(result, list) and result else result
+        return bool(first)
+
+    async def reorder_gallery(self, user_id: str, ordered_media_ids: List[str]) -> List[dict]:
+        """
+        Replace the sort_order for the host's gallery with the supplied order.
+
+        Validates ownership: any media id not currently in the host's gallery
+        causes the whole reorder to fail so partial state can't slip through.
+        """
+        async with self.pool.acquire() as conn:
+            current = await conn.query(
+                """
+                SELECT out FROM host_media
+                WHERE in = type::thing('users', $uid);
+                """,
+                {"uid": user_id},
+            )
+            owned = {
+                str(row["out"]).split(":")[-1]
+                for row in (current or [])
+                if isinstance(row, dict) and row.get("out") is not None
+            }
+            requested = set(ordered_media_ids)
+            if not requested.issubset(owned):
+                raise ValueError("Reorder list contains media not in this host's gallery.")
+
+            updates = []
+            for index, media_id in enumerate(ordered_media_ids):
+                updates.append(
+                    await conn.query(
+                        """
+                        UPDATE host_media
+                        SET sort_order = $sort
+                        WHERE in = type::thing('users', $uid)
+                          AND out = type::thing('media', $mid)
+                        RETURN AFTER;
+                        """,
+                        {"uid": user_id, "mid": media_id, "sort": index},
+                    )
+                )
+        return record_id_to_json(updates)
 
 
 async def init_db(app) -> Tuple[UsersDB, SurrealDBConnectionPool]:

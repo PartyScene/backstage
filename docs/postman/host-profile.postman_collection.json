@@ -1,0 +1,231 @@
+{
+  "info": {
+    "name": "PartyScene · Host Profile",
+    "description": "Executable contract for the host profile feature. Cover edits, slug lookup, follow/unfollow, cover/gallery uploads, and validation negatives. Use the bundled `Host Profile (local)` environment or replicate its variables.\n\nFlow:\n1. Run `Auth › Login` to populate `access_token`.\n2. Run `Profile › Update profile` to set bio/socials/profile_slug.\n3. Run `Profile › Get host by slug` to verify slug lookup.\n4. Run follow / unfollow against `other_user_id`.\n5. Use Cover/Gallery uploads with a real image at `cover_image_path` / `gallery_image_path`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",            "value": "http://localhost:5510" },
+    { "key": "auth_url",            "value": "http://localhost:5510" },
+    { "key": "access_token",        "value": "" },
+    { "key": "email",               "value": "host@example.com" },
+    { "key": "password",            "value": "password" },
+    { "key": "other_user_id",       "value": "" },
+    { "key": "profile_slug",        "value": "dj-mike" },
+    { "key": "media_id",            "value": "" },
+    { "key": "cover_image_path",    "value": "/absolute/path/to/cover.jpg" },
+    { "key": "gallery_image_path",  "value": "/absolute/path/to/gallery.jpg" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body && body.data && body.data.access_token) {",
+                  "  pm.collectionVariables.set('access_token', body.data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{auth_url}}/auth/login", "host": ["{{auth_url}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "Get current user",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/user", "host": ["{{base_url}}"], "path": ["user"] }
+          }
+        },
+        {
+          "name": "Update profile (bio + socials + slug)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/user", "host": ["{{base_url}}"], "path": ["user"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bio\": \"DJ + promoter in NYC.\",\n  \"organization_type\": \"dj\",\n  \"profile_slug\": \"{{profile_slug}}\",\n  \"socials\": {\n    \"instagram\": \"dj_mike\",\n    \"tiktok\": \"dj_mike_official\",\n    \"website\": \"https://example.com\",\n    \"custom\": [{\"label\": \"Booking\", \"url\": \"https://example.com/book\"}]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Update profile · invalid slug (negative)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/user", "host": ["{{base_url}}"], "path": ["user"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile_slug\": \"Not Valid Slug!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update profile · invalid socials (negative)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/user", "host": ["{{base_url}}"], "path": ["user"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"socials\": \"instagram=dj_mike\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get user profile by id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/users/{{other_user_id}}", "host": ["{{base_url}}"], "path": ["users", "{{other_user_id}}"] }
+          }
+        },
+        {
+          "name": "Get host by slug",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/host/{{profile_slug}}", "host": ["{{base_url}}"], "path": ["host", "{{profile_slug}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Follow",
+      "item": [
+        {
+          "name": "Follow host",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/users/{{other_user_id}}/follow", "host": ["{{base_url}}"], "path": ["users", "{{other_user_id}}", "follow"] }
+          }
+        },
+        {
+          "name": "Follow host · duplicate (idempotent)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/users/{{other_user_id}}/follow", "host": ["{{base_url}}"], "path": ["users", "{{other_user_id}}", "follow"] }
+          }
+        },
+        {
+          "name": "Unfollow host",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/users/{{other_user_id}}/follow", "host": ["{{base_url}}"], "path": ["users", "{{other_user_id}}", "follow"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cover image",
+      "item": [
+        {
+          "name": "Upload cover image",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/users/upload/cover", "host": ["{{base_url}}"], "path": ["users", "upload", "cover"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "{{cover_image_path}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gallery",
+      "item": [
+        {
+          "name": "Add gallery item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body && body.data && body.data.media && body.data.media.id) {",
+                  "  pm.collectionVariables.set('media_id', String(body.data.media.id).split(':').pop());",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/host/media", "host": ["{{base_url}}"], "path": ["host", "media"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file",    "type": "file",  "src": "{{gallery_image_path}}" },
+                { "key": "caption", "type": "text",  "value": "Friday night set" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reorder gallery",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": { "raw": "{{base_url}}/host/media/reorder", "host": ["{{base_url}}"], "path": ["host", "media", "reorder"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order\": [\"{{media_id}}\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete gallery item",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/host/media/{{media_id}}", "host": ["{{base_url}}"], "path": ["host", "media", "{{media_id}}"] }
+          }
+        }
+      ]
+    }
+  ]
+}

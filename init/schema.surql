@@ -19,6 +19,15 @@ DEFINE FIELD OVERWRITE stripe_account_id ON TABLE users TYPE string DEFAULT "";
 DEFINE FIELD OVERWRITE stripe_account_kyc_status ON TABLE users TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE paystack_subaccount_id ON TABLE users TYPE string DEFAULT "";
 
+-- Host profile fields. Stable host-facing data is explicit; only `socials`
+-- is flexible because the platform list is expected to grow.
+DEFINE FIELD OVERWRITE cover_image ON TABLE users TYPE string | record<media> DEFAULT "";
+DEFINE FIELD OVERWRITE profile_slug ON TABLE users TYPE option<string>;
+DEFINE FIELD OVERWRITE is_verified_host ON TABLE users TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE host_since ON TABLE users TYPE option<datetime>;
+DEFINE FIELD OVERWRITE organization_type ON TABLE users TYPE option<string>;
+DEFINE FIELD OVERWRITE socials ON TABLE users FLEXIBLE TYPE object DEFAULT {};
+
 DEFINE FIELD OVERWRITE scheduled_deletion_at ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE last_active ON TABLE users TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE users TYPE datetime VALUE time::now();
@@ -35,6 +44,7 @@ DEFINE INDEX OVERWRITE idx_apple_sub ON TABLE users COLUMNS apple_sub;
 DEFINE INDEX OVERWRITE idx_username ON TABLE users COLUMNS username;
 DEFINE INDEX OVERWRITE idx_stripe_account ON TABLE users COLUMNS stripe_account_id;
 DEFINE INDEX OVERWRITE idx_last_active ON TABLE users COLUMNS last_active;
+DEFINE INDEX OVERWRITE unique_profile_slug ON TABLE users COLUMNS profile_slug UNIQUE;
 
 DEFINE TABLE OVERWRITE credentials SCHEMAFULL;
 DEFINE FIELD OVERWRITE user ON TABLE credentials TYPE record<users>;
@@ -220,6 +230,31 @@ DEFINE FIELD OVERWRITE out ON TABLE blocks TYPE record<users>;
 DEFINE FIELD OVERWRITE in ON TABLE blocks TYPE record<users>;
 DEFINE FIELD OVERWRITE created_at ON TABLE blocks TYPE datetime DEFAULT time::now();
 DEFINE INDEX unique_blocks ON TABLE blocks COLUMNS in, out UNIQUE;
+
+-- Host follower relation: follower (in) -> host (out). Counts and
+-- "is_following" are computed at query time over the indexed edges.
+DEFINE TABLE OVERWRITE host_followers TYPE RELATION IN users TO users;
+DEFINE FIELD OVERWRITE in ON TABLE host_followers TYPE record<users>;
+DEFINE FIELD OVERWRITE out ON TABLE host_followers TYPE record<users>;
+DEFINE FIELD OVERWRITE created_at ON TABLE host_followers TYPE datetime DEFAULT time::now();
+DEFINE INDEX unique_host_followers ON TABLE host_followers COLUMNS in, out UNIQUE;
+DEFINE INDEX OVERWRITE idx_host_followers_host ON TABLE host_followers COLUMNS out;
+DEFINE INDEX OVERWRITE idx_host_followers_follower ON TABLE host_followers COLUMNS in;
+
+-- Host gallery relation: host (in) -> media (out). Reuses the existing
+-- media table so the RMQ pipeline, metadata, blurhash, and signed URL
+-- handling all keep working without a parallel storage path.
+DEFINE TABLE OVERWRITE host_media TYPE RELATION IN users TO media;
+DEFINE FIELD OVERWRITE in ON TABLE host_media TYPE record<users>;
+DEFINE FIELD OVERWRITE out ON TABLE host_media TYPE record<media>;
+DEFINE FIELD OVERWRITE caption ON TABLE host_media TYPE option<string>;
+DEFINE FIELD OVERWRITE sort_order ON TABLE host_media TYPE int DEFAULT 0;
+DEFINE FIELD OVERWRITE event ON TABLE host_media TYPE option<record<events>>;
+DEFINE FIELD OVERWRITE created_at ON TABLE host_media TYPE datetime DEFAULT time::now();
+DEFINE FIELD OVERWRITE updated_at ON TABLE host_media TYPE datetime VALUE time::now();
+DEFINE INDEX unique_host_media ON TABLE host_media COLUMNS in, out UNIQUE;
+DEFINE INDEX OVERWRITE idx_host_media_host ON TABLE host_media COLUMNS in;
+DEFINE INDEX OVERWRITE idx_host_media_sort ON TABLE host_media COLUMNS in, sort_order;
 
 -- & Finally? A table for media
 DEFINE TABLE OVERWRITE media SCHEMALESS;

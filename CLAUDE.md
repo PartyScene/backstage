@@ -214,6 +214,47 @@ If the array is empty, the loop body never executes — the section is hidden au
 - Ticket tiers: max 3 per event, `sold_count` auto-incremented by SurrealDB trigger on ticket CREATE
 - Ticket numbers: auto-generated `TKT-XXXX-XXXX` pattern
 
+## SurrealDB Driver Patterns
+
+### `query` vs `query_raw`
+- `conn.query(sql, vars)` returns the **first** statement's result only. Safe for single-statement queries.
+- `conn.query_raw(sql, vars)` returns the **full envelope**: `{"result": [{"status": "OK"|"ERR", "result": ...}, ...]}` — one entry per statement. Use this for any multi-statement aggregate.
+- For multi-statement scripts, **always** prefer `query_raw` and pull `response["result"][-1]["result"]`. Walk the list first to surface any `status == "ERR"` so partial failures don't ship.
+- Reference: `r18e/src/internals/connector.py` (recommendation engine), `users/src/connectors/__init__.py::fetch_host_profile` and `set_profile_slug`.
+
+### Variable binding with `conn.let`
+- `await conn.let("u", RecordID("users", uid))` binds a session-scoped variable usable across all subsequent statements in the same connection.
+- Pair with `query_raw` so multi-`LET` blocks can reference `$u`, `$v`, etc. without re-binding inside every statement.
+- Always reset/rebind per `pool.acquire()` block; pooled connections may be reused.
+
+### Aggregate query shape
+```python
+async with self.pool.acquire() as conn:
+    await conn.let("u", RecordID("users", user_id))
+    response = await conn.query_raw(
+        """
+        LET $foo = SELECT ... FROM ... WHERE ... = $u;
+        LET $bar = (SELECT count() FROM ... WHERE ... = $u GROUP ALL)[0].count ?? 0;
+        RETURN { foo: $foo, bar: $bar };
+        """
+    )
+
+statements = response.get("result", [])
+for s in statements:
+    if isinstance(s, dict) and s.get("status") == "ERR":
+        raise Exception(f"... failed: {s.get('result')}")
+payload = statements[-1]["result"]
+```
+
+### Built-in helpers worth reaching for before reimplementing
+- `string::slug($raw)` — slugifies arbitrary input (`"DJ Mike!"` → `"dj-mike"`). Used for `users.profile_slug` so the client doesn't need to know our slug rules.
+- `string::len`, `string::starts_with`, `string::concat`, `time::now`, `rand::string`, `array::len`, `count(...)` — prefer these over Python-side reimplementations when the value is consumed in SurrealQL.
+- Geo: `geo::distance`, `Point` type with `location.coordinates`. HNSW: `<|K, EF|>` operator and `vector::distance::knn()` / `vector::similarity::cosine`.
+
+### Multi-step writes
+- For "validate then write" flows, do the validation in `query_raw` and the actual mutation in a follow-up `conn.query(...)` so the mutation only runs after we've inspected the validation payload (see `set_profile_slug`).
+- For atomic claim patterns, keep using `UPDATE ... WHERE field = NONE RETURN BEFORE` (e.g. `reminder_sent`, `recap_sent`, ticket check-in).
+
 ## Rate Limiting
 - Redis + atomic Lua script, 3 sliding windows per request
 - Tiers: OTP (3/10/20), AUTH (10/100/500), MEDIA (30/500/2000), API (60/1000/10000), PUBLIC (120/2000/20000)

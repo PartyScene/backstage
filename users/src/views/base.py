@@ -1,13 +1,18 @@
 from quart import request, current_app as app
 from quart_jwt_extended import get_jwt_identity, jwt_required
 from http import HTTPStatus
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List, Optional
 import asyncio
 import uuid_utils as ruuid
 
 from shared.classful import route, QuartClassful
 from datetime import datetime
-from users.src.connectors import UsersDB
+from users.src.connectors import (
+    UsersDB,
+    HOST_GALLERY_MAX_ITEMS,
+    PROFILE_SLUG_MIN_LEN,
+    SlugConflictError,
+)
 from shared.workers.novu import NotificationManager
 import os
 import orjson as json
@@ -15,6 +20,24 @@ from aiocache import cached
 from shared.workers.rmq import RMQBroker
 from shared.utils import recursively_sign_object_media, api_response, api_error
 from shared.kpi import BusinessMetrics
+
+
+# Fields the client may set on PATCH /user. Anything outside this set is
+# ignored so the endpoint cannot be used to escalate verification flags or
+# overwrite server-managed columns (host_since, kyc_status, hashed_*, etc.).
+HOST_PROFILE_EDITABLE_FIELDS = {
+    "first_name", "last_name", "username", "organization_name",
+    "bio", "sharedLoc",
+    "profile_slug", "organization_type", "socials",
+    "kyc_payment_status",  # already accepted by the previous handler
+}
+
+# Maximum sizes for free-text host profile fields. Keep generous but bounded so
+# a malicious client cannot bloat the user document.
+BIO_MAX_LEN = 500
+SOCIAL_HANDLE_MAX_LEN = 100
+SOCIAL_URL_MAX_LEN = 512
+ORG_TYPE_MAX_LEN = 50
 
 
 
@@ -287,6 +310,111 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
+    async def _validate_host_profile_patch(
+        self, data: Dict[str, Any], user_id: str
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[Tuple[str, int]]]:
+        """
+        Whitelist + validate fields for PATCH /user.
+
+        Returns (clean_payload, None) on success or (None, (msg, status)) on
+        failure. Any field outside HOST_PROFILE_EDITABLE_FIELDS is dropped.
+        Server-managed fields (host_since, is_verified_host, cover_image, etc.)
+        must be set through their dedicated endpoints, not here.
+        """
+        clean: Dict[str, Any] = {}
+
+        # Drop unknown keys silently rather than 400ing — older clients may
+        # send extra fields and we don't want to break them. Validation only
+        # runs on keys the client may actually edit.
+        for key, value in data.items():
+            if key in HOST_PROFILE_EDITABLE_FIELDS:
+                clean[key] = value
+
+        # bio
+        if "bio" in clean:
+            if not isinstance(clean["bio"], str):
+                return None, ("`bio` must be a string.", HTTPStatus.BAD_REQUEST)
+            if len(clean["bio"]) > BIO_MAX_LEN:
+                return None, (
+                    f"`bio` exceeds {BIO_MAX_LEN} characters.", HTTPStatus.BAD_REQUEST
+                )
+
+        # organization_type
+        if "organization_type" in clean and clean["organization_type"] is not None:
+            ot = clean["organization_type"]
+            if not isinstance(ot, str) or len(ot) > ORG_TYPE_MAX_LEN:
+                return None, (
+                    f"`organization_type` must be a string up to {ORG_TYPE_MAX_LEN} chars.",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+        # profile_slug — only a shape check here. The actual normalization
+        # (string::slug) and uniqueness check happen in
+        # UsersDB.set_profile_slug, called separately by update_me so we don't
+        # mix raw user input into the MERGE payload.
+        if "profile_slug" in clean and clean["profile_slug"] is not None:
+            if not UsersDB.is_valid_slug_input(clean["profile_slug"]):
+                return None, (
+                    f"`profile_slug` must be a string of at least "
+                    f"{PROFILE_SLUG_MIN_LEN} non-whitespace characters.",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+        # socials — flexible object, but values are bounded strings or list of
+        # {label, url} for the `custom` key.
+        if "socials" in clean and clean["socials"] is not None:
+            socials = clean["socials"]
+            if not isinstance(socials, dict):
+                return None, ("`socials` must be an object.", HTTPStatus.BAD_REQUEST)
+
+            for platform, value in socials.items():
+                if not isinstance(platform, str) or not platform:
+                    return None, (
+                        "`socials` keys must be non-empty strings.",
+                        HTTPStatus.BAD_REQUEST,
+                    )
+
+                if platform == "custom":
+                    if not isinstance(value, list):
+                        return None, (
+                            "`socials.custom` must be a list of {label, url}.",
+                            HTTPStatus.BAD_REQUEST,
+                        )
+                    for entry in value:
+                        if (
+                            not isinstance(entry, dict)
+                            or not isinstance(entry.get("label"), str)
+                            or not isinstance(entry.get("url"), str)
+                            or len(entry["label"]) > SOCIAL_HANDLE_MAX_LEN
+                            or len(entry["url"]) > SOCIAL_URL_MAX_LEN
+                        ):
+                            return None, (
+                                "Invalid entry in `socials.custom`.",
+                                HTTPStatus.BAD_REQUEST,
+                            )
+                    continue
+
+                if value is None:
+                    continue  # explicit clear of a platform handle
+                if not isinstance(value, str):
+                    return None, (
+                        f"`socials.{platform}` must be a string.",
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                limit = SOCIAL_URL_MAX_LEN if value.startswith(("http://", "https://")) else SOCIAL_HANDLE_MAX_LEN
+                if len(value) > limit:
+                    return None, (
+                        f"`socials.{platform}` exceeds {limit} characters.",
+                        HTTPStatus.BAD_REQUEST,
+                    )
+
+        # kyc_payment_status was historically accepted as a "true"/"false"
+        # string, keep that coercion working for older clients.
+        if "kyc_payment_status" in clean and isinstance(clean["kyc_payment_status"], str):
+            clean["kyc_payment_status"] = clean["kyc_payment_status"] == "true"
+
+        return clean, None
+
     @route("/user", methods=["PATCH"])
     @jwt_required
     async def update_me(self):
@@ -297,15 +425,31 @@ class BaseView(QuartClassful):
             if not data:
                 return api_error("Request body required.", HTTPStatus.BAD_REQUEST)
 
-            data["id"] = user_id  # Ensure ID is set for the update operation
+            clean, err = await self._validate_host_profile_patch(data, user_id)
+            if err:
+                msg, status = err
+                return api_error(msg, status)
 
-            # Data checks
-            if "kyc_payment_status" in data:
-                data["kyc_payment_status"] = (
-                    data.get("kyc_payment_status", "false") == "true"
-                )
+            # Slug goes through string::slug normalization + uniqueness in a
+            # dedicated query, so we pop it from the MERGE payload and only
+            # apply it after the DB has accepted the normalized value. If the
+            # slug fails we abort BEFORE merging the rest, preventing a
+            # half-applied profile update.
+            slug_input = clean.pop("profile_slug", None)
+            if slug_input is not None:
+                try:
+                    await self.conn.set_profile_slug(user_id, slug_input)
+                except SlugConflictError as ce:
+                    return api_error(str(ce), HTTPStatus.CONFLICT)
+                except ValueError as ve:
+                    return api_error(str(ve), HTTPStatus.BAD_REQUEST)
 
-            result = await self.conn.update(data)
+            clean["id"] = user_id  # Ensure ID is set for the update operation
+
+            result = await self.conn.update(clean) if (
+                # Only call MERGE if there's something else to update.
+                {k for k in clean.keys() if k != "id"}
+            ) else await self.conn.fetch(user_id)
             if not result:  # Handle case where update fails or user doesn't exist
                 # Check if user exists first? Might be redundant if update handles it.
                 return api_error(
@@ -330,18 +474,17 @@ class BaseView(QuartClassful):
     @route("/users/<user_id>", methods=["GET"])
     @jwt_required
     async def get_user(self, user_id: str):
-        """Get another user's public profile"""
+        """Get another user's public host profile (aggregated)."""
+        viewer_id = get_jwt_identity()
         try:
-            user = await self.conn.fetch(user_id)
-            if not user:
+            profile = await self.conn.fetch_host_profile(user_id, viewer_id=viewer_id)
+            if not profile:
                 return api_error("User not found", HTTPStatus.NOT_FOUND)
-            # Could filter sensitive information here if needed before returning
-            # Example: user.pop('email', None)
-            user = await recursively_sign_object_media(user)
+            profile = await recursively_sign_object_media(profile)
             return api_response(
                 "User profile fetched successfully.",
                 HTTPStatus.OK,
-                data=user
+                data=profile,
             )
         except Exception as e:
             app.logger.error(
@@ -349,6 +492,39 @@ class BaseView(QuartClassful):
             )
             return api_error(
                 f"Failed to fetch user profile: {str(e)}",
+                HTTPStatus.INTERNAL_SERVER_ERROR
+            )
+
+    @route("/host/<slug>", methods=["GET"])
+    @jwt_required
+    async def get_host_by_slug(self, slug: str):
+        """
+        Resolve a host's profile_slug and return the same shape as
+        GET /users/<user_id>. We resolve the slug first so the aggregate query
+        runs against a known-good user id rather than a slug filter.
+        """
+        viewer_id = get_jwt_identity()
+        try:
+            user = await self.conn.fetch_by_slug(slug)
+            if not user:
+                return api_error("Host not found", HTTPStatus.NOT_FOUND)
+
+            user_id = str(user["id"]).split(":")[-1]
+            profile = await self.conn.fetch_host_profile(user_id, viewer_id=viewer_id)
+            if not profile:
+                return api_error("Host not found", HTTPStatus.NOT_FOUND)
+            profile = await recursively_sign_object_media(profile)
+            return api_response(
+                "Host profile fetched successfully.",
+                HTTPStatus.OK,
+                data=profile,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error resolving host slug {slug}: {str(e)}", exc_info=True
+            )
+            return api_error(
+                f"Failed to fetch host profile: {str(e)}",
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
@@ -675,7 +851,272 @@ class BaseView(QuartClassful):
                 status_code,
             )
 
-    
+    # ------------------------------------------------------------------
+    # Host follower endpoints
+    # ------------------------------------------------------------------
+
+    @route("/users/<user_id>/follow", methods=["POST"])
+    @jwt_required
+    async def follow_host(self, user_id: str):
+        """Follow a host. Idempotent: a duplicate follow returns 200 OK with
+        the existing edge instead of erroring."""
+        follower_id = get_jwt_identity()
+        try:
+            target = await self.conn.fetch(user_id)
+            if not target:
+                return api_error("User not found", HTTPStatus.NOT_FOUND)
+
+            edge = await self.conn.follow_host(follower_id, user_id)
+            return api_response(
+                "Followed host.",
+                HTTPStatus.CREATED,
+                data=edge,
+            )
+        except ValueError as ve:
+            return api_error(str(ve), HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            app.logger.error(
+                f"Error following host {user_id} from {follower_id}: {e}",
+                exc_info=True,
+            )
+            return api_error(
+                f"Failed to follow host: {e}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @route("/users/<user_id>/follow", methods=["DELETE"])
+    @jwt_required
+    async def unfollow_host(self, user_id: str):
+        """Unfollow a host. Returns 200 OK whether or not the edge existed —
+        clients calling unfollow on a non-followed host shouldn't see 404."""
+        follower_id = get_jwt_identity()
+        try:
+            removed = await self.conn.unfollow_host(follower_id, user_id)
+            return api_response(
+                "Unfollowed host." if removed else "Not following host.",
+                HTTPStatus.OK,
+                data=removed,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error unfollowing host {user_id} from {follower_id}: {e}",
+                exc_info=True,
+            )
+            return api_error(
+                f"Failed to unfollow host: {e}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    # ------------------------------------------------------------------
+    # Cover image upload
+    # ------------------------------------------------------------------
+
+    @route("/users/upload/cover", methods=["POST"])
+    @jwt_required
+    async def upload_cover(self):
+        """Upload a host cover image. Mirrors POST /users/upload (avatar) but
+        stores under /covers/ and points users.cover_image at the new media."""
+        user_id = get_jwt_identity()
+        try:
+            file = next(
+                (f for f in (await request.files).values() if f.filename),
+                None,
+            )
+            if not file or not file.filename:
+                return api_error(
+                    "No file provided or file has no name.",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            ext = os.path.splitext(file.filename)[-1]
+            filename = (
+                f"users/{user_id}/covers/"
+                f"{str(ruuid.uuid4()).split('-')[-1]}{ext}"
+            )
+            content_type = file.content_type
+
+            # Persist the media row + user reference first so the response
+            # can include the canonical media id even before RMQ finishes.
+            persisted = await self.conn.set_cover_media(
+                user_id=user_id,
+                filename=filename,
+                content_type=content_type,
+            )
+
+            media_id = str(persisted["media"]["id"]).split(":")[-1]
+            rmq_data = {
+                "filename": filename,
+                "type": content_type,
+                "creator": user_id,
+                "context": "user_cover",
+                "media_id": media_id,
+                "user_id_to_update": user_id,
+            }
+            app.logger.warning(
+                f"Publishing cover upload to RMQ: {rmq_data['filename']}"
+            )
+            await app.RMQ._publish_media(rmq_data, file)
+
+            return api_response(
+                "Cover upload initiated.",
+                HTTPStatus.ACCEPTED,
+                data=persisted,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error uploading cover for user {user_id}: {e}", exc_info=True
+            )
+            return api_error(
+                f"Failed to upload cover: {e}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    # ------------------------------------------------------------------
+    # Host gallery endpoints
+    # ------------------------------------------------------------------
+
+    @route("/host/media", methods=["POST"])
+    @jwt_required
+    async def add_host_media(self):
+        """
+        Upload a single gallery image for the current host.
+
+        Multipart form fields:
+            file (required): image file
+            caption (optional): up to 280 chars
+            event (optional): event id to associate
+
+        The 20-item cap is enforced in the connector. RMQ runs the same
+        compression + metadata pipeline used for avatars/event media.
+        """
+        user_id = get_jwt_identity()
+        try:
+            files = await request.files
+            file = next((f for f in files.values() if f.filename), None)
+            if not file or not file.filename:
+                return api_error(
+                    "No file provided or file has no name.",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            form = await request.form
+            caption = form.get("caption")
+            event_id = form.get("event") or None
+            if caption and len(caption) > 280:
+                return api_error(
+                    "`caption` must be 280 characters or fewer.",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            ext = os.path.splitext(file.filename)[-1]
+            filename = (
+                f"users/{user_id}/gallery/"
+                f"{str(ruuid.uuid4()).split('-')[-1]}{ext}"
+            )
+            content_type = file.content_type
+
+            persisted = await self.conn.add_gallery_media(
+                user_id=user_id,
+                filename=filename,
+                content_type=content_type,
+                caption=caption,
+                event_id=event_id,
+            )
+
+            media_id = str(persisted["media"]["id"]).split(":")[-1]
+            rmq_data = {
+                "filename": filename,
+                "type": content_type,
+                "creator": user_id,
+                "context": "host_gallery",
+                "media_id": media_id,
+            }
+            app.logger.warning(
+                f"Publishing gallery upload to RMQ: {rmq_data['filename']}"
+            )
+            await app.RMQ._publish_media(rmq_data, file)
+
+            return api_response(
+                "Gallery upload initiated.",
+                HTTPStatus.ACCEPTED,
+                data=persisted,
+            )
+        except ValueError as ve:
+            # 20-item cap or similar input failure
+            return api_error(str(ve), HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            app.logger.error(
+                f"Error adding gallery media for {user_id}: {e}", exc_info=True
+            )
+            return api_error(
+                f"Failed to add gallery media: {e}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @route("/host/media/<media_id>", methods=["DELETE"])
+    @jwt_required
+    async def delete_host_media(self, media_id: str):
+        """Remove a gallery item the caller owns. Only the host_media edge is
+        deleted; the underlying media row is preserved because it may still be
+        referenced (cover, posts, events)."""
+        user_id = get_jwt_identity()
+        try:
+            removed = await self.conn.remove_gallery_media(user_id, media_id)
+            if not removed:
+                return api_error(
+                    "Gallery item not found for this host.", HTTPStatus.NOT_FOUND
+                )
+            return api_response("Gallery item removed.", HTTPStatus.OK)
+        except Exception as e:
+            app.logger.error(
+                f"Error removing gallery media {media_id} for {user_id}: {e}",
+                exc_info=True,
+            )
+            return api_error(
+                f"Failed to remove gallery media: {e}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @route("/host/media/reorder", methods=["PUT"])
+    @jwt_required
+    async def reorder_host_media(self):
+        """Replace the caller's gallery ordering with the supplied list of
+        media ids. Ownership is verified inside the connector so we 400 instead
+        of leaking another host's ids."""
+        user_id = get_jwt_identity()
+        try:
+            data = await request.get_json() or {}
+            ordered: List[str] = data.get("order") or []
+            if not isinstance(ordered, list) or any(
+                not isinstance(x, str) for x in ordered
+            ):
+                return api_error(
+                    "`order` must be a list of media ids.",
+                    HTTPStatus.BAD_REQUEST,
+                )
+            if len(ordered) > HOST_GALLERY_MAX_ITEMS:
+                return api_error(
+                    f"`order` exceeds {HOST_GALLERY_MAX_ITEMS} items.",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            updated = await self.conn.reorder_gallery(user_id, ordered)
+            return api_response(
+                "Gallery reordered.",
+                HTTPStatus.OK,
+                data=updated,
+            )
+        except ValueError as ve:
+            return api_error(str(ve), HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            app.logger.error(
+                f"Error reordering gallery for {user_id}: {e}", exc_info=True
+            )
+            return api_error(
+                f"Failed to reorder gallery: {e}",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
     @route("/users/recommendations", methods=["GET"])
     @jwt_required
     async def get_friend_recommendations(self):

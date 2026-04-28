@@ -98,3 +98,47 @@ class TestUsersBase(StreamlinedTestBase):
             f"/users/{user_id}/block",
             headers={"Authorization": f"Bearer {bearer}"}
         )
+
+    # ------------------------------------------------------------------
+    # Host profile helpers
+    # ------------------------------------------------------------------
+
+    async def patch_user(self, client: QuartClient, payload: dict, bearer):
+        """Send a PATCH /user with arbitrary payload."""
+        return await client.patch(
+            "/user",
+            json=payload,
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+
+    async def get_host_by_slug(self, client: QuartClient, slug: str, bearer):
+        """Resolve a host by profile_slug."""
+        return await client.get(
+            f"/host/{slug}",
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+
+    async def follow_host(self, client: QuartClient, host_id: str, bearer):
+        return await client.post(
+            f"/users/{host_id}/follow",
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+
+    async def unfollow_host(self, client: QuartClient, host_id: str, bearer):
+        return await client.delete(
+            f"/users/{host_id}/follow",
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+
+    async def reorder_gallery(self, client: QuartClient, order: list, bearer):
+        return await client.put(
+            "/host/media/reorder",
+            json={"order": order},
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+
+    async def delete_gallery_item(self, client: QuartClient, media_id: str, bearer):
+        return await client.delete(
+            f"/host/media/{media_id}",
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
