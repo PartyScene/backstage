@@ -124,7 +124,14 @@ async def recursively_sign_object_media(obj: Any) -> Any:
         if "post" in obj and "media" in obj["post"]:
             obj["post"]["media"] = await sign_media_object(obj["post"]["media"])
         if "media" in obj:
-            obj["media"] = await sign_media_object(obj["media"])
+            media_val = obj["media"]
+            if isinstance(media_val, list) and media_val and isinstance(media_val[0].get("media"), dict):
+                # Gallery edge list — filename is nested under item["media"]
+                for item in media_val:
+                    if isinstance(item.get("media"), dict):
+                        item["media"] = await sign_media_object(item["media"])
+            else:
+                obj["media"] = await sign_media_object(media_val)
 
         if "filename" in obj and obj['filename'] != "":
             obj["avatar"] = await sign_media_object(obj["filename"])
