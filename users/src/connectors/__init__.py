@@ -512,7 +512,8 @@ class UsersDB:
             response = await conn.query_raw(
                 """
                 LET $user = SELECT
-                    * OMIT password, hashed_password, hashed_email
+                    * OMIT password, hashed_password, hashed_email,
+                    cover_image.* AS cover_image
                 FROM ONLY $u;
 
                 LET $total_events    = (SELECT count() FROM events
