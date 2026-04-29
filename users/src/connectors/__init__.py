@@ -482,7 +482,7 @@ class UsersDB:
         async with self.pool.acquire() as conn:
             await conn.query(
                 "UPDATE ONLY type::thing('users', $uid) "
-                "SET profile_slug = $slug RETURN AFTER.profile_slug;",
+                "SET profile_slug = $slug RETURN VALUE profile_slug;",
                 {"uid": user_id, "slug": slug},
             )
 
