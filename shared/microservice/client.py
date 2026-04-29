@@ -118,6 +118,10 @@ class MicroService(Quart):
         @self.before_request
         async def log_request():
             request._log_start = time.time()
+            try:
+                request._jwt_identity = get_jwt_identity()
+            except Exception:
+                request._jwt_identity = None
 
         @self.after_request
         async def log_response(response):
@@ -131,7 +135,7 @@ class MicroService(Quart):
             method = request.method
             status = response.status_code
             args = dict(request.args) or None
-            user = request.headers.get("X-User-Id", "-")
+            user = getattr(request, "_jwt_identity", None) or request.headers.get("X-User-Id", "-")
 
             # Parse request body (skip binary/multipart)
             req_body = None

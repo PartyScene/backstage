@@ -270,6 +270,7 @@ class BaseView(QuartClassful):
     async def get_me(self):
         """Get current user details including friend connections and attended events"""
         user_id = get_jwt_identity()  # Get user_id early for logging
+        app.logger.warning(f"GET /user JWT identity={user_id!r} type={type(user_id).__name__}")
         try:
             user = await self.conn.fetch(user_id)
             if not user:
@@ -476,6 +477,7 @@ class BaseView(QuartClassful):
     async def get_user(self, user_id: str):
         """Get another user's public host profile (aggregated)."""
         viewer_id = get_jwt_identity()
+        app.logger.warning(f"GET /users/{user_id} viewer={viewer_id!r}")
         try:
             profile = await self.conn.fetch_host_profile(user_id, viewer_id=viewer_id)
             if not profile:

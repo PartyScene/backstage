@@ -1,0 +1,267 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: surrealdb-backup-validation
+  namespace: default
+  labels:
+    app: backup-validation
+    component: surrealdb
+spec:
+  schedule: "0 3 * * 0"  # Every Sunday at 3:00 AM UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600  # 1 hour timeout
+      template:
+        metadata:
+          labels:
+            app: backup-validation
+            component: surrealdb
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: workload-identity-sa
+          containers:
+          - name: validation
+            image: google/cloud-sdk:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              
+              # Configuration
+              PROJECT_ID="partyscene-441317"
+              ZONE="us-central1-a"
+              VM_NAME="surrealvm"
+              DISK_NAME="surrealvm"
+              SURREALDB_PORT=8000
+              NAMESPACE="partyscene"
+              DATABASE="partyscene"
+              
+              # Slack webhook for alerts
+              SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
+              
+              # Logging
+              log_info() {
+                echo "[INFO] $(date -u '+%Y-%m-%d %H:%M:%S UTC') $1"
+              }
+              
+              log_error() {
+                echo "[ERROR] $(date -u '+%Y-%m-%d %H:%M:%S UTC') $1"
+              }
+              
+              send_alert() {
+                local message="$1"
+                if [[ -n "$SLACK_WEBHOOK_URL" ]]; then
+                  curl -s -X POST "$SLACK_WEBHOOK_URL" \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"text\": \"🚨 SurrealDB Backup Validation Failed\n$message\"}"
+                fi
+              }
+              
+              log_info "Starting SurrealDB backup validation..."
+              
+              # Find latest snapshot
+              log_info "Finding latest snapshot..."
+              SNAPSHOT_NAME=$(gcloud compute snapshots list \
+                --filter="sourceDisk~$DISK_NAME AND sourceDisk!~surrealvm-20250402-093916" \
+                --format="value(name)" \
+                --sort-by="~createTime" \
+                --limit=1 \
+                --project="$PROJECT_ID")
+              
+              if [[ -z "$SNAPSHOT_NAME" ]]; then
+                log_error "No snapshots found"
+                send_alert "No snapshots found for disk $DISK_NAME"
+                exit 1
+              fi
+              
+              log_info "Latest snapshot: $SNAPSHOT_NAME"
+              
+              # Verify snapshot is recent (within 48 hours)
+              SNAPSHOT_TIME=$(gcloud compute snapshots describe "$SNAPSHOT_NAME" \
+                --format="value(createTime)" \
+                --project="$PROJECT_ID")
+              
+              SNAPSHOT_EPOCH=$(date -d "$SNAPSHOT_TIME" +%s)
+              CURRENT_EPOCH=$(date +%s)
+              HOURS_OLD=$(( (CURRENT_EPOCH - SNAPSHOT_EPOCH) / 3600 ))
+              
+              if [[ $HOURS_OLD -gt 48 ]]; then
+                log_error "Snapshot is too old: $HOURS_OLD hours"
+                send_alert "Snapshot $SNAPSHOT_NAME is $HOURS_OLD hours old (max 48h)"
+                exit 1
+              fi
+              
+              log_info "Snapshot is recent: $HOURS_OLD hours old"
+              
+              # Test snapshot creation (dry-run restore)
+              log_info "Testing snapshot creation (dry-run)..."
+              TEST_DISK_NAME="${DISK_NAME}-validation-$(date +%Y%m%d-%H%M%S)"
+              
+              gcloud compute disks create "$TEST_DISK_NAME" \
+                --source-snapshot="$SNAPSHOT_NAME" \
+                --zone="$ZONE" \
+                --type=pd-balanced \
+                --project="$PROJECT_ID" \
+                --quiet || {
+                log_error "Failed to create test disk from snapshot"
+                send_alert "Failed to create test disk from snapshot $SNAPSHOT_NAME"
+                exit 1
+              }
+              
+              log_info "Test disk created successfully"
+              
+              # Create test VM
+              log_info "Creating test VM for validation..."
+              TEST_VM_NAME="surrealdb-validation-$(date +%Y%m%d-%H%M%S)"
+              
+              gcloud compute instances create "$TEST_VM_NAME" \
+                --zone="$ZONE" \
+                --machine-type=e2-small \
+                --network-interface=network-tier=STANDARD \
+                --create-disk=auto-delete=yes,boot=yes,device-name="$TEST_DISK_NAME",mode=rw,name="$TEST_DISK_NAME" \
+                --project="$PROJECT_ID" \
+                --quiet || {
+                log_error "Failed to create test VM"
+                send_alert "Failed to create test VM for validation"
+                gcloud compute disks delete "$TEST_DISK_NAME" --zone="$ZONE" --project="$PROJECT_ID" --quiet || true
+                exit 1
+              }
+              
+              log_info "Test VM created successfully"
+              
+              # Wait for VM to be running
+              log_info "Waiting for VM to be running..."
+              gcloud compute instances wait "$TEST_VM_NAME" \
+                --zone="$ZONE" \
+                --project="$PROJECT_ID" \
+                --status=RUNNING \
+                --timeout=300s
+              
+              # Start SurrealDB container
+              log_info "Starting SurrealDB container..."
+              
+              gcloud compute ssh "$TEST_VM_NAME" \
+                --zone="$ZONE" \
+                --project="$PROJECT_ID" \
+                --command="docker run -d --name surrealdb -p 8000:8000 -v /data:/data surrealdb/surrealdb:latest start --user root --pass root --bind 0.0.0.0:8000 file:///data" \
+                --quiet || {
+                log_error "Failed to start SurrealDB container"
+                send_alert "Failed to start SurrealDB container in validation VM"
+                gcloud compute instances delete "$TEST_VM_NAME" --zone="$ZONE" --project="$PROJECT_ID" --quiet || true
+                exit 1
+              }
+              
+              log_info "SurrealDB container started"
+              
+              # Wait for SurrealDB to be ready
+              log_info "Waiting for SurrealDB to be ready..."
+              
+              # VM is only accessible internally, use SSH to check health
+              MAX_RETRIES=30
+              RETRY_COUNT=0
+              
+              while [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+                if gcloud compute ssh "$TEST_VM_NAME" \
+                  --zone="$ZONE" \
+                  --project="$PROJECT_ID" \
+                  --command="curl -s http://localhost:$SURREALDB_PORT/health" >/dev/null 2>&1; then
+                  log_info "SurrealDB is responding"
+                  break
+                fi
+                
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                sleep 5
+              done
+              
+              if [[ $RETRY_COUNT -eq $MAX_RETRIES ]]; then
+                log_error "SurrealDB did not become ready"
+                send_alert "SurrealDB did not become ready in validation VM"
+                gcloud compute instances delete "$TEST_VM_NAME" --zone="$ZONE" --project="$PROJECT_ID" --quiet || true
+                exit 1
+              fi
+              
+              # Verify database (VM is only accessible internally, use SSH)
+              log_info "Verifying database..."
+              RESPONSE=$(gcloud compute ssh "$TEST_VM_NAME" \
+                --zone="$ZONE" \
+                --project="$PROJECT_ID" \
+                --command="curl -s http://localhost:$SURREALDB_PORT/sql \
+                  -H 'Accept: application/json' \
+                  -H 'NS: $NAMESPACE' \
+                  -H 'DB: $DATABASE' \
+                  -d 'INFO FOR DB;'")
+              
+              if echo "$RESPONSE" | grep -q "$DATABASE"; then
+                log_info "Database verification successful"
+              else
+                log_error "Database verification failed"
+                send_alert "Database verification failed in validation VM"
+                gcloud compute instances delete "$TEST_VM_NAME" --zone="$ZONE" --project="$PROJECT_ID" --quiet || true
+                exit 1
+              fi
+              
+              # Check record count (basic data integrity, use SSH)
+              log_info "Checking record counts..."
+              USER_COUNT=$(gcloud compute ssh "$TEST_VM_NAME" \
+                --zone="$ZONE" \
+                --project="$PROJECT_ID" \
+                --command="curl -s http://localhost:$SURREALDB_PORT/sql \
+                  -H 'Accept: application/json' \
+                  -H 'NS: $NAMESPACE' \
+                  -H 'DB: $DATABASE' \
+                  -d 'SELECT count() FROM users GROUP ALL;'" \
+                | grep -o '"result":[0-9]*' | grep -o '[0-9]*' || echo "0")
+              
+              log_info "User count: $USER_COUNT"
+              
+              if [[ "$USER_COUNT" -lt 10 ]]; then
+                log_error "Suspiciously low user count: $USER_COUNT"
+                send_alert "Suspiciously low user count in validation: $USER_COUNT"
+                gcloud compute instances delete "$TEST_VM_NAME" --zone="$ZONE" --project="$PROJECT_ID" --quiet || true
+                exit 1
+              fi
+              
+              # Cleanup
+              log_info "Cleaning up validation resources..."
+              gcloud compute instances delete "$TEST_VM_NAME" \
+                --zone="$ZONE" \
+                --project="$PROJECT_ID" \
+                --quiet || true
+              
+              gcloud compute disks delete "$TEST_DISK_NAME" \
+                --zone="$ZONE" \
+                --project="$PROJECT_ID" \
+                --quiet || true
+              
+              log_info "Validation completed successfully!"
+              echo "✅ SurrealDB backup validation passed"
+              echo "Snapshot: $SNAPSHOT_NAME"
+              echo "User count: $USER_COUNT"
+              
+              # Send success notification (optional)
+              if [[ -n "$SLACK_WEBHOOK_URL" ]]; then
+                curl -s -X POST "$SLACK_WEBHOOK_URL" \
+                  -H 'Content-Type: application/json' \
+                  -d "{\"text\": \"✅ SurrealDB Backup Validation Passed\nSnapshot: $SNAPSHOT_NAME\nUser count: $USER_COUNT\"}"
+              fi
+            env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-webhook
+                  key: url
+                  optional: true
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/token
+            resources:
+              requests:
+                cpu: "250m"
+                memory: "512Mi"
+              limits:
+                cpu: "1000m"
+                memory: "1Gi"
