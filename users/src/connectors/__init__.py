@@ -563,7 +563,13 @@ class UsersDB:
         payload = final.get("result") if isinstance(final, dict) else final
         if payload is None or (isinstance(payload, dict) and payload.get("user") is None):
             return None
-        return record_id_to_json(payload)
+        payload = record_id_to_json(payload)
+        # Flatten user object to top level
+        if isinstance(payload, dict) and "user" in payload:
+            user_data = payload.pop("user")
+            if isinstance(user_data, dict):
+                payload.update(user_data)
+        return payload
 
     async def backfill_host_since(self, user_id: str) -> Optional[dict]:
         """Set host_since to the earliest hosted event time if missing."""
