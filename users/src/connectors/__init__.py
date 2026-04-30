@@ -512,9 +512,9 @@ class UsersDB:
             response = await conn.query_raw(
                 """
                 LET $user = SELECT
-                    * OMIT password, hashed_password, hashed_email,
-                    cover_image.* AS cover_image
-                FROM ONLY $u;
+                    * OMIT password, hashed_password, hashed_email
+                FROM ONLY $u
+                FETCH cover_image;
 
                 LET $total_events    = (SELECT count() FROM events
                                         WHERE host = $u GROUP ALL)[0].count ?? 0;
@@ -532,9 +532,10 @@ class UsersDB:
                 LET $past = SELECT * FROM events
                     WHERE host = $u AND time <= time::now()
                     ORDER BY time DESC LIMIT 20;
-                LET $media = SELECT *, out.* AS media FROM host_media
+                LET $media = SELECT *, out AS media FROM host_media
                     WHERE in = $u
-                    ORDER BY sort_order ASC, created_at ASC;
+                    ORDER BY sort_order ASC, created_at ASC
+                    FETCH out;
 
                 RETURN {
                     user:            $user,
