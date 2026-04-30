@@ -214,6 +214,18 @@ DEFINE FIELD OVERWRITE updated_at ON TABLE comments TYPE datetime VALUE time::no
 DEFINE FIELD OVERWRITE created_at ON TABLE comments TYPE datetime DEFAULT time::now();
 DEFINE INDEX unique_comments ON TABLE comments COLUMNS in, out UNIQUE;
 
+-- Collectors: users designated by a host to collect tap-to-pay
+-- payments on their behalf for a specific event. Scoped per-event,
+-- expires naturally when the event ends. Host must own the event.
+DEFINE TABLE OVERWRITE event_collectors TYPE RELATION IN events TO users;
+DEFINE FIELD OVERWRITE in ON TABLE event_collectors TYPE record<events>;
+DEFINE FIELD OVERWRITE out ON TABLE event_collectors TYPE record<users>;
+DEFINE FIELD OVERWRITE assigned_by ON TABLE event_collectors TYPE record<users>;
+DEFINE FIELD OVERWRITE created_at ON TABLE event_collectors TYPE datetime DEFAULT time::now();
+DEFINE INDEX unique_event_collector ON TABLE event_collectors COLUMNS in, out UNIQUE;
+DEFINE INDEX OVERWRITE idx_collector_event ON TABLE event_collectors COLUMNS in;
+DEFINE INDEX OVERWRITE idx_collector_user ON TABLE event_collectors COLUMNS out;
+
 -- A table for friends
 DEFINE TABLE OVERWRITE friends TYPE RELATION IN users to users;
 DEFINE FIELD OVERWRITE out ON TABLE friends TYPE record<users>;

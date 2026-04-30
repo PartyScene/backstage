@@ -83,6 +83,7 @@ class BaseView(QuartClassful):
                         "enabled_events": [
                             "payment_intent.succeeded",
                             "payment_intent.payment_failed",
+                            "payment_intent.amount_capturable_updated",
                             "charge.refunded",
                             "payout.paid",
                         ],
@@ -1064,6 +1065,14 @@ class BaseView(QuartClassful):
                 event_id = metadata.get("event_id")
                 tier_id = metadata.get("tier_id")
                 guest_name = metadata.get("guest_name")
+                payment_type = metadata.get("payment_type", "online")
+
+                if payment_type == "tap_to_pay":
+                    collector_id = metadata.get("collector_id", user_or_email)
+                    app.logger.info(
+                        f"Processing tap_to_pay ticket for user {user_or_email} "
+                        f"collected by {collector_id} on event {event_id}"
+                    )
 
                 is_guest = "@" in user_or_email
 
@@ -1197,6 +1206,49 @@ class BaseView(QuartClassful):
             app.logger.warning(f"PaymentIntent failed: {payment_intent['id']}")
             # TODO: Implement failed payment handling (ticket status update, user notification)
 
+        elif event["type"] == "payment_intent.amount_capturable_updated":
+            # Fired when a card_present (Tap to Pay) payment is authorised on
+            # the reader and is ready to capture. We capture immediately, then
+            # ticket creation happens on the subsequent payment_intent.succeeded.
+            payment_intent = event.data.object
+            pi_id = payment_intent["id"]
+            metadata = payment_intent.get("metadata", {})
+
+            if metadata.get("payment_type") != "tap_to_pay":
+                app.logger.debug(f"Ignoring non-terminal capturable update: {pi_id}")
+            else:
+                idempotency_key = f"stripe_capture:{pi_id}"
+                if not await self.redis.set(idempotency_key, "1", nx=True, ex=86400):
+                    app.logger.info(f"Duplicate capture attempt ignored: {pi_id}")
+                else:
+                    try:
+                        # Capture is called on the connected account the intent
+                        # was created on — pull stripe_account_id from metadata
+                        # via the event host, or fall back to the platform key.
+                        stripe_account_id = ""
+                        event_id = metadata.get("event_id", "")
+                        if event_id:
+                            ev = await self.conn._fetch(event_id)
+                            if ev:
+                                stripe_account_id = (
+                                    ev.get("host", {}).get("stripe_account_id", "")
+                                )
+
+                        capture_opts = {}
+                        if stripe_account_id:
+                            capture_opts["stripe_account"] = stripe_account_id
+
+                        self.stripe_client.payment_intents.capture(
+                            pi_id, options=capture_opts
+                        )
+                        app.logger.info(f"Captured terminal intent {pi_id}")
+                    except stripe.StripeError as capture_err:
+                        app.logger.error(
+                            f"Failed to capture terminal intent {pi_id}: {capture_err}"
+                        )
+                        # Clear idempotency key so the next webhook retry can retry
+                        await self.redis.delete(idempotency_key)
+
         elif event["type"] == "charge.refunded":
             charge = event.data.object
             metadata = charge.metadata
@@ -1249,6 +1301,245 @@ class BaseView(QuartClassful):
 
         # Return a 200 OK response to Stripe to acknowledge receipt of the event
         return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
+
+    # ── Collector management ──────────────────────────────────────────────────
+
+    @route("/payments/<event_id>/collectors", methods=["POST"])
+    @jwt_required
+    async def assign_collector(self, event_id: str):
+        """
+        Assign a collector to an event.
+
+        The caller must be the event host. The collector_id comes from
+        scanning the target user's friendship QR code on the client —
+        the backend just receives the resolved user ID.
+
+        Body: { "collector_id": "<user_id>" }
+        """
+        try:
+            host_id = get_jwt_identity()
+            data: dict = await request.get_json()
+            collector_id = (data or {}).get("collector_id", "").strip()
+
+            if not collector_id:
+                return api_error("collector_id is required", HTTPStatus.BAD_REQUEST)
+
+            edge = await self.conn.assign_collector(event_id, collector_id, host_id)
+
+            return api_response(
+                "Collector assigned successfully.",
+                HTTPStatus.CREATED,
+                data=edge,
+            )
+        except ValueError as e:
+            return api_error(str(e), HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            app.logger.error(f"assign_collector error: {e}", exc_info=True)
+            return api_error("Failed to assign collector", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    @route("/payments/<event_id>/collectors/<collector_id>", methods=["DELETE"])
+    @jwt_required
+    async def remove_collector(self, event_id: str, collector_id: str):
+        """
+        Remove a collector assignment. Host only.
+        """
+        try:
+            host_id = get_jwt_identity()
+            removed = await self.conn.remove_collector(event_id, collector_id, host_id)
+
+            if not removed:
+                return api_error("Collector not found for this event", HTTPStatus.NOT_FOUND)
+
+            return api_response("Collector removed successfully.", HTTPStatus.OK)
+        except ValueError as e:
+            return api_error(str(e), HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            app.logger.error(f"remove_collector error: {e}", exc_info=True)
+            return api_error("Failed to remove collector", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    @route("/payments/<event_id>/collectors", methods=["GET"])
+    @jwt_required
+    async def list_collectors(self, event_id: str):
+        """
+        List all collectors assigned to an event. Host only.
+        """
+        try:
+            host_id = get_jwt_identity()
+
+            # Verify caller is host before exposing the list
+            event = await self.conn._fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            host = event.get("host", {})
+            host_record_id = str(host.get("id", "")).split(":")[-1]
+            if host_record_id != host_id:
+                return api_error("Only the event host can view collectors", HTTPStatus.FORBIDDEN)
+
+            collectors = await self.conn.list_collectors(event_id)
+            return api_response(
+                "Collectors fetched successfully.",
+                HTTPStatus.OK,
+                data=collectors,
+            )
+        except Exception as e:
+            app.logger.error(f"list_collectors error: {e}", exc_info=True)
+            return api_error("Failed to fetch collectors", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    # ── Stripe Terminal (Tap to Pay) ──────────────────────────────────────────
+
+    @route("/payments/<event_id>/terminal/connection-token", methods=["GET"])
+    @jwt_required
+    async def terminal_connection_token(self, event_id: str):
+        """
+        Issue a Stripe Terminal connection token scoped to the event host's
+        connected account. Caller must be the host or an assigned collector.
+
+        The mobile SDK uses this token to initialise the Terminal and enable
+        Tap to Pay on the device.
+        """
+        try:
+            user_id = get_jwt_identity()
+            authorized, stripe_account_id = await self.conn.check_terminal_authorization(
+                event_id, user_id
+            )
+
+            if not authorized:
+                return api_error(
+                    "Not authorized to collect payments for this event",
+                    HTTPStatus.FORBIDDEN,
+                )
+
+            if not stripe_account_id:
+                return api_error(
+                    "Host has not completed Stripe onboarding",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            # Connection token must be created on the connected account so the
+            # Terminal SDK is scoped to the host's Stripe account, not the platform.
+            token = self.stripe_client.terminal.connection_tokens.create(
+                params={},
+                options={"stripe_account": stripe_account_id},
+            )
+
+            return api_response(
+                "Connection token issued.",
+                HTTPStatus.OK,
+                data={"secret": token.secret, "event_id": event_id},
+            )
+        except ValueError as e:
+            return api_error(str(e), HTTPStatus.BAD_REQUEST)
+        except stripe.StripeError as e:
+            app.logger.error(f"Stripe error issuing connection token: {e}", exc_info=True)
+            return api_error("Failed to issue connection token", HTTPStatus.BAD_GATEWAY)
+        except Exception as e:
+            app.logger.error(f"terminal_connection_token error: {e}", exc_info=True)
+            return api_error("Internal error", HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    @route("/payments/<event_id>/terminal/create-intent", methods=["POST"])
+    @jwt_required
+    async def terminal_create_intent(self, event_id: str):
+        """
+        Create a card_present PaymentIntent for Tap to Pay collection.
+
+        Terminal requires manual capture — the intent is created here and
+        captured by the webhook on payment_intent.amount_capturable_updated.
+        The destination charge routes funds to the host's connected account
+        with the standard 3% platform fee.
+
+        Body: { "amount": <cents>, "ticket_count": 1, "tier_id": "<optional>" }
+        """
+        try:
+            user_id = get_jwt_identity()
+            authorized, stripe_account_id = await self.conn.check_terminal_authorization(
+                event_id, user_id
+            )
+
+            if not authorized:
+                return api_error(
+                    "Not authorized to collect payments for this event",
+                    HTTPStatus.FORBIDDEN,
+                )
+
+            if not stripe_account_id:
+                return api_error(
+                    "Host has not completed Stripe onboarding",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            data: dict = await request.get_json()
+            ticket_count = data.get("ticket_count", 1)
+            tier_id = data.get("tier_id")
+
+            if not isinstance(ticket_count, int) or ticket_count < 1:
+                return api_error(
+                    "ticket_count must be a positive integer", HTTPStatus.BAD_REQUEST
+                )
+
+            # Resolve price from tier or event
+            event = await self.conn._fetch(event_id)
+            if not event:
+                return api_error("Event not found", HTTPStatus.NOT_FOUND)
+
+            ticket_price = event.get("price", 0)
+            if tier_id:
+                tier = await self.conn.check_tier_availability(tier_id, ticket_count)
+                ticket_price = tier.get("price", ticket_price)
+
+            if ticket_price <= 0:
+                return api_error(
+                    "Cannot create a terminal intent for a free event",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            total_amount = self.calculate_total_amount(float(ticket_price))
+            platform_fee = int(0.03 * total_amount * 100)
+
+            metadata = {
+                "user_id":        user_id,
+                "event_id":       event_id,
+                "ticket_count":   str(ticket_count),
+                "collector_id":   user_id,
+                "payment_type":   "tap_to_pay",
+            }
+            if tier_id:
+                metadata["tier_id"] = tier_id
+
+            # card_present with manual capture — Terminal requirement.
+            # The connected account param scopes the intent to the host's account.
+            intent = self.stripe_client.payment_intents.create(
+                params={
+                    "amount":          int(total_amount * 100),
+                    "currency":        "usd",
+                    "payment_method_types": ["card_present"],
+                    "capture_method":  "manual",
+                    "transfer_data":   {"destination": stripe_account_id},
+                    "application_fee_amount": platform_fee,
+                    "metadata":        metadata,
+                },
+                options={"stripe_account": stripe_account_id},
+            )
+
+            return api_response(
+                "Terminal payment intent created.",
+                HTTPStatus.OK,
+                data={
+                    "client_secret": intent.client_secret,
+                    "payment_intent_id": intent.id,
+                    "amount": intent.amount,
+                    "currency": intent.currency,
+                    "event_id": event_id,
+                },
+            )
+        except ValueError as e:
+            return api_error(str(e), HTTPStatus.BAD_REQUEST)
+        except stripe.StripeError as e:
+            app.logger.error(f"Stripe error creating terminal intent: {e}", exc_info=True)
+            return api_error("Failed to create terminal intent", HTTPStatus.BAD_GATEWAY)
+        except Exception as e:
+            app.logger.error(f"terminal_create_intent error: {e}", exc_info=True)
+            return api_error("Internal error", HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def _verify_paystack_signature(self, payload: bytes, signature: str) -> bool:
         """

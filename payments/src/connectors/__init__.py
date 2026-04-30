@@ -363,6 +363,170 @@ class PaymentsDB:
             self.logger.error(f"Failed to increment attendee_count: {str(e)}")
             raise
 
+    async def assign_collector(
+        self, event_id: str, collector_id: str, host_id: str
+    ) -> dict:
+        """
+        Designate a user as a tap-to-pay collector for an event.
+
+        Verifies atomically that the caller is the event host before
+        creating the edge. Raises ValueError if the event is not found,
+        the caller is not the host, or the collector is already assigned.
+
+        Args:
+            event_id:     Event to assign the collector to.
+            collector_id: User being designated as collector.
+            host_id:      JWT identity of the requesting user (must be host).
+
+        Returns:
+            The created event_collectors edge as a plain dict.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.let("event", RecordID("events", event_id))
+            await conn.let("host",  RecordID("users",  host_id))
+            await conn.let("coll",  RecordID("users",  collector_id))
+
+            response = await conn.query_raw(
+                """
+                LET $ev = SELECT host FROM ONLY $event;
+                IF $ev = NONE {
+                    THROW "event_not_found";
+                };
+                IF $ev.host != $host {
+                    THROW "not_host";
+                };
+                IF $host = $coll {
+                    THROW "self_assign";
+                };
+                RELATE ONLY $event -> event_collectors -> $coll
+                    SET assigned_by = $host
+                    RETURN AFTER;
+                """
+            )
+
+        stmts = response.get("result", [])
+        for s in stmts:
+            if isinstance(s, dict) and s.get("status") == "ERR":
+                err = s.get("result", "")
+                if "event_not_found" in err:
+                    raise ValueError("Event not found")
+                if "not_host" in err:
+                    raise ValueError("Only the event host can assign collectors")
+                if "self_assign" in err:
+                    raise ValueError("Host cannot assign themselves as a collector")
+                raise Exception(f"assign_collector failed: {err}")
+
+        edge = stmts[-1]["result"]
+        if not edge:
+            raise ValueError("Collector already assigned to this event")
+        result = edge[0] if isinstance(edge, list) else edge
+        return record_id_to_json(result)
+
+    async def remove_collector(
+        self, event_id: str, collector_id: str, host_id: str
+    ) -> bool:
+        """
+        Remove a collector assignment for an event.
+
+        Verifies the caller is the host before deleting. Returns True
+        if the edge existed and was removed, False if it was not found.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.let("event", RecordID("events", event_id))
+            await conn.let("host",  RecordID("users",  host_id))
+            await conn.let("coll",  RecordID("users",  collector_id))
+
+            response = await conn.query_raw(
+                """
+                LET $ev = SELECT host FROM ONLY $event;
+                IF $ev = NONE {
+                    THROW "event_not_found";
+                };
+                IF $ev.host != $host {
+                    THROW "not_host";
+                };
+                DELETE event_collectors
+                    WHERE in = $event AND out = $coll
+                    RETURN BEFORE;
+                """
+            )
+
+        stmts = response.get("result", [])
+        for s in stmts:
+            if isinstance(s, dict) and s.get("status") == "ERR":
+                err = s.get("result", "")
+                if "event_not_found" in err:
+                    raise ValueError("Event not found")
+                if "not_host" in err:
+                    raise ValueError("Only the event host can remove collectors")
+                raise Exception(f"remove_collector failed: {err}")
+
+        deleted = stmts[-1].get("result", [])
+        return bool(deleted)
+
+    async def list_collectors(self, event_id: str) -> list:
+        """
+        Return all collectors assigned to an event with basic profile info.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                SELECT
+                    out.{id, first_name, last_name, username, avatar} AS user,
+                    assigned_by.{id, first_name, last_name} AS assigned_by,
+                    created_at
+                FROM event_collectors
+                WHERE in = type::thing('events', $event_id);
+                """,
+                {"event_id": event_id},
+            )
+        return record_id_to_json(result) if result else []
+
+    async def check_terminal_authorization(
+        self, event_id: str, user_id: str
+    ) -> tuple[bool, str]:
+        """
+        Check if a user is authorized to collect tap-to-pay payments for
+        an event. Returns (authorized, host_stripe_account_id).
+
+        A user is authorized if they are the host OR an assigned collector.
+        The host's stripe_account_id is always returned so the caller can
+        create a properly scoped connection token and payment intent.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.let("event", RecordID("events", event_id))
+            await conn.let("user",  RecordID("users",  user_id))
+
+            response = await conn.query_raw(
+                """
+                LET $ev = SELECT host, host.stripe_account_id AS stripe_id
+                    FROM ONLY $event;
+                IF $ev = NONE {
+                    THROW "event_not_found";
+                };
+                LET $is_host = $ev.host = $user;
+                LET $is_collector = count(
+                    SELECT id FROM event_collectors
+                    WHERE in = $event AND out = $user
+                ) > 0;
+                RETURN {
+                    authorized:       $is_host OR $is_collector,
+                    stripe_account_id: $ev.stripe_id
+                };
+                """
+            )
+
+        stmts = response.get("result", [])
+        for s in stmts:
+            if isinstance(s, dict) and s.get("status") == "ERR":
+                err = s.get("result", "")
+                if "event_not_found" in err:
+                    raise ValueError("Event not found")
+                raise Exception(f"check_terminal_authorization failed: {err}")
+
+        payload = stmts[-1]["result"]
+        return payload["authorized"], payload.get("stripe_account_id", "")
+
 
 async def init_db(app) -> tuple[PaymentsDB, SurrealDBPoolManager]:
     """
