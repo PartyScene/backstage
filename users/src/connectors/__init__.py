@@ -620,12 +620,11 @@ class UsersDB:
 
             result = await conn.query(
                 """
-                RELATE ONLY type::thing('users', $follower)
-                       -> host_followers ->
-                       type::thing('users', $host)
+                RELATE ONLY $follower
+                       -> host_followers -> $host
                 SET created_at = time::now();
                 """,
-                {"follower": follower_id, "host": host_id},
+                {"follower": RecordID("users", follower_id), "host": RecordID("users", host_id)},
             )
         return record_id_to_json(result)
 
