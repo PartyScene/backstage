@@ -83,7 +83,6 @@ class BaseView(QuartClassful):
                         "enabled_events": [
                             "payment_intent.succeeded",
                             "payment_intent.payment_failed",
-                            "payment_intent.amount_capturable_updated",
                             "charge.refunded",
                             "payout.paid",
                         ],
@@ -1206,39 +1205,6 @@ class BaseView(QuartClassful):
             app.logger.warning(f"PaymentIntent failed: {payment_intent['id']}")
             # TODO: Implement failed payment handling (ticket status update, user notification)
 
-        elif event["type"] == "payment_intent.amount_capturable_updated":
-            # Fired when a card_present (Tap to Pay) payment is authorised on
-            # the reader and is ready to capture. We capture immediately, then
-            # ticket creation happens on the subsequent payment_intent.succeeded.
-            payment_intent = event.data.object
-            pi_id = payment_intent["id"]
-            metadata = payment_intent.get("metadata", {})
-
-            if metadata.get("payment_type") != "tap_to_pay":
-                app.logger.debug(f"Ignoring non-terminal capturable update: {pi_id}")
-            else:
-                idempotency_key = f"stripe_capture:{pi_id}"
-                if not await self.redis.set(idempotency_key, "1", nx=True, ex=86400):
-                    app.logger.info(f"Duplicate capture attempt ignored: {pi_id}")
-                else:
-                    try:
-                        # PI lives on the platform account — capture with no
-                        # stripe_account option. stripe_account_id is stored in
-                        # metadata for audit; Stripe handles the transfer via
-                        # the destination charge transfer_data set at creation.
-                        self.stripe_client.payment_intents.capture(pi_id)
-                        app.logger.info(
-                            f"Captured terminal intent {pi_id} for event "
-                            f"{metadata.get('event_id')} by collector "
-                            f"{metadata.get('collector_id')}"
-                        )
-                    except stripe.StripeError as capture_err:
-                        app.logger.error(
-                            f"Failed to capture terminal intent {pi_id}: {capture_err}"
-                        )
-                        # Clear so the next webhook retry can attempt capture again
-                        await self.redis.delete(idempotency_key)
-
         elif event["type"] == "charge.refunded":
             charge = event.data.object
             metadata = charge.metadata
@@ -1446,12 +1412,13 @@ class BaseView(QuartClassful):
         """
         Create a card_present PaymentIntent for Tap to Pay collection.
 
-        Terminal requires manual capture — the intent is created here and
-        captured by the webhook on payment_intent.amount_capturable_updated.
+        Uses automatic capture — Stripe captures immediately after the card
+        tap and fires payment_intent.succeeded directly, which triggers ticket
+        creation via the existing webhook handler. No separate capture step.
         The destination charge routes funds to the host's connected account
         with the standard 3% platform fee.
 
-        Body: { "amount": <cents>, "ticket_count": 1, "tier_id": "<optional>" }
+        Body: { "ticket_count": 1, "tier_id": "<optional>", "buyer_user_id": "<optional>" }
         """
         try:
             user_id = get_jwt_identity()
@@ -1516,16 +1483,15 @@ class BaseView(QuartClassful):
                 metadata["tier_id"] = tier_id
 
             # PI lives on the platform account (no stripe_account option) so
-            # platform webhook receives amount_capturable_updated and
-            # payment_intent.succeeded. transfer_data routes funds to the host's
-            # connected account after capture — same destination charge model
-            # used by the online payment flow.
+            # platform webhook receives payment_intent.succeeded directly after
+            # the card tap — automatic capture, no separate capture step needed.
+            # transfer_data routes funds to the host's connected account.
             intent = self.stripe_client.payment_intents.create(
                 params={
                     "amount":               int(total_amount * 100),
                     "currency":             "usd",
                     "payment_method_types": ["card_present"],
-                    "capture_method":       "manual",
+                    "capture_method":       "automatic",
                     "transfer_data":        {"destination": stripe_account_id},
                     "application_fee_amount": platform_fee,
                     "metadata":             metadata,
