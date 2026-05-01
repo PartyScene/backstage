@@ -388,7 +388,7 @@ class PaymentsDB:
 
             response = await conn.query_raw(
                 """
-                LET $ev = SELECT host FROM ONLY $event;
+                LET $ev = SELECT host, status FROM ONLY $event;
                 IF $ev = NONE {
                     THROW "event_not_found";
                 };
@@ -397,6 +397,9 @@ class PaymentsDB:
                 };
                 IF $host = $coll {
                     THROW "self_assign";
+                };
+                IF $ev.status IN ["ended", "cancelled"] {
+                    THROW "event_inactive";
                 };
                 RELATE ONLY $event -> event_collectors -> $coll
                     SET assigned_by = $host
@@ -414,6 +417,8 @@ class PaymentsDB:
                     raise ValueError("Only the event host can assign collectors")
                 if "self_assign" in err:
                     raise ValueError("Host cannot assign themselves as a collector")
+                if "event_inactive" in err:
+                    raise ValueError("Cannot assign collectors to an ended or cancelled event")
                 raise Exception(f"assign_collector failed: {err}")
 
         edge = stmts[-1]["result"]
