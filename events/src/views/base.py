@@ -64,6 +64,49 @@ class BaseView(QuartClassful):
         """Remove live query ID from Redis"""
         key = f"live_query:{event_id}"
         await self.redis.delete(key)
+        
+    async def check_ticket_verify_authorization(
+        self, event_id: str, user_id: str
+    ) -> bool:
+        """
+        Check if a user is authorized to verify tickets for
+        an event. Returns (authorized).
+
+        A user is authorized if they are the host OR an assigned collector.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.let("event", RecordID("events", event_id))
+            await conn.let("user",  RecordID("users",  user_id))
+
+            response = await conn.query_raw(
+                """
+                LET $ev = SELECT host FROM ONLY $event;
+                IF $ev = NONE {
+                    THROW "event_not_found";
+                };
+                LET $is_host = $ev.host = $user;
+                LET $is_collector = count(
+                    SELECT id FROM event_collectors
+                    WHERE in = $event AND out = $user
+                ) > 0;
+                RETURN {
+                    authorized:       $is_host OR $is_collector,
+                };
+                """
+            )
+
+        stmts = response.get("result", [])
+        for s in stmts:
+            if isinstance(s, dict) and s.get("status") == "ERR":
+                err = s.get("result", "")
+                if "event_not_found" in err:
+                    raise ValueError("Event not found")
+                raise Exception(f"check_terminal_authorization failed: {err}")
+
+        payload = stmts[-1]["result"]
+        return payload["authorized"]
+
+
 
     @route("/", methods=["GET"])
     async def index(self):
@@ -1322,9 +1365,10 @@ class BaseView(QuartClassful):
             
             # Allow both event host and staff with access to verify tickets
             # You can extend this logic to check for specific roles or permissions
-            if event.get("host", {}).get("id") != user_id:
+            
+            if not self.check_ticket_verify_authorization(event_id, user_id):
                 return api_error(
-                    "Only event hosts can verify tickets",
+                    "Only event hosts and collectors can verify tickets",
                     HTTPStatus.FORBIDDEN
                 )
             
