@@ -1,0 +1,138 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: surrealdb-logical-backup
+  namespace: default
+  labels:
+    app: surrealdb-logical-backup
+    component: surrealdb
+spec:
+  schedule: "0 2,14 * * *"   # Twice daily — 02:00 and 14:00 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800  # 30 min — export of large DB should finish well within this
+      template:
+        metadata:
+          labels:
+            app: surrealdb-logical-backup
+            component: surrealdb
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: workload-identity-sa   # Workload Identity for gcloud + gsutil
+          containers:
+          - name: backup
+            image: google/cloud-sdk:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              PROJECT_ID="partyscene-441317"
+              ZONE="us-central1-a"
+              VM="surrealvm"
+              CONTAINER="surrealdb"
+              NS="partyscene"
+              DB="partyscene"
+              SURREAL_USER="root"
+              SURREAL_PASS="rootrm"
+              SURREAL_ENDPOINT="http://localhost:8000"
+              GCS_PREFIX="gs://partyscene-441317-backups/surreal-exports"
+              TIMESTAMP="$(date -u '+%Y%m%d-%H%M%S')"
+              GCS_FILE="${GCS_PREFIX}/partyscene-${TIMESTAMP}.surql"
+              REMOTE_DUMP="/tmp/surreal-export-${TIMESTAMP}.surql"
+
+              log()  { echo "[$(date -u '+%H:%M:%S') UTC] $*"; }
+              fail() {
+                log "ERROR: $*"
+                if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
+                  curl -s -X POST "$SLACK_WEBHOOK_URL" \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"text\": \":x: SurrealDB logical backup FAILED\n$*\"}" || true
+                fi
+                exit 1
+              }
+
+              log "Starting logical backup → ${GCS_FILE}"
+
+              # 1. Verify container is running
+              RUNNING=$(gcloud compute ssh "${VM}" --zone="${ZONE}" --project="${PROJECT_ID}" --quiet \
+                --command="docker inspect --format='{{.State.Running}}' ${CONTAINER} 2>/dev/null || echo false" \
+                2>/dev/null | tr -d '[:space:]')
+              [[ "$RUNNING" == "true" ]] || fail "Container '${CONTAINER}' is not running on ${VM}"
+
+              # 2. Export inside the container
+              # surreal export uses the native WebSocket protocol, not the HTTP API,
+              # so the IAM 403 issue that blocks curl-based exports does not apply.
+              log "Running surreal export..."
+              gcloud compute ssh "${VM}" --zone="${ZONE}" --project="${PROJECT_ID}" --quiet \
+                --command="
+                  docker exec ${CONTAINER} surreal export \
+                    --conn ${SURREAL_ENDPOINT} \
+                    --user ${SURREAL_USER} \
+                    --pass ${SURREAL_PASS} \
+                    --ns ${NS} \
+                    --db ${DB} \
+                    /tmp/export.surql \
+                  && docker cp ${CONTAINER}:/tmp/export.surql ${REMOTE_DUMP} \
+                  && docker exec ${CONTAINER} rm -f /tmp/export.surql \
+                  && echo export_ok
+                " | grep -q "export_ok" || fail "surreal export failed"
+
+              # 3. Upload to GCS from the VM (gsutil uses the VM's service account)
+              log "Uploading to GCS..."
+              gcloud compute ssh "${VM}" --zone="${ZONE}" --project="${PROJECT_ID}" --quiet \
+                --command="
+                  gsutil -q cp ${REMOTE_DUMP} ${GCS_FILE} \
+                  && rm -f ${REMOTE_DUMP} \
+                  && echo upload_ok
+                " | grep -q "upload_ok" || fail "GCS upload failed"
+
+              # 4. Verify size
+              SIZE=$(gcloud compute ssh "${VM}" --zone="${ZONE}" --project="${PROJECT_ID}" --quiet \
+                --command="gsutil du -s ${GCS_FILE} | awk '{print \$1}'" 2>/dev/null | tr -d '[:space:]')
+              [[ -n "$SIZE" && "$SIZE" != "0" ]] || fail "Upload empty or missing: ${GCS_FILE}"
+
+              log "Backup complete: ${GCS_FILE} (${SIZE} bytes)"
+
+              # 5. Prune exports older than 30 days
+              log "Pruning old exports (>30 days)..."
+              CUTOFF=$(date -u -d '30 days ago' '+%Y%m%d')
+              gcloud compute ssh "${VM}" --zone="${ZONE}" --project="${PROJECT_ID}" --quiet \
+                --command="
+                  gsutil ls '${GCS_PREFIX}/*.surql' 2>/dev/null \
+                  | while read -r f; do
+                      fname=\$(basename \"\$f\")
+                      fdate=\${fname#partyscene-}
+                      fdate=\${fdate%%-*}
+                      if [[ \"\$fdate\" < '${CUTOFF}' ]]; then
+                        gsutil -q rm \"\$f\" && echo \"Deleted \$f\"
+                      fi
+                    done
+                " || log "Pruning step failed (non-fatal)"
+
+              # 6. Slack success notification
+              if [[ -n "${SLACK_WEBHOOK_URL:-}" ]]; then
+                curl -s -X POST "$SLACK_WEBHOOK_URL" \
+                  -H 'Content-Type: application/json' \
+                  -d "{\"text\": \":white_check_mark: SurrealDB logical backup complete\nFile: ${GCS_FILE}\nSize: ${SIZE} bytes\"}" || true
+              fi
+
+            env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-webhook
+                  key: url
+                  optional: true
+            resources:
+              requests:
+                cpu: "250m"
+                memory: "256Mi"
+              limits:
+                cpu: "500m"
+                memory: "512Mi"

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# SurrealDB Backup & Restore Script
+# SurrealDB Backup & Restore — Manual Tool
 #
-# Backup:  runs `surreal export` inside the Docker container on surrealvm,
-#          uploads the .surql dump to GCS.
-# Restore: downloads a .surql dump from GCS (latest or specified),
-#          runs `surreal import` inside the container.
+# For automated periodic backups use the Kubernetes CronJob:
+#   k8s/surrealdb-logical-backup-cronjob.yaml  (runs twice daily via GKE)
+#
+# This script is for ad-hoc / one-off operations:
+#   backup  — runs `surreal export` inside the Docker container on surrealvm,
+#             uploads the .surql dump to GCS.
+#   restore — downloads a .surql dump from GCS (latest or specified),
+#             runs `surreal import` inside the container.
 #
 # The VM surrealvm has no external IP — all remote commands use gcloud compute ssh.
 #
