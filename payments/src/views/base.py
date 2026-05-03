@@ -287,7 +287,7 @@ class BaseView(QuartClassful):
                 "enabled": True,
             },
         }
-        
+
         # Add destination charge if host has Stripe Connect account
         if host_stripe_account_id:
             payment_params["transfer_data"] = {
@@ -299,7 +299,7 @@ class BaseView(QuartClassful):
             app.logger.warning(f"Event {event_id} host has no Stripe account - processing as direct charge")
         
         # Create a Stripe payment intent
-        payment_intent = await self.stripe_client.payment_intents.create_async(payment_params)
+        payment_intent = await self.stripe_client.v1.payment_intents.create_async(payment_params)
         return payment_intent
 
     def calculate_total_amount(self, base_amount: float) -> float:
@@ -1042,7 +1042,7 @@ class BaseView(QuartClassful):
 
         # Handle the event
         if event["type"] == "payment_intent.succeeded":
-            payment_intent = event.data.object
+            payment_intent = event.data.object.to_dict()
             payment_intent_id = payment_intent["id"]
             app.logger.info(f"PaymentIntent was successful: {payment_intent_id}")
 
@@ -1366,6 +1366,8 @@ class BaseView(QuartClassful):
         The mobile SDK uses this token to initialise the Terminal and enable
         Tap to Pay on the device. POST because issuing a token is a write
         operation on Stripe — GET is inappropriate for side-effectful calls.
+
+        Lazily creates a global PartyScene Terminal location on first usage.
         """
         try:
             user_id = get_jwt_identity()
@@ -1385,9 +1387,35 @@ class BaseView(QuartClassful):
                     HTTPStatus.BAD_REQUEST,
                 )
 
+            # Check for stored global partyscene_location_id
+            PARTYSCENE_LOCATION_KEY = "partyscene_terminal_location_id"
+            partyscene_location_id = await self.redis.get(PARTYSCENE_LOCATION_KEY)
+
+            if not partyscene_location_id:
+                app.logger.info("PartyScene Terminal location not found, creating lazily")
+                # Create location with hardcoded address
+                location = self.stripe_client.v1.terminal.locations.create(
+                    params={
+                        "display_name": "PartyScene",
+                        "address": {
+                            "line1": "1209 MOUNTAIN ROAD PL NE STE N",
+                            "city": "ALBUQUERQUE",
+                            "state": "NM",
+                            "postal_code": "87110",
+                            "country": "US",
+                        },
+                    },
+                )
+                partyscene_location_id = location.id
+                # Store permanently in Redis
+                await self.redis.set(PARTYSCENE_LOCATION_KEY, partyscene_location_id)
+                app.logger.info(f"Created PartyScene Terminal location: {partyscene_location_id}")
+            else:
+                app.logger.info(f"Using existing PartyScene Terminal location: {partyscene_location_id}")
+
             # Connection token must be created on the connected account so the
             # Terminal SDK is scoped to the host's Stripe account, not the platform.
-            token = self.stripe_client.terminal.connection_tokens.create(
+            token = self.stripe_client.v1.terminal.connection_tokens.create(
                 params={},
                 options={"stripe_account": stripe_account_id},
             )
@@ -1395,7 +1423,11 @@ class BaseView(QuartClassful):
             return api_response(
                 "Connection token issued.",
                 HTTPStatus.OK,
-                data={"secret": token.secret, "event_id": event_id},
+                data={
+                    "secret": token.secret,
+                    "event_id": event_id,
+                    "location_id": partyscene_location_id,
+                },
             )
         except ValueError as e:
             return api_error(str(e), HTTPStatus.BAD_REQUEST)

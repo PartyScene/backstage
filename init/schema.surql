@@ -452,7 +452,8 @@ DEFINE FUNCTION OVERWRITE fn::fetch_event($event_id: record) {
         (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at != NONE) AS scanned_tickets,
         (SELECT * FROM tickets WHERE event = $parent.id AND checked_in_at = NONE) AS unscanned_tickets,
         host.{id, organization_name, first_name, last_name, avatar, filename, stripe_account_id},
-        (SELECT id, name, price, capacity, description, sold_count FROM ticket_tiers WHERE event = $parent.id ORDER BY price ASC) AS tiers
+        (SELECT id, name, price, capacity, description, sold_count FROM ticket_tiers WHERE event = $parent.id ORDER BY price ASC) AS tiers,
+        (SELECT VALUE out.id FROM event_collectors WHERE in = $parent.id) AS collectors
     OMIT embeddings
     FROM ONLY $event_id
     )
