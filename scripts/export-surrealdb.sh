@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# SurrealDB Backup & Restore — Manual Tool
+# SurrealDB Logical Backup & Logical Restore — Manual Tool
+#
+# NOTE: This is NOT the same as restore-surrealdb.sh.
+#   restore-surrealdb.sh  — full disaster recovery: recreates the VM from a GCP disk snapshot.
+#   THIS script           — logical export/import of data as .surql, no VM/disk changes.
+#
+# Use this script for:
+#   - Data migration to a new instance
+#   - Selective/incremental rollback without replacing the VM
+#   - Creating portable, human-readable backups
+#   - Complementing disk snapshots with logical dumps
 #
 # For automated periodic backups use the Kubernetes CronJob:
 #   k8s/surrealdb-logical-backup-cronjob.yaml  (runs twice daily via GKE)
-#
-# This script is for ad-hoc / one-off operations:
-#   backup  — runs `surreal export` inside the Docker container on surrealvm,
-#             uploads the .surql dump to GCS.
-#   restore — downloads a .surql dump from GCS (latest or specified),
-#             runs `surreal import` inside the container.
 #
 # The VM surrealvm has no external IP — all remote commands use gcloud compute ssh.
 #
