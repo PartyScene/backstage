@@ -41,7 +41,7 @@ spec:
               SURREAL_USER="root"
               SURREAL_PASS="rootrm"
               SURREAL_ENDPOINT="http://localhost:8000"
-              GCS_PREFIX="gs://partyscene-441317-backups/surreal-exports"
+              GCS_PREFIX="gs://partyscene/surreal-exports"
               TIMESTAMP="$(date -u '+%Y%m%d-%H%M%S')"
               GCS_FILE="${GCS_PREFIX}/partyscene-${TIMESTAMP}.surql"
               REMOTE_DUMP="/tmp/surreal-export-${TIMESTAMP}.surql"
@@ -71,15 +71,13 @@ spec:
               log "Running surreal export..."
               gcloud compute ssh "${VM}" --zone="${ZONE}" --project="${PROJECT_ID}" --quiet \
                 --command="
-                  docker exec ${CONTAINER} surreal export \
-                    --conn ${SURREAL_ENDPOINT} \
-                    --user ${SURREAL_USER} \
-                    --pass ${SURREAL_PASS} \
-                    --ns ${NS} \
-                    --db ${DB} \
-                    /tmp/export.surql \
-                  && docker cp ${CONTAINER}:/tmp/export.surql ${REMOTE_DUMP} \
-                  && docker exec ${CONTAINER} rm -f /tmp/export.surql \
+                  docker exec ${CONTAINER} /surreal export \
+                    --endpoint ${SURREAL_ENDPOINT} \
+                    --username ${SURREAL_USER} \
+                    --password ${SURREAL_PASS} \
+                    --namespace ${NS} \
+                    --database ${DB} \
+                    - > ${REMOTE_DUMP} \
                   && echo export_ok
                 " | grep -q "export_ok" || fail "surreal export failed"
 

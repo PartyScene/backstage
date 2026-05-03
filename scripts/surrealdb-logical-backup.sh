@@ -35,7 +35,7 @@ DB="partyscene"
 SURREAL_USER="root"
 SURREAL_PASS="rootrm"
 SURREAL_ENDPOINT="http://localhost:8000"
-GCS_PREFIX="gs://partyscene-441317-backups/surreal-exports"
+GCS_PREFIX="gs://partyscene/surreal-exports"
 # ─────────────────────────────────────────────────────────────────────────────
 
 TIMESTAMP="$(date -u '+%Y%m%d-%H%M%S')"
@@ -99,15 +99,13 @@ do_backup() {
 
     log "Running surreal export inside container..."
     gcloud compute ssh "${VM}" --zone="${ZONE}" --quiet --command="
-        docker exec ${CONTAINER} surreal export \
-            --conn ${SURREAL_ENDPOINT} \
-            --user ${SURREAL_USER} \
-            --pass ${SURREAL_PASS} \
-            --ns ${NS} \
-            --db ${DB} \
-            /tmp/export.surql \
-        && docker cp ${CONTAINER}:/tmp/export.surql ${remote_dump} \
-        && docker exec ${CONTAINER} rm -f /tmp/export.surql \
+        docker exec ${CONTAINER} /surreal export \
+            --endpoint ${SURREAL_ENDPOINT} \
+            --username ${SURREAL_USER} \
+            --password ${SURREAL_PASS} \
+            --namespace ${NS} \
+            --database ${DB} \
+            - > ${remote_dump} \
         && echo export_ok
     " | grep -q "export_ok" || die "surreal export failed"
 
@@ -161,15 +159,13 @@ do_restore() {
 
     log "Running surreal import inside container..."
     gcloud compute ssh "${VM}" --zone="${ZONE}" --quiet --command="
-        docker cp ${remote_dump} ${CONTAINER}:/tmp/restore.surql \
-        && docker exec ${CONTAINER} surreal import \
-            --conn ${SURREAL_ENDPOINT} \
-            --user ${SURREAL_USER} \
-            --pass ${SURREAL_PASS} \
-            --ns ${NS} \
-            --db ${DB} \
-            /tmp/restore.surql \
-        && docker exec ${CONTAINER} rm -f /tmp/restore.surql \
+        cat ${remote_dump} | docker exec -i ${CONTAINER} /surreal import \
+            --endpoint ${SURREAL_ENDPOINT} \
+            --username ${SURREAL_USER} \
+            --password ${SURREAL_PASS} \
+            --namespace ${NS} \
+            --database ${DB} \
+            - \
         && rm -f ${remote_dump} \
         && echo import_ok
     " | grep -q "import_ok" || die "surreal import failed"
