@@ -265,7 +265,7 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
-    @route("/user/collecting", methods=["GET"])
+    @route("/users/me/collectors-event", methods=["GET"])
     @jwt_required
     async def get_collecting_events(self):
         """Fetch events where the caller is an assigned collector."""
