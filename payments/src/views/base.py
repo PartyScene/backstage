@@ -1394,7 +1394,7 @@ class BaseView(QuartClassful):
             if not partyscene_location_id:
                 app.logger.info("PartyScene Terminal location not found, creating lazily")
                 # Create location with hardcoded address
-                location = self.stripe_client.v1.terminal.locations.create(
+                location = await self.stripe_client.v1.terminal.locations.create_async(
                     params={
                         "display_name": "PartyScene",
                         "address": {
@@ -1415,7 +1415,7 @@ class BaseView(QuartClassful):
 
             # Connection token must be created on the connected account so the
             # Terminal SDK is scoped to the host's Stripe account, not the platform.
-            token = self.stripe_client.v1.terminal.connection_tokens.create(
+            token = await self.stripe_client.v1.terminal.connection_tokens.create_async(
                 params={},
                 options={"stripe_account": stripe_account_id},
             )
@@ -1518,7 +1518,7 @@ class BaseView(QuartClassful):
             # platform webhook receives payment_intent.succeeded directly after
             # the card tap — automatic capture, no separate capture step needed.
             # transfer_data routes funds to the host's connected account.
-            intent = self.stripe_client.payment_intents.create(
+            intent = await self.stripe_client.v1.payment_intents.create_async(
                 params={
                     "amount":               int(total_amount * 100),
                     "currency":             "usd",
