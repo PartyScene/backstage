@@ -147,11 +147,14 @@ DEFINE FIELD OVERWRITE checked_in_at ON TABLE tickets TYPE option<datetime>;
 DEFINE FIELD OVERWRITE updated_at ON TABLE tickets TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE tickets TYPE datetime DEFAULT time::now();
 
+DEFINE FIELD OVERWRITE collector ON TABLE tickets TYPE option<record<users>> DEFAULT NONE;
+DEFINE INDEX OVERWRITE idx_ticket_collector ON TABLE tickets COLUMNS collector;
+
 DEFINE EVENT OVERWRITE update_ticket_number ON TABLE tickets WHEN $event = "CREATE" THEN {UPDATE $after SET ticket_number = 
     "TKT-" 
     + string::slice(<string>$after.event.id, 7, 4)
     + "-" 
-    + rand::string(4)
+    + rand::string(6)
     };
 DEFINE EVENT OVERWRITE increment_tier_sold ON TABLE tickets WHEN $event = "CREATE" AND $after.tier != NONE THEN {
     UPDATE $after.tier SET sold_count += 1
@@ -213,6 +216,15 @@ DEFINE FIELD OVERWRITE content ON TABLE comments TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON TABLE comments TYPE datetime VALUE time::now();
 DEFINE FIELD OVERWRITE created_at ON TABLE comments TYPE datetime DEFAULT time::now();
 DEFINE INDEX unique_comments ON TABLE comments COLUMNS in, out UNIQUE;
+
+-- Platform-wide configuration key/value store.
+-- One record per key; used for durable settings like terminal_location_id.
+DEFINE TABLE OVERWRITE platform_config SCHEMAFULL;
+DEFINE FIELD OVERWRITE key ON TABLE platform_config TYPE string;
+DEFINE FIELD OVERWRITE value ON TABLE platform_config TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON TABLE platform_config TYPE datetime VALUE time::now();
+DEFINE FIELD OVERWRITE created_at ON TABLE platform_config TYPE datetime DEFAULT time::now();
+DEFINE INDEX OVERWRITE unique_platform_config_key ON TABLE platform_config COLUMNS key UNIQUE;
 
 -- Collectors: users designated by a host to collect tap-to-pay
 -- payments on their behalf for a specific event. Scoped per-event,

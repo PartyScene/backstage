@@ -112,6 +112,11 @@ class PaymentsDB:
         else:
             data.pop("tier", None)
 
+        if "collector" in data and data["collector"]:
+            data["collector"] = RecordID("users", data["collector"])
+        else:
+            data.pop("collector", None)
+
         try:
             async with self.pool.acquire() as conn:
                 result = await conn.create("tickets", data)
@@ -531,6 +536,49 @@ class PaymentsDB:
 
         payload = stmts[-1]["result"]
         return payload["authorized"], payload.get("stripe_account_id", "")
+
+    async def get_user_stripe_account(self, user_id: str) -> Optional[str]:
+        """
+        Return the stripe_account_id for a user, or None if not set.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "SELECT stripe_account_id FROM ONLY type::thing('users', $user_id);",
+                {"user_id": user_id},
+            )
+        if result:
+            return result.get("stripe_account_id") or None
+        return None
+
+    async def get_platform_config(self, key: str) -> Optional[str]:
+        """
+        Read a global platform config value by key.
+        Returns the value string, or None if the key does not exist.
+        """
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                "SELECT value FROM ONLY platform_config WHERE key = $key LIMIT 1;",
+                {"key": key},
+            )
+        if result:
+            return result.get("value")
+        return None
+
+    async def set_platform_config(self, key: str, value: str) -> None:
+        """
+        Upsert a global platform config key/value pair.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.query(
+                """
+                IF (SELECT id FROM platform_config WHERE key = $key) = [] {
+                    CREATE platform_config SET key = $key, value = $value;
+                } ELSE {
+                    UPDATE platform_config SET value = $value WHERE key = $key;
+                };
+                """,
+                {"key": key, "value": value},
+            )
 
 
 async def init_db(app) -> tuple[PaymentsDB, SurrealDBPoolManager]:

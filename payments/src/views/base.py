@@ -495,9 +495,7 @@ class BaseView(QuartClassful):
                 for i in range(ticket_count):
                     await self.conn._create_ticket(ticket_data.copy())
 
-                if tier_id:
-                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
-                await self.conn.increment_attendee_count(event_id, ticket_count)
+                await self.conn.increment_attendee_count(event_id, 1)
                 BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="stripe").inc(ticket_count)
 
                 await self._send_tickets_email(
@@ -810,9 +808,7 @@ class BaseView(QuartClassful):
                 for i in range(ticket_count):
                     await self.conn._create_ticket(ticket_data.copy())
 
-                if tier_id:
-                    await self.conn.increment_tier_sold_count(tier_id, ticket_count)
-                await self.conn.increment_attendee_count(event_id, ticket_count)
+                await self.conn.increment_attendee_count(event_id, 1)
                 BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="paystack").inc(ticket_count)
 
                 await self._send_tickets_email(
@@ -1058,147 +1054,163 @@ class BaseView(QuartClassful):
 
             metadata = dict(payment_intent.get("metadata") or {})
 
-            if "ticket_count" in metadata:
-                ticket_count = int(metadata.get("ticket_count"))
-                user_or_email = metadata.get("user_id")
-                event_id = metadata.get("event_id")
-                tier_id = metadata.get("tier_id")
-                guest_name = metadata.get("guest_name")
-                payment_type = metadata.get("payment_type", "online")
+            try:
+                if "ticket_count" in metadata:
+                    ticket_count = int(metadata.get("ticket_count"))
+                    user_or_email = metadata.get("user_id")
+                    event_id = metadata.get("event_id")
+                    tier_id = metadata.get("tier_id")
+                    guest_name = metadata.get("guest_name")
+                    payment_type = metadata.get("payment_type", "online")
 
-                if payment_type == "tap_to_pay":
-                    collector_id = metadata.get("collector_id", user_or_email)
-                    app.logger.info(
-                        f"Processing tap_to_pay ticket for user {user_or_email} "
-                        f"collected by {collector_id} on event {event_id}"
-                    )
+                    collector_id = None
+                    if payment_type == "tap_to_pay":
+                        collector_id = metadata.get("collector_id") or None
+                        app.logger.info(
+                            f"Processing tap_to_pay ticket for user {user_or_email} "
+                            f"collected by {collector_id} on event {event_id}"
+                        )
 
-                is_guest = "@" in user_or_email
+                    is_guest = "@" in user_or_email
 
-                if is_guest:
-                    app.logger.info(f"Processing guest purchase for email: {user_or_email}")
-                    for i in range(ticket_count):
-                        ticket_data = {
-                            "guest_email": user_or_email,
-                            "event": event_id
-                        }
-                        if guest_name:
-                            ticket_data["guest_name"] = guest_name
-                        if tier_id:
-                            ticket_data["tier"] = tier_id
-                        await self.conn._create_ticket(ticket_data)
-                        app.logger.info(f"Guest ticket {i+1} created for {user_or_email}")
-                else:
-                    app.logger.info(f"Processing authenticated purchase for user: {user_or_email}")
-                    for i in range(ticket_count):
-                        ticket_data = {
+                    if is_guest:
+                        app.logger.info(f"Processing guest purchase for email: {user_or_email}")
+                        for i in range(ticket_count):
+                            ticket_data = {
+                                "guest_email": user_or_email,
+                                "event": event_id
+                            }
+                            if guest_name:
+                                ticket_data["guest_name"] = guest_name
+                            if tier_id:
+                                ticket_data["tier"] = tier_id
+                            if collector_id:
+                                ticket_data["collector"] = collector_id
+                            await self.conn._create_ticket(ticket_data)
+                            app.logger.info(f"Guest ticket {i+1} created for {user_or_email}")
+                        await self.conn.increment_attendee_count(event_id, 1)
+                    else:
+                        app.logger.info(f"Processing authenticated purchase for user: {user_or_email}")
+                        for i in range(ticket_count):
+                            ticket_data = {
+                                "user": user_or_email,
+                                "event": event_id
+                            }
+                            if tier_id:
+                                ticket_data["tier"] = tier_id
+                            if collector_id:
+                                ticket_data["collector"] = collector_id
+                            await self.conn._create_ticket(ticket_data)
+                            app.logger.info(f"Ticket {i+1} created for user {user_or_email}")
+
+                        await self.conn.create_attendance({
                             "user": user_or_email,
-                            "event": event_id
-                        }
-                        if tier_id:
-                            ticket_data["tier"] = tier_id
-                        await self.conn._create_ticket(ticket_data)
-                        app.logger.info(f"Ticket {i+1} created for user {user_or_email}")
+                            "event": event_id,
+                            "status": "paid",
+                        })
+                        app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
 
-                    await self.conn.create_attendance({
-                        "user": user_or_email,
-                        "event": event_id,
-                        "status": "paid",
-                    })
-                    app.logger.info(f"User {user_or_email} registered as attending event {event_id}")
+                    BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="stripe").inc(ticket_count)
 
-                BusinessMetrics.TICKET_PURCHASES.labels(payment_provider="stripe").inc(ticket_count)
+                    # Guests get the full Resend QR email; authenticated buyers get
+                    # their QR tickets via Novu (email + push in one dispatch).
+                    if is_guest:
+                        await self._send_tickets_email(
+                            to_email=user_or_email,
+                            user_name=guest_name or user_or_email.split('@')[0],
+                            event_id=event_id,
+                            is_guest=True,
+                        )
 
-                # Guests get the full Resend QR email; authenticated buyers get
-                # their QR tickets via Novu (email + push in one dispatch).
-                if is_guest:
-                    await self._send_tickets_email(
-                        to_email=user_or_email,
-                        user_name=guest_name or user_or_email.split('@')[0],
-                        event_id=event_id,
-                        is_guest=True,
-                    )
+                    # Notify the event host about the ticket purchase (non-critical)
+                    event_data = None
+                    try:
+                        event_data = await self.conn._fetch(event_id)
+                        if event_data:
+                            host = event_data.get("host", {})
+                            host_id = host.get("id", "") if isinstance(host, dict) else ""
+                            if host_id:
+                                host_id = str(host_id).split(":")[-1]
+                                buyer_display = guest_name or user_or_email.split('@')[0]
+                                await self._notification_manager.send_ticket_purchase_host_notification(
+                                    host_subscriber_id=host_id,
+                                    buyer_name=buyer_display,
+                                    event_name=event_data.get("title", "your event"),
+                                    event_id=event_id,
+                                    ticket_count=ticket_count,
+                                    total_amount=payment_intent.get("amount", 0) / 100,
+                                    currency=payment_intent.get("currency", "usd").upper(),
+                                )
+                    except Exception as host_notify_err:
+                        app.logger.error(f"Host notification failed (non-blocking): {host_notify_err}")
 
-                # Notify the event host about the ticket purchase (non-critical)
-                event_data = None
-                try:
-                    event_data = await self.conn._fetch(event_id)
-                    if event_data:
-                        host = event_data.get("host", {})
-                        host_id = host.get("id", "") if isinstance(host, dict) else ""
-                        if host_id:
-                            host_id = str(host_id).split(":")[-1]
-                            buyer_display = guest_name or user_or_email.split('@')[0]
-                            await self._notification_manager.send_ticket_purchase_host_notification(
-                                host_subscriber_id=host_id,
-                                buyer_name=buyer_display,
-                                event_name=event_data.get("title", "your event"),
+                    # Email + push-notify the buyer with QR tickets (authenticated only)
+                    if not is_guest:
+                        try:
+                            ticket_rows = await self.conn._get_ticket_details_by_user(
+                                user_or_email, event_id
+                            )
+                            ticket_numbers = [
+                                t.get("ticket_number", "") for t in ticket_rows if t.get("ticket_number")
+                            ]
+                            evt_title = (event_data or {}).get("title", "your event")
+                            await self._notification_manager.send_ticket_purchase_buyer_notification(
+                                buyer_subscriber_id=user_or_email,
+                                event_name=evt_title,
                                 event_id=event_id,
                                 ticket_count=ticket_count,
                                 total_amount=payment_intent.get("amount", 0) / 100,
                                 currency=payment_intent.get("currency", "usd").upper(),
+                                ticket_numbers=ticket_numbers,
                             )
-                except Exception as host_notify_err:
-                    app.logger.error(f"Host notification failed (non-blocking): {host_notify_err}")
+                        except Exception as buyer_err:
+                            app.logger.error(f"Buyer notification failed (non-blocking): {buyer_err}")
 
-                # Email + push-notify the buyer with QR tickets (authenticated only)
-                if not is_guest:
+                elif "type" in metadata and metadata["type"] == "KYC_PAYMENT":
+                    user_id = metadata.get("user_id")
+                    app.logger.info(f"KYC payment successful for user {user_id}.")
+                    data = {}
+                    data["id"] = user_id
+                    data["kyc_payment_status"] = True
+                    # Update the user's KYC status in the database
+                    await self.conn._update_user(data)
+                    app.logger.info(f"User {user_id} KYC payment status updated.")
+                    # If Stripe onboarding was already completed, fire host-welcome now
+                    # (covers the edge case where Stripe was set up before the KYC fee)
                     try:
-                        ticket_rows = await self.conn._get_ticket_details_by_user(
-                            user_or_email, event_id
+                        user_record = await self.conn.pool.execute_query(
+                            "SELECT stripe_account_kyc_status, first_name "
+                            "FROM ONLY type::thing('users', $uid)",
+                            {"uid": user_id},
                         )
-                        ticket_numbers = [
-                            t.get("ticket_number", "") for t in ticket_rows if t.get("ticket_number")
-                        ]
-                        evt_title = (event_data or {}).get("title", "your event")
-                        await self._notification_manager.send_ticket_purchase_buyer_notification(
-                            buyer_subscriber_id=user_or_email,
-                            event_name=evt_title,
-                            event_id=event_id,
-                            ticket_count=ticket_count,
-                            total_amount=payment_intent.get("amount", 0) / 100,
-                            currency=payment_intent.get("currency", "usd").upper(),
-                            ticket_numbers=ticket_numbers,
+                        user_record = user_record[0] if user_record else {}
+                        if user_record.get("stripe_account_kyc_status"):
+                            await self._notification_manager.send_host_welcome(
+                                subscriber_id=user_id,
+                                first_name=user_record.get("first_name", ""),
+                            )
+                            app.logger.info(
+                                f"Host-welcome sent to {user_id} after KYC fee "
+                                "(Stripe onboarding was already complete)"
+                            )
+                    except Exception as host_welcome_err:
+                        app.logger.warning(
+                            f"Host-welcome check after KYC payment failed (non-blocking): "
+                            f"{host_welcome_err}"
                         )
-                    except Exception as buyer_err:
-                        app.logger.error(f"Buyer notification failed (non-blocking): {buyer_err}")
-
-            elif "type" in metadata and metadata["type"] == "KYC_PAYMENT":
-                user_id = metadata.get("user_id")
-                app.logger.info(f"KYC payment successful for user {user_id}.")
-                data = {}
-                data["id"] = user_id
-                data["kyc_payment_status"] = True
-                # Update the user's KYC status in the database
-                await self.conn._update_user(data)
-                app.logger.info(f"User {user_id} KYC payment status updated.")
-                # If Stripe onboarding was already completed, fire host-welcome now
-                # (covers the edge case where Stripe was set up before the KYC fee)
-                try:
-                    user_record = await self.conn.pool.execute_query(
-                        "SELECT stripe_account_kyc_status, first_name "
-                        "FROM ONLY type::thing('users', $uid)",
-                        {"uid": user_id},
-                    )
-                    user_record = user_record[0] if user_record else {}
-                    if user_record.get("stripe_account_kyc_status"):
-                        await self._notification_manager.send_host_welcome(
-                            subscriber_id=user_id,
-                            first_name=user_record.get("first_name", ""),
-                        )
-                        app.logger.info(
-                            f"Host-welcome sent to {user_id} after KYC fee "
-                            "(Stripe onboarding was already complete)"
-                        )
-                except Exception as host_welcome_err:
+                else:
                     app.logger.warning(
-                        f"Host-welcome check after KYC payment failed (non-blocking): "
-                        f"{host_welcome_err}"
+                        f"No ticket data found in metadata for PaymentIntent {payment_intent['id']}. Cannot create ticket."
                     )
-            else:
-                app.logger.warning(
-                    f"No ticket data found in metadata for PaymentIntent {payment_intent['id']}. Cannot create ticket."
+
+            except Exception as stripe_work_err:
+                app.logger.error(
+                    f"Stripe webhook processing failed for {payment_intent_id}: {stripe_work_err}",
+                    exc_info=True,
                 )
+                # Release the idempotency key so Stripe can retry and fulfill the purchase
+                await self.redis.delete(idempotency_key)
+                return api_error("Webhook processing failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 
         elif event["type"] == "payment_intent.payment_failed":
             payment_intent = event.data.object
@@ -1356,6 +1368,77 @@ class BaseView(QuartClassful):
 
     # ── Stripe Terminal (Tap to Pay) ──────────────────────────────────────────
 
+    TERMINAL_LOCATION_CONFIG_KEY = "partyscene_terminal_location_id"
+    TERMINAL_LOCATION_REDIS_KEY  = "partyscene_terminal_location_id"
+
+    async def _get_or_create_terminal_location(self) -> str:
+        """
+        Return the global PartyScene Terminal location ID.
+        Read order: Redis cache → SurrealDB → create on Stripe + persist.
+        """
+        # 1. Redis fast path
+        location_id = await self.redis.get(self.TERMINAL_LOCATION_REDIS_KEY)
+        if location_id:
+            return location_id
+
+        # 2. SurrealDB durable store
+        location_id = await self.conn.get_platform_config(self.TERMINAL_LOCATION_CONFIG_KEY)
+        if location_id:
+            await self.redis.set(self.TERMINAL_LOCATION_REDIS_KEY, location_id)
+            return location_id
+
+        # 3. First-ever call — create on Stripe platform account and persist
+        app.logger.info("PartyScene Terminal location not found, creating lazily")
+        location = await self.stripe_client.v1.terminal.locations.create_async(
+            params={
+                "display_name": "PartyScene Tap to Pay",
+                "address": {
+                    "line1": "1209 MOUNTAIN ROAD PL NE STE N",
+                    "city": "ALBUQUERQUE",
+                    "state": "NM",
+                    "postal_code": "87110",
+                    "country": "US",
+                },
+            },
+        )
+        location_id = location.id
+        await self.conn.set_platform_config(self.TERMINAL_LOCATION_CONFIG_KEY, location_id)
+        await self.redis.set(self.TERMINAL_LOCATION_REDIS_KEY, location_id)
+        app.logger.info(f"Created PartyScene Terminal location: {location_id}")
+        return location_id
+
+    @route("/payments/terminal/ensure-location", methods=["POST"])
+    @jwt_required
+    async def terminal_ensure_location(self):
+        """
+        Return the global PartyScene Terminal location, creating it if needed.
+        Idempotent — safe to call on every Tap to Pay session start.
+
+        The mobile SDK needs a location ID before calling discoverReaders.
+        """
+        try:
+            user_id = get_jwt_identity()
+            # Caller must be a host with a connected Stripe account to use Terminal
+            user_stripe_account_id = await self.conn.get_user_stripe_account(user_id)
+            if not user_stripe_account_id:
+                return api_error(
+                    "Complete Stripe onboarding before using Tap to Pay",
+                    HTTPStatus.BAD_REQUEST,
+                )
+
+            location_id = await self._get_or_create_terminal_location()
+            return api_response(
+                "Terminal location ready.",
+                HTTPStatus.OK,
+                data={"location_id": location_id},
+            )
+        except stripe.StripeError as e:
+            app.logger.error(f"Stripe error ensuring terminal location: {e}", exc_info=True)
+            return api_error("Failed to ensure terminal location", HTTPStatus.BAD_GATEWAY)
+        except Exception as e:
+            app.logger.error(f"terminal_ensure_location error: {e}", exc_info=True)
+            return api_error("Internal error", HTTPStatus.INTERNAL_SERVER_ERROR)
+
     @route("/payments/<event_id>/terminal/connection-token", methods=["POST"])
     @jwt_required
     async def terminal_connection_token(self, event_id: str):
@@ -1366,8 +1449,6 @@ class BaseView(QuartClassful):
         The mobile SDK uses this token to initialise the Terminal and enable
         Tap to Pay on the device. POST because issuing a token is a write
         operation on Stripe — GET is inappropriate for side-effectful calls.
-
-        Lazily creates a global PartyScene Terminal location on first usage.
         """
         try:
             user_id = get_jwt_identity()
@@ -1387,31 +1468,7 @@ class BaseView(QuartClassful):
                     HTTPStatus.BAD_REQUEST,
                 )
 
-            # Check for stored global partyscene_location_id
-            PARTYSCENE_LOCATION_KEY = "partyscene_terminal_location_id"
-            partyscene_location_id = await self.redis.get(PARTYSCENE_LOCATION_KEY)
-
-            if not partyscene_location_id:
-                app.logger.info("PartyScene Terminal location not found, creating lazily")
-                # Create location with hardcoded address
-                location = await self.stripe_client.v1.terminal.locations.create_async(
-                    params={
-                        "display_name": "PartyScene",
-                        "address": {
-                            "line1": "1209 MOUNTAIN ROAD PL NE STE N",
-                            "city": "ALBUQUERQUE",
-                            "state": "NM",
-                            "postal_code": "87110",
-                            "country": "US",
-                        },
-                    },
-                )
-                partyscene_location_id = location.id
-                # Store permanently in Redis
-                await self.redis.set(PARTYSCENE_LOCATION_KEY, partyscene_location_id)
-                app.logger.info(f"Created PartyScene Terminal location: {partyscene_location_id}")
-            else:
-                app.logger.info(f"Using existing PartyScene Terminal location: {partyscene_location_id}")
+            location_id = await self._get_or_create_terminal_location()
 
             # Connection token must be created on the connected account so the
             # Terminal SDK is scoped to the host's Stripe account, not the platform.
@@ -1426,7 +1483,7 @@ class BaseView(QuartClassful):
                 data={
                     "secret": token.secret,
                     "event_id": event_id,
-                    "location_id": partyscene_location_id,
+                    "location_id": location_id,
                 },
             )
         except ValueError as e:
@@ -1670,6 +1727,7 @@ class BaseView(QuartClassful):
                             ticket_data["tier"] = tier_id
                         await self.conn._create_ticket(ticket_data)
                         app.logger.info(f"Guest ticket {i+1} created for {user_or_email}")
+                    await self.conn.increment_attendee_count(event_id, 1)
                 else:
                     app.logger.info(f"Processing authenticated purchase for user: {user_or_email}")
                     for i in range(ticket_count):
@@ -1740,8 +1798,9 @@ class BaseView(QuartClassful):
                     f"Error processing Paystack webhook: {str(e)}",
                     exc_info=True,
                 )
-                # Return 200 to prevent Paystack from retrying
-                return api_response("Webhook received", HTTPStatus.OK, data={"status": "success"})
+                # Release idempotency key so Paystack can retry and fulfill the purchase
+                await self.redis.delete(idempotency_key)
+                return api_error("Webhook processing failed", HTTPStatus.INTERNAL_SERVER_ERROR)
 
         else:
             app.logger.info(f"Unhandled Paystack event: {event_data.get('event')}")

@@ -948,9 +948,6 @@ class BaseView(QuartClassful):
         account_id = request.args.get(
             "account_id"
         )  # Retrieve from your session or DB (pass via state if needed)
-        app.logger.warning("JWT Identity may not exist")
-        app.logger.warning(get_jwt_identity())
-        
         user = await self.conn._fetch_user(account_id, "stripe_account_id")
 
         if not user:
@@ -989,30 +986,36 @@ class BaseView(QuartClassful):
         return api_response("Onboarding completed successfully", HTTPStatus.OK)
 
     @route("/auth/reauth-stripe", methods=["GET"])
+    @jwt_required
     async def reauth_stripe(self):
         """
         Regenerate a new Stripe account link if the previous one has expired.
-        
-        Returns:
-            tuple: A tuple containing (response, status_code) where response is a JSON object
-            with the new account link URL and status_code is HTTP 200 OK.
-        
-        Raises:
-            StripeError: If there is an error creating the new account link.
+        Requires JWT auth — only the account owner may request a new link.
         """
-        account_id = request.args.get("account_id")  # Retrieve from your session or DB
-        # Regenerate a new link if expired
-        account_link = await stripe.AccountLink.create_async(
-            account=account_id,
-            refresh_url=url_for(".reauth_stripe", account_id=account_id, _external=True).replace("http://", "https://"),
-            return_url=url_for(".stripe_return", account_id=account_id, _external=True).replace("http://", "https://"),
-            type="account_onboarding",
-        )
-        return api_response(
-            "Stripe account link generated",
-            HTTPStatus.OK,
-            data={"url": account_link.url}
-        )
+        user_id = get_jwt_identity()
+        account_id = request.args.get("account_id")
+
+        if not account_id:
+            return api_error("account_id is required", HTTPStatus.BAD_REQUEST)
+
+        user = await self.conn._fetch_user(user_id)
+        if not user or user.get("stripe_account_id") != account_id:
+            return api_error("Forbidden", HTTPStatus.FORBIDDEN)
+
+        try:
+            account_link = await stripe.AccountLink.create_async(
+                account=account_id,
+                refresh_url=url_for(".reauth_stripe", account_id=account_id, _external=True).replace("http://", "https://"),
+                return_url=url_for(".stripe_return", account_id=account_id, _external=True).replace("http://", "https://"),
+                type="account_onboarding",
+            )
+            return api_response(
+                "Stripe account link generated",
+                HTTPStatus.OK,
+                data={"url": account_link.url}
+            )
+        except StripeError as e:
+            return api_error(str(e), HTTPStatus.BAD_GATEWAY)
 
     async def __generate_and_send_otp(
         self,

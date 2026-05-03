@@ -575,7 +575,7 @@ class UsersDB:
     async def backfill_host_since(self, user_id: str) -> Optional[dict]:
         """Set host_since to the earliest hosted event time if missing."""
         async with self.pool.acquire() as conn:
-            result = await conn.query(
+            response = await conn.query_raw(
                 """
                 LET $u = type::thing('users', $user_id);
                 LET $earliest = (SELECT VALUE time FROM events
@@ -585,11 +585,18 @@ class UsersDB:
                     UPDATE ONLY $u SET host_since = $earliest
                         WHERE host_since = NONE
                         RETURN AFTER;
+                } ELSE {
+                    RETURN NONE;
                 };
                 """,
                 {"user_id": user_id},
             )
-        return record_id_to_json(result) if result else None
+        stmts = response.get("result", []) if isinstance(response, dict) else []
+        for s in stmts:
+            if isinstance(s, dict) and s.get("status") == "ERR":
+                raise Exception(f"backfill_host_since failed: {s.get('result')}")
+        final = stmts[-1]["result"] if stmts else None
+        return record_id_to_json(final) if final else None
 
     # ------------------------------------------------------------------
     # Host follower graph

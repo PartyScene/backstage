@@ -101,7 +101,7 @@ class BaseView(QuartClassful):
                 err = s.get("result", "")
                 if "event_not_found" in err:
                     raise ValueError("Event not found")
-                raise Exception(f"check_terminal_authorization failed: {err}")
+                raise Exception(f"check_ticket_verify_authorization failed: {err}")
 
         payload = stmts[-1]["result"]
         return payload["authorized"]
@@ -1366,7 +1366,7 @@ class BaseView(QuartClassful):
             # Allow both event host and staff with access to verify tickets
             # You can extend this logic to check for specific roles or permissions
             
-            if not self.check_ticket_verify_authorization(event_id, user_id):
+            if not await self.check_ticket_verify_authorization(event_id, user_id):
                 return api_error(
                     "Only event hosts and collectors can verify tickets",
                     HTTPStatus.FORBIDDEN
