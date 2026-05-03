@@ -126,6 +126,31 @@ class UsersDB:
 
         return record_id_to_json(result)
 
+    async def fetch_collector_events(
+        self, user_id: str, page: int = 1, limit: int = 20
+    ) -> list:
+        """
+        Return events where the given user is an assigned collector,
+        ordered newest-assignment-first, with pagination.
+        """
+        offset = (page - 1) * limit
+        async with self.pool.acquire() as conn:
+            result = await conn.query(
+                """
+                SELECT
+                    in.*          AS event,
+                    assigned_by.{id, first_name, last_name} AS assigned_by,
+                    created_at    AS assigned_at
+                FROM event_collectors
+                WHERE out = type::thing('users', $user_id)
+                ORDER BY created_at DESC
+                LIMIT $limit
+                START $offset;
+                """,
+                {"user_id": user_id, "limit": limit, "offset": offset},
+            )
+        return record_id_to_json(result) if result else []
+
     async def create_friend_relationship(self, data: dict):
         """
         Create a bidirectional friend relationship between two users.

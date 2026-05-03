@@ -265,6 +265,29 @@ class BaseView(QuartClassful):
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )
 
+    @route("/user/collecting", methods=["GET"])
+    @jwt_required
+    async def get_collecting_events(self):
+        """Fetch events where the caller is an assigned collector."""
+        user_id = get_jwt_identity()
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 20))
+        try:
+            events = await self.conn.fetch_collector_events(user_id, page=page, limit=limit)
+            return api_response(
+                "Collecting events fetched successfully.",
+                HTTPStatus.OK,
+                data=events,
+            )
+        except Exception as e:
+            app.logger.error(
+                f"Error fetching collecting events ({user_id}): {str(e)}", exc_info=True
+            )
+            return api_error(
+                "Failed to fetch collecting events",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
     @route("/user", methods=["GET"])
     @jwt_required
     async def get_me(self):
