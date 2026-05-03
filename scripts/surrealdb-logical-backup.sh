@@ -17,12 +17,12 @@
 # The VM surrealvm has no external IP — all remote commands use gcloud compute ssh.
 #
 # Usage:
-#   ./export-surrealdb.sh backup
-#   ./export-surrealdb.sh backup --output gs://bucket/prefix/
-#   ./export-surrealdb.sh restore
-#   ./export-surrealdb.sh restore --file gs://bucket/prefix/partyscene-20260503-161042.surql
-#   ./export-surrealdb.sh backup --dry-run
-#   ./export-surrealdb.sh restore --dry-run
+#   ./surrealdb-logical-backup.sh backup
+#   ./surrealdb-logical-backup.sh backup --output gs://bucket/prefix/
+#   ./surrealdb-logical-backup.sh restore
+#   ./surrealdb-logical-backup.sh restore --file gs://bucket/prefix/partyscene-20260503-161042.surql
+#   ./surrealdb-logical-backup.sh backup --dry-run
+#   ./surrealdb-logical-backup.sh restore --dry-run
 
 set -euo pipefail
 
